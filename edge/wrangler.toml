@@ -1,0 +1,19 @@
+name = "funnels-edge"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# Route every customer hostname (a wildcard zone route, or one route per custom hostname with Cloudflare for SaaS).
+# routes = [{ pattern = "*/*", zone_name = "sites.example.com" }]
+
+[vars]
+ORIGIN_URL = "https://app.example.com"
+CACHE_TTL_SECONDS = "60"      # serve from cache without asking the origin
+STALE_SECONDS = "86400"       # serve stale (and revalidate in the background) up to this age
+
+# KV caches routing results (404 / redirects) so unknown paths do not hit the origin.
+# wrangler kv namespace create ROUTES
+# [[kv_namespaces]]
+# binding = "ROUTES"
+# id = "<namespace id>"
+
+# Secrets (never in this file):  wrangler secret put EDGE_SHARED_SECRET ; wrangler secret put CF_ORIGIN_SECRET

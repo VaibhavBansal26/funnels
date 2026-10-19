@@ -1,0 +1,11 @@
+# NOT in kustomization.yaml on purpose: with SQLite the app must stay at one replica. Use this once the database is shared.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: funnels }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: funnels }
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }

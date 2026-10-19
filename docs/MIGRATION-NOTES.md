@@ -64,3 +64,7 @@
 ## Left out on purpose
 
 Live chat widget and support tokens, split testing (never existed), the URL shortener and share page, subaccount duplication and the async clone pipeline with image/form copying, Puppeteer thumbnails, media gallery (Wasabi), Form.io forms (replaced by native form blocks), Stripe Connect (replaced by the `PaymentProvider` seam), push notifications (replaced by in-app feed and SSE), white-label domains.
+
+## Edge serving (phase 2)
+
+The legacy Cloudflare worker called `GET /funnelstepcloudlflare` with an HMAC that was skipped when the secret was unset, and wrote HTML back with `POST`. The replacement worker in `edge/` calls `GET /internal/edge/resolve` (read-only, HMAC mandatory, timestamp window, nonce replay protection, fail closed) and never writes to the origin; cache purge is driven by the origin through the Cloudflare API. Cloudflare custom hostnames (legacy `lightning.domains`) map to `DomainProvider` `cloudflare`.

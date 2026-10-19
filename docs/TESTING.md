@@ -39,3 +39,7 @@ Test helpers (`server/test/helpers.ts`): `makeHarness()` builds an app with a co
 ## Not covered
 
 Real browsers (drag and drop, the sandboxed canvas script), real DNS, real Anthropic calls, concurrent multi-process access to the SQLite file.
+
+## Phase 2 additions
+
+`server/test/phase2.test.ts` covers the edge signing contract (skew, replay, fail-closed), the edge endpoint, purge jobs and the Cloudflare adapters (mocked `fetch`), CF-Connecting-IP trust, the event buffer (batching, overflow, shutdown flush, read-your-writes), rollup triggers, `EXPLAIN QUERY PLAN` index checks, an N+1 guard, gzip/metrics, 2,600-row streaming CSV, and `Promise.all` concurrency tests: same-version saves (one winner), parallel duplicates/reorders/domain attach, parallel identical submissions and exact rate limiting. `edge/test/edge.test.ts` tests the worker with fake Cache/KV, verifying each signed call with the origin's real verifier. These run in the normal `npm test` (430 server tests, 14 edge tests, 51 web tests). Not covered: workerd/miniflare, Redis, PostgreSQL.

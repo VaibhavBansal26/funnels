@@ -1,0 +1,13 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: funnels
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"   # SSE notification stream
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: app.example.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: funnels, port: { name: http } } } }] }
+  # Customer hostnames normally arrive through the Cloudflare worker (docs/CLOUDFLARE.md), which calls this same service.

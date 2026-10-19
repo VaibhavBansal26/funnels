@@ -14,10 +14,14 @@ jobs:
           cache-dependency-path: |
             server/package-lock.json
             web/package-lock.json
+            edge/package-lock.json
       - run: npm run install:all
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm run check:size
+      - name: Audit edge worker dev dependencies are not shipped
+        run: npm audit --omit=dev --prefix edge
       - name: Audit production dependencies
         run: npm audit --omit=dev --prefix server && npm audit --omit=dev --prefix web
   docker:

@@ -155,3 +155,16 @@ One container, one volume. TLS for customer domains is terminated in front (Cadd
 ## Scaling and limits
 
 SQLite in WAL mode with a single writer is the deliberate single-node choice. Rate limiting, the page cache and the SSE bus are in memory, per process. Analytics scan the `events` table (indexed by funnel and time); rollups would be the first optimisation at volume.
+
+## Edge and performance layer
+
+```mermaid
+flowchart LR
+  V[Visitor] --> W[Cloudflare Worker: cache, SWR, cookies]
+  W -->|HMAC-signed /internal/edge/resolve| O[Hono app]
+  O -->|edge.purge job| P[CloudflarePurger]
+  O --> B[EventBuffer: write-behind] --> E[(events)] -->|trigger| R[(event_rollups 15 min)]
+  A[Analytics API] --> R
+```
+
+See docs/CLOUDFLARE.md and docs/PERFORMANCE.md. Domains can be managed by a `DomainProvider` (`manual` DNS checks by default, `cloudflare` for Cloudflare for SaaS). `/metrics` (Prometheus), `/readyz`, request timeouts and gzip are in `app.ts`.

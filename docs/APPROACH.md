@@ -53,3 +53,11 @@ Live chat widget, split testing, share-link shortener, media gallery/S3 uploads 
 ## Known limitations
 
 Single-node by design (in-memory limiter, cache and SSE bus). The builder's click-to-select uses a script inside a sandboxed iframe and has only been exercised through unit tests and a production build here, not in a real browser session.
+
+## Phase 2 decisions
+
+* Analytics reads use trigger-maintained 15-minute rollups; funnel-level distinct visitors still scan raw events.
+* Event ingestion is write-behind (flush 250 ms or 5,000 rows, on shutdown, and before any read). `EVENT_BUFFER_MS=0` disables it.
+* Worker threads and Web Workers were measured and not adopted (docs/PERFORMANCE.md).
+* The edge worker is optional; the origin serves pages without it. Edge calls are signed and fail closed.
+* **Not done** from the phase 2 brief: PostgreSQL backend, Redis (cache, limiter, pub/sub, BullMQ), k6 scenarios, running the suite against two backends, OpenTelemetry, workerd-based worker tests, HPA in the active kustomization (single-replica by design, `deploy/k8s/optional/hpa.yaml` is provided), a Docker/compose run (not verified here: docker was not used), web workers.

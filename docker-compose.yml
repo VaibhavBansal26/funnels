@@ -1,0 +1,34 @@
+# Local stack for THIS app. SQLite lives on a named volume (single replica: the data layer is SQLite).
+# docker compose up --build        -> http://localhost:3000
+# docker compose --profile edge up -> also runs the edge worker locally through wrangler (needs the secrets below)
+services:
+  app:
+    build: .
+    ports: ["3000:3000"]
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ chars) in your shell or .env}
+      APP_PUBLIC_URL: http://localhost:3000
+      APP_PUBLIC_CNAME_TARGET: sites.localhost
+      EDGE_SHARED_SECRET: ${EDGE_SHARED_SECRET:-}
+      CF_ORIGIN_SECRET: ${CF_ORIGIN_SECRET:-}
+      CF_API_TOKEN: ${CF_API_TOKEN:-}
+      CF_ZONE_ID: ${CF_ZONE_ID:-}
+      TRUST_PROXY: "true"
+    volumes: ["funnels-data:/data"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/readyz"]
+      interval: 15s
+      timeout: 3s
+  edge:
+    profiles: ["edge"]
+    image: node:22-alpine
+    working_dir: /edge
+    volumes: ["./edge:/edge"]
+    command: sh -c "npm ci && npx wrangler dev --local --port 8787 --var ORIGIN_URL:http://app:3000 --var EDGE_SHARED_SECRET:$${EDGE_SHARED_SECRET}"
+    environment:
+      EDGE_SHARED_SECRET: ${EDGE_SHARED_SECRET:-}
+    ports: ["8787:8787"]
+    depends_on: [app]
+volumes:
+  funnels-data:

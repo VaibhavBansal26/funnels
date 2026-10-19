@@ -1,0 +1,37 @@
+# One replica with Recreate: the database is a single SQLite file on a ReadWriteOnce volume.
+# Do not scale this out until the data layer is moved to a shared database (see docs/PERFORMANCE.md).
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: funnels, labels: { app: funnels } }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: funnels } }
+  template:
+    metadata:
+      labels: { app: funnels }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "3000", prometheus.io/path: /metrics }
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext: { runAsNonRoot: true, fsGroup: 100 }
+      containers:
+        - name: app
+          image: funnels
+          ports: [{ containerPort: 3000, name: http }]
+          env:
+            - { name: NODE_ENV, value: production }
+            - { name: DATABASE_PATH, value: /data/funnels.db }
+            - { name: TRUST_PROXY, value: "true" }
+            - { name: APP_PUBLIC_URL, value: "https://app.example.com" }
+            - { name: APP_PUBLIC_CNAME_TARGET, value: "sites.example.com" }
+          envFrom:
+            - secretRef: { name: funnels-secrets }   # JWT_SECRET, EDGE_SHARED_SECRET, CF_ORIGIN_SECRET, CF_API_TOKEN, CF_ZONE_ID, METRICS_TOKEN, ANTHROPIC_API_KEY
+          readinessProbe: { httpGet: { path: /readyz, port: http }, periodSeconds: 10, timeoutSeconds: 3 }
+          livenessProbe: { httpGet: { path: /healthz, port: http }, initialDelaySeconds: 10, periodSeconds: 20 }
+          lifecycle:
+            preStop: { exec: { command: ["sleep", "5"] } }   # let the endpoint controller stop routing; SIGTERM then flushes buffered events
+          resources: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 768Mi } }
+          volumeMounts: [{ name: data, mountPath: /data }]
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: funnels-data }
