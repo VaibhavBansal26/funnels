@@ -3,6 +3,58 @@ on:
   push:
   pull_request:
 jobs:
+  # The whole server suite (430+ tests) runs against SQLite and against PGlite (PostgreSQL in WASM), one job each.
+  test-engines:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [sqlite, pglite]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci --prefix server
+      - run: npm test --prefix server
+        env:
+          TEST_DB: ${{ matrix.db }}
+  # Real PostgreSQL 17 with a multi-connection pool: the full suite plus test/pg-real.test.ts (row locks, deadlock retry,
+  # SKIP LOCKED, parallel saves/duplicates/reorders/domain attach/rate limit), then the built server booted on it.
+  test-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_PG_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci --prefix server
+      - run: npm test --prefix server
+        env:
+          TEST_DB: pg
+      - name: Boot the built server on PostgreSQL
+        run: |
+          npm run build --prefix server
+          createdb() { PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE boot_check"; }
+          createdb
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/boot_check NODE_ENV=production JWT_SECRET=ci-secret-ci-secret-ci-secret-1234 PORT=3100 LOG_LEVEL=error node server/dist/index.js &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:3100/readyz && break; sleep 1; done
+          curl -sf http://127.0.0.1:3100/readyz | grep -q '"status":"ready"'
+          curl -sf -X POST http://127.0.0.1:3100/api/auth/register -H 'content-type: application/json' -d '{"email":"ci@example.test","password":"ci-password-123","name":"CI"}' | grep -q token
   build:
     runs-on: ubuntu-latest
     steps:
@@ -18,6 +70,8 @@ jobs:
       - run: npm run install:all
       - run: npm run typecheck
       - run: npm test
+        env:
+          TEST_DB: sqlite # the engine matrix runs in the test-engines and test-postgres jobs
       - run: npm run build
       - run: npm run check:size
       - name: Audit edge worker dev dependencies are not shipped

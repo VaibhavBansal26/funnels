@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createBuilder } from '../src/blocks/index.js';
-import { activeDomain, checkoutTarget, makeFunnel, makeHarness } from './helpers.js';
+import { activeDomain, checkoutTarget, makeFunnel, makeHarness, type Harness } from './helpers.js';
 
 /** Everything workspace A owns, so workspace B can try to reach each resource type. */
 async function world() {
-  const h = makeHarness();
+  const h = await makeHarness();
   const a = await h.register('a@example.test');
   const b = await h.register('b@example.test');
   const memberOfA = await h.member(a, 'member');
@@ -19,7 +19,7 @@ async function world() {
   await h.call('PUT', `/api/funnels/${f.id}/steps/${step}/page`, { token: a.token, body: { doc: current } }); // creates a backup, content unchanged
   const backup = (await h.call('GET', `/api/funnels/${f.id}/steps/${step}/backups`, { token: a.token })).json.data[0];
   const buy = await h.call('POST', t.mainPath, { body: { email: 'buyer@example.com' }, headers: { 'user-agent': 'Mozilla/5.0' } });
-  const delivery = h.deps.db.get<{ id: string }>('SELECT id FROM webhook_deliveries')!;
+  const delivery = (await h.deps.db.get<{ id: string }>('SELECT id FROM webhook_deliveries'))!;
   const note = (await h.call('GET', '/api/notifications', { token: a.token })).json.data[0];
   return { h, a, b, memberOfA, t, f, step, dom, tag, hook, block, backup, order: buy.json.orderId as string, delivery, note };
 }
@@ -87,7 +87,7 @@ describe('cross-tenant access returns 404 (never 403) for every resource type', 
   });
 
   it('a step id of the same workspace but another funnel is also a 404', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const f1 = await makeFunnel(h, u.token, { name: 'One' });
     const f2 = await makeFunnel(h, u.token, { name: 'Two' });

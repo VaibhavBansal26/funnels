@@ -7,13 +7,13 @@ import * as notifications from '../services/notifications.js';
 export function notificationRoutes(deps: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
   r.use('*', authenticate(deps));
-  r.get('/', (c) => c.json(notifications.listNotifications(deps, authOf(c).workspaceId, Number(c.req.query('limit') ?? 50) || 50)));
-  r.post('/read-all', (c) => {
-    notifications.markAllRead(deps, authOf(c).workspaceId);
+  r.get('/', async (c) => c.json(await notifications.listNotifications(deps, authOf(c).workspaceId, Number(c.req.query('limit') ?? 50) || 50)));
+  r.post('/read-all', async (c) => {
+    await notifications.markAllRead(deps, authOf(c).workspaceId);
     return c.body(null, 204);
   });
-  r.post('/:id/read', (c) => {
-    notifications.markRead(deps, authOf(c).workspaceId, c.req.param('id'));
+  r.post('/:id/read', async (c) => {
+    await notifications.markRead(deps, authOf(c).workspaceId, c.req.param('id'));
     return c.body(null, 204);
   });
   return r;

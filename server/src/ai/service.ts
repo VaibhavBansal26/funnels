@@ -29,18 +29,22 @@ export const AltTextRequest = z.object({ src: z.string().min(1).max(5000), conte
 const today = (deps: Deps) => deps.now().toISOString().slice(0, 10);
 
 /** Per-workspace per-minute rate limit plus a daily cap (AI_DAILY_CAP, 0 disables AI). The request is counted before the call. */
-function guard(deps: Deps, ws: string): void {
+async function guard(deps: Deps, ws: string): Promise<void> {
   enforce(deps.limiter, `ai:${ws}`, { capacity: deps.config.AI_RATE_LIMIT_PER_MINUTE, perMinute: deps.config.AI_RATE_LIMIT_PER_MINUTE });
   const cap = deps.config.AI_DAILY_CAP;
-  deps.db.tx(() => {
-    const used = deps.db.get<{ count: number }>('SELECT count FROM ai_usage WHERE workspace_id = ? AND day = ?', ws, today(deps))?.count ?? 0;
-    if (used >= cap) throw new AppError(429, 'AI_DAILY_CAP_REACHED', 'The daily AI request limit for this workspace has been reached', undefined, { 'Retry-After': '3600' });
-    deps.db.run('INSERT INTO ai_usage (workspace_id, day, count) VALUES (?, ?, 1) ON CONFLICT (workspace_id, day) DO UPDATE SET count = count + 1', ws, today(deps));
-  });
+  // One atomic conditional upsert: the cap check and the increment cannot be split by a concurrent request.
+  const day = today(deps);
+  const exhausted = () => new AppError(429, 'AI_DAILY_CAP_REACHED', 'The daily AI request limit for this workspace has been reached', undefined, { 'Retry-After': '3600' });
+  if (cap <= 0) throw exhausted();
+  const { changes } = await deps.db.run(
+    `INSERT INTO ai_usage (workspace_id, day, count) VALUES (?, ?, 1)${deps.db.dialect.upsert(['workspace_id', 'day'], 'count = ai_usage.count + 1')} WHERE ai_usage.count < ?`,
+    ws, day, cap,
+  );
+  if (changes === 0) throw exhausted();
 }
 
-export function usage(deps: Deps, ws: string) {
-  const used = deps.db.get<{ count: number }>('SELECT count FROM ai_usage WHERE workspace_id = ? AND day = ?', ws, today(deps))?.count ?? 0;
+export async function usage(deps: Deps, ws: string) {
+  const used = (await deps.db.get<{ count: number }>('SELECT count FROM ai_usage WHERE workspace_id = ? AND day = ?', ws, today(deps)))?.count ?? 0;
   return { provider: deps.ai.name, dailyCap: deps.config.AI_DAILY_CAP, usedToday: used };
 }
 
@@ -61,7 +65,7 @@ async function validated<T>(deps: Deps, feature: string, call: () => Promise<unk
 }
 
 export async function generateFunnel(deps: Deps, auth: Auth, req: z.infer<typeof FunnelRequest>) {
-  guard(deps, auth.workspaceId);
+  await guard(deps, auth.workspaceId);
   const input = {
     business: cleanText(req.business, LIMITS.business),
     audience: cleanText(req.audience, LIMITS.audience),
@@ -71,19 +75,19 @@ export async function generateFunnel(deps: Deps, auth: Auth, req: z.infer<typeof
   };
   const { value, source } = await validated(deps, 'funnel', () => deps.ai.funnelCopy(input), FunnelCopySchema, () => FunnelCopySchema.parse(heuristicFunnelCopy(input)));
   const name = cleanText(value.name, LIMITS.name) || 'AI generated funnel';
-  const funnel = createFunnelFromSteps(deps, auth, { name, basePath: slugPath(name), steps: buildSteps(input.stepKinds, value) });
+  const funnel = await createFunnelFromSteps(deps, auth, { name, basePath: slugPath(name), steps: buildSteps(input.stepKinds, value) });
   return { funnel, source };
 }
 
 export async function rewriteCopy(deps: Deps, auth: Auth, req: z.infer<typeof RewriteRequest>) {
-  guard(deps, auth.workspaceId);
+  await guard(deps, auth.workspaceId);
   const input = { ...req, text: cleanText(req.text, LIMITS.text), context: req.context ? cleanText(req.context, LIMITS.context) : undefined };
   const { value, source } = await validated(deps, 'rewrite', () => deps.ai.rewrite(input), RewriteSchema, () => ({ text: heuristicRewrite(input) }));
   return { text: value.text, source };
 }
 
 export async function headlineVariants(deps: Deps, auth: Auth, req: z.infer<typeof HeadlineRequest>) {
-  guard(deps, auth.workspaceId);
+  await guard(deps, auth.workspaceId);
   const input = { topic: cleanText(req.topic, LIMITS.topic), audience: req.audience ? cleanText(req.audience, LIMITS.audience) : undefined, tone: req.tone };
   const fallback = heuristicHeadlines(input);
   const { value, source } = await validated(deps, 'headlines', () => deps.ai.headlines(input), HeadlinesSchema, () => ({ headlines: fallback }));
@@ -94,7 +98,7 @@ export async function headlineVariants(deps: Deps, auth: Auth, req: z.infer<type
 }
 
 export async function altText(deps: Deps, auth: Auth, req: z.infer<typeof AltTextRequest>) {
-  guard(deps, auth.workspaceId);
+  await guard(deps, auth.workspaceId);
   const input = { src: cleanText(req.src, 500), context: req.context ? cleanText(req.context, LIMITS.context) : undefined };
   const { value, source } = await validated(deps, 'alt', () => deps.ai.altText(input), AltTextSchema, () => ({ alt: heuristicAltText(input) }));
   return { alt: value.alt, source };
@@ -138,9 +142,9 @@ export function weakestStep(steps: StepMetrics[]): string | null {
 
 export async function analyticsInsights(deps: Deps, auth: Auth, req: z.infer<typeof InsightRequest>) {
   const ws = auth.workspaceId;
-  const data = funnelAnalytics(deps, ws, req.funnelId, req);
-  guard(deps, ws);
-  const funnelName = deps.db.get<{ name: string }>('SELECT name FROM funnels WHERE id = ?', req.funnelId)!.name;
+  const data = await funnelAnalytics(deps, ws, req.funnelId, req);
+  await guard(deps, ws);
+  const funnelName = (await deps.db.get<{ name: string }>('SELECT name FROM funnels WHERE id = ?', req.funnelId))!.name;
   const steps: StepMetrics[] = data.steps.map((s, i) => {
     const prev = data.steps[i - 1];
     const dropOff = prev && prev.pageViews.unique > 0 ? Math.max(0, Math.round((1 - s.pageViews.unique / prev.pageViews.unique) * 10000) / 100) : null;

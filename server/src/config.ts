@@ -29,6 +29,8 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: int(3000, 1, 65535),
   HOST: z.string().default('0.0.0.0'),
+  DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//i, 'DATABASE_URL must start with postgres:// or postgresql://').optional(),
+  DATABASE_POOL_MAX: int(10, 1, 200),
   DATABASE_PATH: z.string().default('./data/funnels.db'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters').optional(),
   ACCESS_TOKEN_TTL_SECONDS: int(60 * 60 * 12, 60),

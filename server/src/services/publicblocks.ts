@@ -15,16 +15,16 @@ export interface PublicTarget<B extends Block> {
  * Resolves the (funnel, step, block) a public request addresses. The workspace is derived from the
  * funnel, never from the request. Unknown, trashed or mismatched ids are all the same 404.
  */
-export function resolvePublicBlock<T extends 'form' | 'checkout'>(
+export async function resolvePublicBlock<T extends 'form' | 'checkout'>(
   deps: Deps,
   funnelId: string,
   stepId: string,
   blockId: string,
   type: T,
-): PublicTarget<T extends 'form' ? FormBlock : CheckoutBlock> {
-  const funnel = deps.db.get<FunnelRow>('SELECT * FROM funnels WHERE id = ? AND deleted_at IS NULL', funnelId);
-  const step = funnel ? deps.db.get<StepRow>('SELECT * FROM steps WHERE id = ? AND funnel_id = ?', stepId, funnelId) : undefined;
-  const page = step ? deps.db.get<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE step_id = ?', stepId) : undefined;
+): Promise<PublicTarget<T extends 'form' ? FormBlock : CheckoutBlock>> {
+  const funnel = await deps.db.get<FunnelRow>('SELECT * FROM funnels WHERE id = ? AND deleted_at IS NULL', funnelId);
+  const step = funnel ? await deps.db.get<StepRow>('SELECT * FROM steps WHERE id = ? AND funnel_id = ?', stepId, funnelId) : undefined;
+  const page = step ? await deps.db.get<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE step_id = ?', stepId) : undefined;
   if (!funnel || !step || !page) throw notFound('Form');
   const doc = JSON.parse(page.doc_json) as PageDocument;
   const block = findBlock(doc.blocks, blockId);

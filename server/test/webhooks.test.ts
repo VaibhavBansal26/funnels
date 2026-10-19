@@ -4,8 +4,7 @@ import { JobQueue, JobWorker, PermanentJobError, retryDelayMs } from '../src/job
 import { assertPublicUrl, isBlockedIp, SsrfError } from '../src/net/ssrf.js';
 import { silentLogger } from '../src/logger.js';
 import { signPayload } from '../src/services/webhooks.js';
-import { Db, migrate } from '../src/db/db.js';
-import { formTarget, makeHarness, checkoutTarget, type Harness } from './helpers.js';
+import { formTarget, makeHarness, checkoutTarget, testDb, type Harness } from './helpers.js';
 
 describe('isBlockedIp', () => {
   const blocked = [
@@ -60,7 +59,7 @@ describe('retry schedule', () => {
 });
 
 async function hookSetup(env: Record<string, string> = {}) {
-  const h = makeHarness({ env });
+  const h = await makeHarness({ env });
   const u = await h.register();
   const t = await formTarget(h, u.token);
   const hook = (await h.call('POST', '/api/webhooks', { token: u.token, body: { url: 'https://hooks.example.com/in', events: ['funnel.optin', 'funnel.purchase'] } })).json;
@@ -71,7 +70,7 @@ async function hookSetup(env: Record<string, string> = {}) {
 
 describe('webhook management', () => {
   it('creates with a one-time secret, masks it afterwards and validates URLs and events', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const ok = await h.call('POST', '/api/webhooks', { token: u.token, body: { url: 'https://hooks.example.com/a', events: ['funnel.optin'] } });
     expect(ok.status).toBe(201);
@@ -101,7 +100,7 @@ describe('webhook delivery', () => {
     const call = h.http.calls[0]!;
     expect(call.target.url.href).toBe('https://hooks.example.com/in');
     expect(call.target.address).toBe('93.184.216.34');
-    const secret = h.deps.db.get<{ secret: string }>('SELECT secret FROM webhooks WHERE id = ?', hook.id)!.secret;
+    const secret = (await h.deps.db.get<{ secret: string }>('SELECT secret FROM webhooks WHERE id = ?', hook.id))!.secret;
     const ts = call.headers['x-funnels-timestamp']!;
     expect(ts).toBe(String(Math.floor(h.clock.now().getTime() / 1000)));
     const expected = createHmac('sha256', secret).update(`${ts}.${call.body}`).digest('hex');
@@ -146,12 +145,12 @@ describe('webhook delivery', () => {
     const dueAt: number[] = [];
     for (let i = 0; i < 4; i++) {
       await h.worker.tick();
-      const job = h.deps.db.get<{ run_at: number; status: string }>(`SELECT run_at, status FROM jobs WHERE type = 'webhook.deliver'`)!;
+      const job = (await h.deps.db.get<{ run_at: number; status: string }>(`SELECT run_at, status FROM jobs WHERE type = 'webhook.deliver'`))!;
       dueAt.push(job.run_at - h.clock.now().getTime());
       if (job.status === 'queued') h.clock.advance(job.run_at - h.clock.now().getTime());
     }
     expect(dueAt.slice(0, 3)).toEqual([30_000, 60_000, 120_000]);
-    expect(h.deps.db.get('SELECT status, attempts FROM jobs WHERE type = ?', 'webhook.deliver')).toEqual({ status: 'dead', attempts: 4 });
+    expect(await h.deps.db.get('SELECT status, attempts FROM jobs WHERE type = ?', 'webhook.deliver')).toEqual({ status: 'dead', attempts: 4 });
     expect((await deliveries())[0]).toMatchObject({ status: 'dead', attempts: 4, error: 'HTTP 500' });
     h.clock.advance(7 * 24 * 3600_000);
     expect(await h.worker.tick()).toBe(0); // dead means dead
@@ -233,57 +232,56 @@ describe('webhook delivery', () => {
 });
 
 describe('job queue', () => {
-  function queue() {
+  async function queue() {
     let now = 1_000_000;
-    const db = new Db(':memory:');
-    migrate(db);
+    const db = await testDb();
     const q = new JobQueue(db, () => now);
     return { db, q, advance: (ms: number) => (now += ms), now: () => now };
   }
 
   it('claims due jobs in order, increments attempts and dead-letters unknown types', async () => {
-    const { q, db } = queue();
-    q.enqueue('a', { n: 1 });
-    q.enqueue('b', { n: 2 }, { delayMs: 5000 });
+    const { q, db } = await queue();
+    await q.enqueue('a', { n: 1 });
+    await q.enqueue('b', { n: 2 }, { delayMs: 5000 });
     const seen: unknown[] = [];
     const w = new JobWorker(q, { a: async (p) => void seen.push(p), b: async () => undefined }, silentLogger);
     expect(await w.tick()).toBe(1);
     expect(seen).toEqual([{ n: 1 }]);
-    q.enqueue('mystery', {});
+    await q.enqueue('mystery', {});
     await w.tick();
-    expect(db.get('SELECT status, last_error FROM jobs WHERE type = ?', 'mystery')).toMatchObject({ status: 'dead' });
+    expect(await db.get('SELECT status, last_error FROM jobs WHERE type = ?', 'mystery')).toMatchObject({ status: 'dead' });
   });
 
   it('retries failures with backoff and honours PermanentJobError and max attempts', async () => {
-    const { q, db, advance } = queue();
+    const { q, db, advance } = await queue();
     let calls = 0;
     const w = new JobWorker(q, { flaky: async () => { calls++; throw new Error('boom'); }, fatal: async () => { throw new PermanentJobError('never'); } }, silentLogger);
-    q.enqueue('flaky', {}, { maxAttempts: 3 });
-    q.enqueue('fatal', {}, { maxAttempts: 5 });
+    await q.enqueue('flaky', {}, { maxAttempts: 3 });
+    await q.enqueue('fatal', {}, { maxAttempts: 5 });
     await w.tick();
-    expect(db.get('SELECT status, attempts FROM jobs WHERE type = ?', 'fatal')).toEqual({ status: 'dead', attempts: 1 });
-    expect(db.get('SELECT status, attempts FROM jobs WHERE type = ?', 'flaky')).toEqual({ status: 'queued', attempts: 1 });
+    expect(await db.get('SELECT status, attempts FROM jobs WHERE type = ?', 'fatal')).toEqual({ status: 'dead', attempts: 1 });
+    expect(await db.get('SELECT status, attempts FROM jobs WHERE type = ?', 'flaky')).toEqual({ status: 'queued', attempts: 1 });
     advance(30_000);
     await w.tick();
     advance(60_000);
     await w.tick();
     expect(calls).toBe(3);
-    expect(db.get('SELECT status, attempts, last_error FROM jobs WHERE type = ?', 'flaky')).toEqual({ status: 'dead', attempts: 3, last_error: 'boom' });
+    expect(await db.get('SELECT status, attempts, last_error FROM jobs WHERE type = ?', 'flaky')).toEqual({ status: 'dead', attempts: 3, last_error: 'boom' });
   });
 
-  it('dedupes queued jobs by key and releases locks of crashed workers', () => {
-    const { q, db, advance } = queue();
-    expect(q.enqueue('x', {}, { dedupeKey: 'k' })).toBeTruthy();
-    expect(q.enqueue('x', {}, { dedupeKey: 'k' })).toBeNull();
-    const [job] = q.claimDue();
+  it('dedupes queued jobs by key and releases locks of crashed workers', async () => {
+    const { q, db, advance } = await queue();
+    expect(await q.enqueue('x', {}, { dedupeKey: 'k' })).toBeTruthy();
+    expect(await q.enqueue('x', {}, { dedupeKey: 'k' })).toBeNull();
+    const [job] = await q.claimDue();
     expect(job!.attempts).toBe(1);
-    expect(q.enqueue('x', {}, { dedupeKey: 'k' })).toBeTruthy(); // allowed while the first one is running (needed for re-scheduling)
-    expect(q.claimDue()).toHaveLength(1);
+    expect(await q.enqueue('x', {}, { dedupeKey: 'k' })).toBeTruthy(); // allowed while the first one is running (needed for re-scheduling)
+    expect(await q.claimDue()).toHaveLength(1);
     advance(6 * 60_000);
     // both jobs were 'running' for > 5 minutes: one is re-claimed, the other is superseded instead of violating the dedupe key
-    expect(q.claimDue()).toHaveLength(1);
-    expect(db.all('SELECT status FROM jobs ORDER BY rowid')).toEqual([{ status: 'running' }, { status: 'dead' }]);
-    expect(db.get('SELECT attempts FROM jobs WHERE id = ?', job!.id)).toEqual({ attempts: 2 });
+    expect(await q.claimDue()).toHaveLength(1);
+    expect(await db.all('SELECT status FROM jobs ORDER BY created_at, id')).toEqual([{ status: 'running' }, { status: 'dead' }]);
+    expect(await db.get('SELECT attempts FROM jobs WHERE id = ?', job!.id)).toEqual({ attempts: 2 });
   });
 });
 

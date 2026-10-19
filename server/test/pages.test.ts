@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createBuilder, documentOf } from '../src/blocks/index.js';
 import { MAX_BACKUPS } from '../src/services/pages.js';
-import { makeFunnel, makeHarness } from './helpers.js';
+import { makeFunnel, makeHarness, type Harness } from './helpers.js';
 
 async function setup() {
-  const h = makeHarness();
+  const h = await makeHarness();
   const u = await h.register();
   const f = await makeFunnel(h, u.token);
   const stepId = f.steps[0].id as string;
@@ -23,7 +23,7 @@ describe('page save', () => {
     expect(r.status).toBe(200);
     expect(r.json.version).toBeGreaterThan(before.version);
     expect(r.json.checksum).not.toBe(before.checksum);
-    const row = h.deps.db.get<{ html: string; checksum: string }>('SELECT html, checksum FROM step_pages WHERE step_id = ?', stepId)!;
+    const row = (await h.deps.db.get<{ html: string; checksum: string }>('SELECT html, checksum FROM step_pages WHERE step_id = ?', stepId))!;
     expect(row.html).toContain('Hello &lt;b&gt;World&lt;/b&gt;');
     expect(row.checksum).toBe(r.json.checksum);
     expect((await h.call('GET', `${url}/page`, { token: u.token })).json.doc.blocks[0].text).toBe('Hello <b>World</b>');
@@ -101,7 +101,7 @@ describe('backups', () => {
     await save('v12');
     expect(await backups()).toHaveLength(10);
     // the oldest were dropped: the initial default page and v1 are gone
-    const docs = h.deps.db.all<{ doc_json: string }>('SELECT doc_json FROM step_backups WHERE step_id = ?', stepId).map((r) => r.doc_json);
+    const docs = (await h.deps.db.all<{ doc_json: string }>('SELECT doc_json FROM step_backups WHERE step_id = ?', stepId)).map((r) => r.doc_json);
     expect(docs.some((d) => d.includes('My funnel'))).toBe(false);
     expect(docs.some((d) => d.includes('"v1"'))).toBe(false);
     expect(docs.some((d) => d.includes('"v11"'))).toBe(true);
@@ -113,7 +113,7 @@ describe('backups', () => {
     await h.call('PUT', `/api/funnels/${f.id}/steps/${other.id}/page`, { token: u.token, body: { doc: documentOf([]) } });
     for (let i = 0; i < 12; i++) await save(`v${i}`);
     expect(await backups()).toHaveLength(10);
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM step_backups WHERE step_id = ?', other.id)).toEqual({ n: 1 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM step_backups WHERE step_id = ?', other.id)).toEqual({ n: 1 });
   });
 
   it('autosave (backup:false) does not consume history slots', async () => {
@@ -158,23 +158,23 @@ describe('backups', () => {
 
 describe('custom html scripts policy', () => {
   const htmlDoc = documentOf([{ id: 'h', type: 'html', html: '<p onclick="x()">hi</p><script>RUN()</script>' }]);
-  const html = (h: Awaited<ReturnType<typeof setup>>['h'], stepId: string) => h.deps.db.get<{ html: string }>('SELECT html FROM step_pages WHERE step_id = ?', stepId)!.html;
+  const html = async (h: Awaited<ReturnType<typeof setup>>['h'], stepId: string) => (await h.deps.db.get<{ html: string }>('SELECT html FROM step_pages WHERE step_id = ?', stepId))!.html;
 
   it('strips scripts unless the owner saved it AND the workspace allows custom scripts', async () => {
     const { h, u, f, url, stepId } = await setup();
     const admin = await h.member(u, 'admin');
     await h.call('PUT', `${url}/page`, { token: u.token, body: { doc: htmlDoc } });
-    expect(html(h, stepId)).not.toContain('RUN()'); // flag off
+    expect(await html(h, stepId)).not.toContain('RUN()'); // flag off
     await h.call('PATCH', '/api/workspace', { token: u.token, body: { allowCustomScripts: true } });
     await h.call('PUT', `${url}/page`, { token: admin.token, body: { doc: htmlDoc } });
-    expect(html(h, stepId)).not.toContain('RUN()'); // admin, not owner
+    expect(await html(h, stepId)).not.toContain('RUN()'); // admin, not owner
     await h.call('PUT', `${url}/page`, { token: u.token, body: { doc: htmlDoc } });
-    expect(html(h, stepId)).toContain('RUN()'); // owner + flag
+    expect(await html(h, stepId)).toContain('RUN()'); // owner + flag
     // unrelated changes by others (reordering, renaming) keep the owner's approval
     await h.call('PATCH', `/api/funnels/${f.id}/steps/${stepId}`, { token: admin.token, body: { title: 'New title' } });
-    expect(html(h, stepId)).toContain('RUN()');
+    expect(await html(h, stepId)).toContain('RUN()');
     await h.call('PATCH', '/api/workspace', { token: u.token, body: { allowCustomScripts: false } });
-    expect(html(h, stepId)).not.toContain('RUN()');
+    expect(await html(h, stepId)).not.toContain('RUN()');
     // the stored document still has the original html (source of truth)
     expect((await h.call('GET', `${url}/page`, { token: u.token })).json.doc.blocks[0].html).toContain('RUN()');
   });

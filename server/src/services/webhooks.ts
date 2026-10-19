@@ -63,93 +63,93 @@ async function assertDeliverable(deps: Deps, url: string): Promise<void> {
   }
 }
 
-function requireWebhook(deps: Deps, ws: string, id: string): WebhookRow {
-  const w = deps.db.get<WebhookRow>('SELECT * FROM webhooks WHERE workspace_id = ? AND id = ?', ws, id);
+async function requireWebhook(deps: Deps, ws: string, id: string): Promise<WebhookRow> {
+  const w = await deps.db.get<WebhookRow>('SELECT * FROM webhooks WHERE workspace_id = ? AND id = ?', ws, id);
   if (!w) throw notFound('Webhook');
   return w;
 }
 
-export const listWebhooks = (deps: Deps, ws: string) => ({ data: deps.db.all<WebhookRow>('SELECT * FROM webhooks WHERE workspace_id = ? ORDER BY created_at DESC', ws).map(serialize) });
+export const listWebhooks = async (deps: Deps, ws: string) => ({ data: (await deps.db.all<WebhookRow>('SELECT * FROM webhooks WHERE workspace_id = ? ORDER BY created_at DESC, id DESC', ws)).map(serialize) });
 
 export async function createWebhook(deps: Deps, ws: string, input: z.infer<typeof WebhookInput>) {
   await assertDeliverable(deps, input.url);
   const id = newId('whk');
   const secret = newSecret();
-  deps.db.run('INSERT INTO webhooks (id, workspace_id, url, secret, events_json, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', id, ws, input.url, secret, JSON.stringify([...new Set(input.events)]), input.active === false ? 0 : 1, deps.now().toISOString());
-  return { ...serialize(requireWebhook(deps, ws, id)), secret };
+  await deps.db.run('INSERT INTO webhooks (id, workspace_id, url, secret, events_json, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', id, ws, input.url, secret, JSON.stringify([...new Set(input.events)]), input.active === false ? 0 : 1, deps.now().toISOString());
+  return { ...serialize(await requireWebhook(deps, ws, id)), secret };
 }
 
 export async function updateWebhook(deps: Deps, ws: string, id: string, patch: z.infer<typeof WebhookPatch>) {
-  const w = requireWebhook(deps, ws, id);
+  const w = await requireWebhook(deps, ws, id);
   if (patch.url !== undefined) await assertDeliverable(deps, patch.url);
-  deps.db.run(
+  await deps.db.run(
     'UPDATE webhooks SET url = ?, events_json = ?, active = ? WHERE id = ?',
     patch.url ?? w.url, patch.events ? JSON.stringify([...new Set(patch.events)]) : w.events_json, patch.active === undefined ? w.active : patch.active ? 1 : 0, id,
   );
-  return serialize(requireWebhook(deps, ws, id));
+  return serialize(await requireWebhook(deps, ws, id));
 }
 
-export function rotateSecret(deps: Deps, ws: string, id: string) {
-  requireWebhook(deps, ws, id);
+export async function rotateSecret(deps: Deps, ws: string, id: string) {
+  await requireWebhook(deps, ws, id);
   const secret = newSecret();
-  deps.db.run('UPDATE webhooks SET secret = ? WHERE id = ?', secret, id);
-  return { ...serialize(requireWebhook(deps, ws, id)), secret };
+  await deps.db.run('UPDATE webhooks SET secret = ? WHERE id = ?', secret, id);
+  return { ...serialize(await requireWebhook(deps, ws, id)), secret };
 }
 
-export function deleteWebhook(deps: Deps, ws: string, id: string): void {
-  requireWebhook(deps, ws, id);
-  deps.db.run('DELETE FROM webhooks WHERE workspace_id = ? AND id = ?', ws, id);
+export async function deleteWebhook(deps: Deps, ws: string, id: string): Promise<void> {
+  await requireWebhook(deps, ws, id);
+  await deps.db.run('DELETE FROM webhooks WHERE workspace_id = ? AND id = ?', ws, id);
 }
 
 const serializeDelivery = (d: DeliveryRow) => ({
   id: d.id, webhookId: d.webhook_id, event: d.event, status: d.status, attempts: d.attempts, responseStatus: d.response_status, error: d.error, createdAt: d.created_at, updatedAt: d.updated_at,
 });
 
-export function listDeliveries(deps: Deps, ws: string, webhookId: string, limit = 50) {
-  requireWebhook(deps, ws, webhookId);
-  return { data: deps.db.all<DeliveryRow>('SELECT * FROM webhook_deliveries WHERE workspace_id = ? AND webhook_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?', ws, webhookId, Math.min(limit, 100)).map(serializeDelivery) };
+export async function listDeliveries(deps: Deps, ws: string, webhookId: string, limit = 50) {
+  await requireWebhook(deps, ws, webhookId);
+  return { data: (await deps.db.all<DeliveryRow>('SELECT * FROM webhook_deliveries WHERE workspace_id = ? AND webhook_id = ? ORDER BY created_at DESC, id DESC LIMIT ?', ws, webhookId, Math.min(limit, 100))).map(serializeDelivery) };
 }
 
-function queueDelivery(deps: Deps, w: WebhookRow, event: WebhookEvent, data: unknown): string {
+async function queueDelivery(deps: Deps, w: WebhookRow, event: WebhookEvent, data: unknown): Promise<string> {
   const id = newId('dlv');
   const at = deps.now().toISOString();
   const payload = JSON.stringify({ id, event, createdAt: at, data });
-  deps.db.run('INSERT INTO webhook_deliveries (id, workspace_id, webhook_id, event, payload_json, status, attempts, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)', id, w.workspace_id, w.id, event, payload, 'queued', at, at);
-  deps.jobs.enqueue('webhook.deliver', { deliveryId: id }, { maxAttempts: deps.config.WEBHOOK_MAX_ATTEMPTS });
+  await deps.db.run('INSERT INTO webhook_deliveries (id, workspace_id, webhook_id, event, payload_json, status, attempts, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)', id, w.workspace_id, w.id, event, payload, 'queued', at, at);
+  await deps.jobs.enqueue('webhook.deliver', { deliveryId: id }, { maxAttempts: deps.config.WEBHOOK_MAX_ATTEMPTS });
   return id;
 }
 
 /** Records a delivery per subscribed, active webhook and queues the HTTP work. Safe to call inside a transaction. */
-export function fireWebhookEvent(deps: Deps, ws: string, event: Exclude<WebhookEvent, 'funnel.test'>, data: unknown): number {
-  const hooks = deps.db.all<WebhookRow>('SELECT * FROM webhooks WHERE workspace_id = ? AND active = 1', ws).filter((w) => (JSON.parse(w.events_json) as string[]).includes(event));
-  for (const w of hooks) queueDelivery(deps, w, event, data);
+export async function fireWebhookEvent(deps: Deps, ws: string, event: Exclude<WebhookEvent, 'funnel.test'>, data: unknown): Promise<number> {
+  const hooks = (await deps.db.all<WebhookRow>('SELECT * FROM webhooks WHERE workspace_id = ? AND active = 1 ORDER BY id', ws)).filter((w) => (JSON.parse(w.events_json) as string[]).includes(event));
+  for (const w of hooks) await queueDelivery(deps, w, event, data);
   return hooks.length;
 }
 
-export function sendTestEvent(deps: Deps, ws: string, id: string) {
-  const w = requireWebhook(deps, ws, id);
-  return { deliveryId: queueDelivery(deps, w, 'funnel.test', { message: 'This is a test event from Funnels.' }) };
+export async function sendTestEvent(deps: Deps, ws: string, id: string) {
+  const w = await requireWebhook(deps, ws, id);
+  return { deliveryId: await queueDelivery(deps, w, 'funnel.test', { message: 'This is a test event from Funnels.' }) };
 }
 
-export function retryDelivery(deps: Deps, ws: string, deliveryId: string) {
-  const d = deps.db.get<DeliveryRow>('SELECT * FROM webhook_deliveries WHERE workspace_id = ? AND id = ?', ws, deliveryId);
+export async function retryDelivery(deps: Deps, ws: string, deliveryId: string) {
+  const d = await deps.db.get<DeliveryRow>('SELECT * FROM webhook_deliveries WHERE workspace_id = ? AND id = ?', ws, deliveryId);
   if (!d) throw notFound('Delivery');
-  deps.db.run(`UPDATE webhook_deliveries SET status = 'queued', error = NULL, updated_at = ? WHERE id = ?`, deps.now().toISOString(), deliveryId);
-  deps.jobs.enqueue('webhook.deliver', { deliveryId }, { maxAttempts: deps.config.WEBHOOK_MAX_ATTEMPTS });
+  await deps.db.run(`UPDATE webhook_deliveries SET status = 'queued', error = NULL, updated_at = ? WHERE id = ?`, deps.now().toISOString(), deliveryId);
+  await deps.jobs.enqueue('webhook.deliver', { deliveryId }, { maxAttempts: deps.config.WEBHOOK_MAX_ATTEMPTS });
   return { ok: true };
 }
 
 /** Job handler for `webhook.deliver`. Throws to trigger the queue's exponential backoff; PermanentJobError dead-letters at once. */
 export async function deliverWebhook(deps: Deps, payload: { deliveryId: string }, job: Job): Promise<void> {
-  const d = deps.db.get<DeliveryRow>('SELECT * FROM webhook_deliveries WHERE id = ?', payload.deliveryId);
+  const d = await deps.db.get<DeliveryRow>('SELECT * FROM webhook_deliveries WHERE id = ?', payload.deliveryId);
   if (!d) return;
-  const w = deps.db.get<WebhookRow>('SELECT * FROM webhooks WHERE id = ?', d.webhook_id);
+  const w = await deps.db.get<WebhookRow>('SELECT * FROM webhooks WHERE id = ?', d.webhook_id);
   const at = () => deps.now().toISOString();
   const finish = (status: DeliveryRow['status'], error: string | null, responseStatus: number | null) =>
     deps.db.run('UPDATE webhook_deliveries SET status = ?, attempts = ?, error = ?, response_status = ?, updated_at = ? WHERE id = ?', status, job.attempts, error, responseStatus, at(), d.id);
 
   if (!w || w.active !== 1) {
-    finish('dead', 'webhook disabled or removed', null);
+    await finish('dead', 'webhook disabled or removed', null);
     throw new PermanentJobError('webhook disabled');
   }
   let target;
@@ -157,10 +157,10 @@ export async function deliverWebhook(deps: Deps, payload: { deliveryId: string }
     target = await assertPublicUrl(w.url, deps.lookup);
   } catch (e) {
     if (e instanceof SsrfError) {
-      finish('dead', `blocked: ${e.message}`, null);
+      await finish('dead', `blocked: ${e.message}`, null);
       throw new PermanentJobError(e.message);
     }
-    finish(job.attempts >= job.maxAttempts ? 'dead' : 'failed', 'dns resolution failed', null);
+    await finish(job.attempts >= job.maxAttempts ? 'dead' : 'failed', 'dns resolution failed', null);
     throw e;
   }
   const timestamp = String(Math.floor(deps.now().getTime() / 1000));
@@ -180,14 +180,14 @@ export async function deliverWebhook(deps: Deps, payload: { deliveryId: string }
       },
     });
     if (res.status >= 200 && res.status < 300) {
-      finish('delivered', null, res.status);
+      await finish('delivered', null, res.status);
       return;
     }
     // 3xx is treated as a failure on purpose: redirects are never followed.
-    finish(job.attempts >= job.maxAttempts ? 'dead' : 'failed', `HTTP ${res.status}`, res.status);
+    await finish(job.attempts >= job.maxAttempts ? 'dead' : 'failed', `HTTP ${res.status}`, res.status);
     throw new Error(`HTTP ${res.status}`);
   } catch (e) {
-    if (!/^HTTP \d+$/.test((e as Error).message)) finish(job.attempts >= job.maxAttempts ? 'dead' : 'failed', (e as Error).message.slice(0, 200), null);
+    if (!/^HTTP \d+$/.test((e as Error).message)) await finish(job.attempts >= job.maxAttempts ? 'dead' : 'failed', (e as Error).message.slice(0, 200), null);
     throw e;
   }
 }

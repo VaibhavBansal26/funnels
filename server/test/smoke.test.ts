@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { makeHarness, makeFunnel } from './helpers.js';
+import { makeHarness, makeFunnel, type Harness } from './helpers.js';
 
 describe('smoke', () => {
   it('registers, creates a funnel and renders a preview', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const f = await makeFunnel(h, u.token);
     expect(f.steps).toHaveLength(1);

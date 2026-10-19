@@ -16,17 +16,17 @@ export function authRoutes(deps: Deps): Hono<AppEnv> {
 
   const auth = authenticate(deps);
   const owner = requireRole('owner');
-  r.get('/auth/me', auth, (c) => c.json(accounts.me(deps, authOf(c))));
+  r.get('/auth/me', auth, async (c) => c.json(await accounts.me(deps, authOf(c))));
   r.post('/events/ticket', auth, async (c) => c.json({ ticket: await signStreamTicket(deps.config, authOf(c).userId, deps.now()), expiresInSeconds: 60 }));
 
-  r.get('/workspace', auth, (c) => c.json(accounts.workspaceOf(deps, authOf(c).workspaceId)));
-  r.patch('/workspace', auth, owner, async (c) => c.json(accounts.updateWorkspace(deps, authOf(c), await bodyOf(c, accounts.WorkspacePatch))));
+  r.get('/workspace', auth, async (c) => c.json(await accounts.workspaceOf(deps, authOf(c).workspaceId)));
+  r.patch('/workspace', auth, owner, async (c) => c.json(await accounts.updateWorkspace(deps, authOf(c), await bodyOf(c, accounts.WorkspacePatch))));
 
-  r.get('/members', auth, (c) => c.json(accounts.listMembers(deps, authOf(c).workspaceId)));
+  r.get('/members', auth, async (c) => c.json(await accounts.listMembers(deps, authOf(c).workspaceId)));
   r.post('/members', auth, owner, async (c) => c.json(await accounts.createMember(deps, authOf(c), await bodyOf(c, accounts.MemberInput)), 201));
-  r.patch('/members/:id', auth, owner, async (c) => c.json(accounts.changeRole(deps, authOf(c), c.req.param('id'), (await bodyOf(c, accounts.MemberPatch)).role)));
-  r.delete('/members/:id', auth, owner, (c) => {
-    accounts.removeMember(deps, authOf(c), c.req.param('id'));
+  r.patch('/members/:id', auth, owner, async (c) => c.json(await accounts.changeRole(deps, authOf(c), c.req.param('id'), (await bodyOf(c, accounts.MemberPatch)).role)));
+  r.delete('/members/:id', auth, owner, async (c) => {
+    await accounts.removeMember(deps, authOf(c), c.req.param('id'));
     return c.body(null, 204);
   });
   return r;

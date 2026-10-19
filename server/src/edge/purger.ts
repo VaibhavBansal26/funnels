@@ -28,8 +28,8 @@ export class CloudflareApiPurger implements CloudflarePurger {
 }
 
 /** Public URLs (https, with the home page "/" when it is the domain home) of a funnel's steps while it is live on a domain. */
-export function liveUrlsForFunnel(deps: Deps, funnelId: string): string[] {
-  const rows = deps.db.all<{ hostname: string; base_path: string; sid: string; home: string | null; nf: string | null }>(
+export async function liveUrlsForFunnel(deps: Deps, funnelId: string): Promise<string[]> {
+  const rows = await deps.db.all<{ hostname: string; base_path: string; sid: string; home: string | null; nf: string | null }>(
     `SELECT d.hostname, s.base_path, s.id AS sid, d.default_home_step_id AS home, d.default_404_step_id AS nf
      FROM funnels f JOIN domains d ON d.id = f.domain_id JOIN steps s ON s.funnel_id = f.id
      WHERE f.id = ? AND f.status = 'live' AND f.deleted_at IS NULL`,
@@ -44,9 +44,9 @@ export function liveUrlsForFunnel(deps: Deps, funnelId: string): string[] {
 }
 
 /** Queues a purge job (retried with backoff by the job worker). Safe to call inside a transaction. */
-export function schedulePurge(deps: Deps, urls: string[]): void {
+export async function schedulePurge(deps: Deps, urls: string[]): Promise<void> {
   if (urls.length === 0) return;
-  deps.jobs.enqueue('edge.purge', { urls: [...new Set(urls)] }, { maxAttempts: 5 });
+  await deps.jobs.enqueue('edge.purge', { urls: [...new Set(urls)] }, { maxAttempts: 5 });
 }
 
 export const purgeJob = (deps: Deps, payload: { urls: string[] }) => deps.purger.purgeUrls(payload.urls);

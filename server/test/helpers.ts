@@ -4,11 +4,13 @@ import type { AiProvider } from '../src/ai/types.js';
 import { createApp } from '../src/app.js';
 import { createDeps, createWorker } from '../src/bootstrap.js';
 import { loadConfig } from '../src/config.js';
-import { openDb } from '../src/db/db.js';
+import { testDb } from './support/backend.js';
 import type { Deps } from '../src/deps.js';
 import type { DnsResolver } from '../src/dns/resolver.js';
 import type { HttpClient, HttpPost } from '../src/net/ssrf.js';
 import { silentLogger } from '../src/logger.js';
+import { type EventInsert, insertEvents } from '../src/services/rollups.js';
+import { newId } from '../src/util/ids.js';
 
 export class FakeClock {
   constructor(public date = new Date('2026-03-10T12:00:00.000Z')) {}
@@ -68,7 +70,9 @@ export interface Harness {
 
 let counter = 0;
 
-export function makeHarness(opts: { env?: Record<string, string>; ai?: AiProvider; deps?: Partial<Deps> } = {}): Harness {
+export { BACKEND, IS_PG, testDb, failOn } from './support/backend.js';
+
+export async function makeHarness(opts: { env?: Record<string, string>; ai?: AiProvider; deps?: Partial<Deps> } = {}): Promise<Harness> {
   const clock = new FakeClock();
   const dns = new FakeDns();
   const http = new FakeHttp();
@@ -77,8 +81,8 @@ export function makeHarness(opts: { env?: Record<string, string>; ai?: AiProvide
     NODE_ENV: 'test', DATABASE_PATH: ':memory:', JWT_SECRET: 'test-secret-test-secret-test-secret-123456', TRUST_PROXY: 'true', LOG_LEVEL: 'silent',
     ENABLE_WORKER: 'false', EVENT_BUFFER_MS: '0', ACCESS_TOKEN_TTL_SECONDS: '31536000', APP_PUBLIC_CNAME_TARGET: 'sites.funnels.test', APP_PUBLIC_URL: 'https://app.funnels.test', WEB_DIST: '/nonexistent', ...opts.env,
   });
-  const deps = createDeps(config, {
-    db: openDb(':memory:'), now: clock.now, log: silentLogger, dns, http, ai: opts.ai ?? new HeuristicProvider(),
+  const deps = await createDeps(config, {
+    db: opts.deps?.db ?? (await testDb()), now: clock.now, log: silentLogger, dns, http, ai: opts.ai ?? new HeuristicProvider(),
     lookup: async (h) => {
       const r = lookupTable.get(h);
       if (!r) throw new Error('ENOTFOUND');
@@ -182,4 +186,14 @@ export async function checkoutTarget(h: Harness, token: string) {
     bumpId: bump.id as string,
     upsellPath: `/api/public/checkout/${f.id}/${upsell.id}/${up[0].id}`,
   };
+}
+
+/** Inserts raw events through the production write path (so `event_rollups` stays in step), for tests that need exact timestamps. */
+export async function seedEvents(h: Harness, rows: (Pick<EventInsert, 'workspace_id' | 'funnel_id' | 'step_id'> & Partial<EventInsert>)[]): Promise<void> {
+  let n = 0;
+  const full: EventInsert[] = rows.map((r) => ({
+    id: newId('evt') + String(++n), type: 'page_view', visitor_id: null, unique_visit: 0, lead_id: null, order_id: null, external_id: null, amount_cents: 0, currency: null, utm_json: null, url: null,
+    created_at: '2026-03-10T12:00:00.000Z', ...r,
+  }));
+  await h.deps.db.transaction((tx) => insertEvents(tx, full));
 }

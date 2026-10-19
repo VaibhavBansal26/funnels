@@ -1,23 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { computeMetrics, resolveRange } from '../src/services/analytics.js';
 import { addDays, dayKey, eachDay, startOfDayUtc, isValidTimeZone, pct, ratio, round2 } from '../src/util/time.js';
-import { makeFunnel, makeHarness, type Harness } from './helpers.js';
+import { makeFunnel, makeHarness, seedEvents, type Harness } from './helpers.js';
 
 let n = 0;
-function event(h: Harness, wsId: string, funnelId: string, stepId: string, type: 'page_view' | 'optin' | 'order', at: string, o: { visitor?: string; unique?: boolean; cents?: number } = {}) {
-  h.deps.db.run(
-    'INSERT INTO events (id, workspace_id, funnel_id, step_id, type, visitor_id, unique_visit, amount_cents, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    `evt_${++n}`, wsId, funnelId, stepId, type, o.visitor ?? `v${n}`, o.unique ? 1 : 0, o.cents ?? 0, at,
-  );
+async function event(h: Harness, wsId: string, funnelId: string, stepId: string, type: 'page_view' | 'optin' | 'order', at: string, o: { visitor?: string; unique?: boolean; cents?: number } = {}) {
+  n++;
+  await seedEvents(h, [{ workspace_id: wsId, funnel_id: funnelId, step_id: stepId, type, visitor_id: o.visitor ?? `v${n}`, unique_visit: o.unique ? 1 : 0, amount_cents: o.cents ?? 0, created_at: at }]);
 }
 
 async function setup() {
-  const h = makeHarness();
+  const h = await makeHarness();
   const u = await h.register();
   const f = await makeFunnel(h, u.token);
   const s2 = (await h.call('POST', `/api/funnels/${f.id}/steps`, { token: u.token, body: { name: 'Second' } })).json;
   const s1 = f.steps[0].id as string;
-  const ev = (stepId: string, type: 'page_view' | 'optin' | 'order', at: string, o = {}) => event(h, u.wsId, f.id, stepId, type, at, o);
+  const ev = async (stepId: string, type: 'page_view' | 'optin' | 'order', at: string, o = {}) => await event(h, u.wsId, f.id, stepId, type, at, o);
   const analytics = (q = '') => h.call('GET', `/api/funnels/${f.id}/analytics${q}`, { token: u.token });
   return { h, u, f, s1, s2: s2.id as string, ev, analytics };
 }
@@ -101,16 +99,16 @@ describe('GET /funnels/:id/analytics', () => {
     const { analytics, ev, s1, s2 } = await setup();
     const at = '2026-03-05T10:00:00.000Z';
     // step 1: 4 views from 3 visitors (3 unique), 1 opt-in
-    ev(s1, 'page_view', at, { visitor: 'a', unique: true });
-    ev(s1, 'page_view', at, { visitor: 'a' });
-    ev(s1, 'page_view', at, { visitor: 'b', unique: true });
-    ev(s1, 'page_view', at, { visitor: 'c', unique: true });
-    ev(s1, 'optin', at, { visitor: 'a' });
+    await ev(s1, 'page_view', at, { visitor: 'a', unique: true });
+    await ev(s1, 'page_view', at, { visitor: 'a' });
+    await ev(s1, 'page_view', at, { visitor: 'b', unique: true });
+    await ev(s1, 'page_view', at, { visitor: 'c', unique: true });
+    await ev(s1, 'optin', at, { visitor: 'a' });
     // step 2: 2 views, 2 unique, 1 order of $33.33 plus an upsell of $0.01
-    ev(s2, 'page_view', at, { visitor: 'a', unique: true });
-    ev(s2, 'page_view', at, { visitor: 'b', unique: true });
-    ev(s2, 'order', at, { visitor: 'a', cents: 3333 });
-    ev(s2, 'order', at, { visitor: 'a', cents: 1 });
+    await ev(s2, 'page_view', at, { visitor: 'a', unique: true });
+    await ev(s2, 'page_view', at, { visitor: 'b', unique: true });
+    await ev(s2, 'order', at, { visitor: 'a', cents: 3333 });
+    await ev(s2, 'order', at, { visitor: 'a', cents: 1 });
     const r = (await analytics('?from=2026-03-05&to=2026-03-05')).json;
     expect(r.steps[0]).toMatchObject({ pageViews: { all: 4, unique: 3 }, optIns: { all: 1, conversionRate: 33.33 }, sales: { orders: 0, conversionRate: 0, gross: 0 }, earningsPerView: { all: 0, unique: 0 } });
     expect(r.steps[1]).toMatchObject({ pageViews: { all: 2, unique: 2 }, sales: { orders: 2, conversionRate: 100, gross: 33.34 }, earningsPerView: { all: 16.67, unique: 16.67 } });
@@ -121,10 +119,10 @@ describe('GET /funnels/:id/analytics', () => {
 
   it('range edges are inclusive of the whole "to" day and exclusive of the next instant (UTC)', async () => {
     const { analytics, ev, s1 } = await setup();
-    ev(s1, 'page_view', '2026-03-09T23:59:59.999Z');
-    ev(s1, 'page_view', '2026-03-10T00:00:00.000Z');
-    ev(s1, 'page_view', '2026-03-10T23:59:59.999Z');
-    ev(s1, 'page_view', '2026-03-11T00:00:00.000Z');
+    await ev(s1, 'page_view', '2026-03-09T23:59:59.999Z');
+    await ev(s1, 'page_view', '2026-03-10T00:00:00.000Z');
+    await ev(s1, 'page_view', '2026-03-10T23:59:59.999Z');
+    await ev(s1, 'page_view', '2026-03-11T00:00:00.000Z');
     const one = (await analytics('?from=2026-03-10&to=2026-03-10')).json;
     expect(one.summary.pageViews.all).toBe(2);
     expect(one.series).toHaveLength(1);
@@ -134,9 +132,9 @@ describe('GET /funnels/:id/analytics', () => {
 
   it('day boundaries follow the requested time zone', async () => {
     const { analytics, ev, s1 } = await setup();
-    ev(s1, 'page_view', '2026-03-10T03:30:00.000Z'); // Mar 9, 23:30 in New York; Mar 10, 09:00 in Kolkata
-    ev(s1, 'page_view', '2026-03-10T04:00:00.000Z'); // Mar 10, 00:00 in New York
-    ev(s1, 'page_view', '2026-03-09T18:29:00.000Z'); // Mar 9, 23:59 in Kolkata
+    await ev(s1, 'page_view', '2026-03-10T03:30:00.000Z'); // Mar 9, 23:30 in New York; Mar 10, 09:00 in Kolkata
+    await ev(s1, 'page_view', '2026-03-10T04:00:00.000Z'); // Mar 10, 00:00 in New York
+    await ev(s1, 'page_view', '2026-03-09T18:29:00.000Z'); // Mar 9, 23:59 in Kolkata
     const ny = (await analytics('?from=2026-03-09&to=2026-03-09&tz=America/New_York')).json;
     expect(ny.summary.pageViews.all).toBe(2);
     expect(ny.range.tz).toBe('America/New_York');
@@ -151,9 +149,9 @@ describe('GET /funnels/:id/analytics', () => {
 
   it('series buckets match the zone across a DST change', async () => {
     const { analytics, ev, s1 } = await setup();
-    ev(s1, 'page_view', '2026-03-28T23:00:00.000Z'); // Berlin: Mar 29 00:00
-    ev(s1, 'page_view', '2026-03-29T21:59:00.000Z'); // Berlin: Mar 29 23:59 (CEST)
-    ev(s1, 'page_view', '2026-03-29T22:00:00.000Z'); // Berlin: Mar 30 00:00
+    await ev(s1, 'page_view', '2026-03-28T23:00:00.000Z'); // Berlin: Mar 29 00:00
+    await ev(s1, 'page_view', '2026-03-29T21:59:00.000Z'); // Berlin: Mar 29 23:59 (CEST)
+    await ev(s1, 'page_view', '2026-03-29T22:00:00.000Z'); // Berlin: Mar 30 00:00
     const r = (await analytics('?from=2026-03-29&to=2026-03-30&tz=Europe/Berlin')).json;
     expect(r.series.map((d: any) => [d.date, d.pageViews])).toEqual([['2026-03-29', 2], ['2026-03-30', 1]]);
   });
@@ -168,7 +166,7 @@ describe('GET /funnels/:id/analytics', () => {
 
   it('per-step endpoint returns one step, and refuses steps of other funnels', async () => {
     const { h, u, f, ev, s2, analytics } = await setup();
-    ev(s2, 'page_view', '2026-03-05T10:00:00.000Z', { visitor: 'a', unique: true });
+    await ev(s2, 'page_view', '2026-03-05T10:00:00.000Z', { visitor: 'a', unique: true });
     const r = await h.call('GET', `/api/funnels/${f.id}/steps/${s2}/analytics?from=2026-03-05&to=2026-03-05`, { token: u.token });
     expect(r.json).toMatchObject({ step: { stepId: s2 }, pageViews: { all: 1, unique: 1 } });
     expect(r.json.series).toHaveLength(1);
@@ -180,8 +178,8 @@ describe('GET /funnels/:id/analytics', () => {
   it('only counts the funnel in question', async () => {
     const { h, u, f, ev, s1, analytics } = await setup();
     const other = await makeFunnel(h, u.token, { name: 'Other' });
-    ev(s1, 'page_view', '2026-03-05T10:00:00.000Z', { unique: true });
-    event(h, u.wsId, other.id, other.steps[0].id, 'page_view', '2026-03-05T10:00:00.000Z', { unique: true });
+    await ev(s1, 'page_view', '2026-03-05T10:00:00.000Z', { unique: true });
+    await event(h, u.wsId, other.id, other.steps[0].id, 'page_view', '2026-03-05T10:00:00.000Z', { unique: true });
     expect((await analytics('?from=2026-03-05&to=2026-03-05')).json.summary.pageViews.all).toBe(1);
     expect(f.id).not.toBe(other.id);
   });

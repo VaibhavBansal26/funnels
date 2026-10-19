@@ -52,14 +52,14 @@ export function publicRoutes(deps: Deps): Hono {
     const per = deps.config.PUBLIC_EVENTS_PER_MINUTE;
     enforce(deps.limiter, `events:${ipOf(c)}:${idOf(raw)}`, { capacity: per, perMinute: per });
     const input = parse(PublicEventInput, raw);
-    return c.json(recordPublicEvent(deps, input, c.req.header('user-agent')), 202);
+    return c.json(await recordPublicEvent(deps, input, c.req.header('user-agent')), 202);
   });
 
   r.post('/api/public/forms/:funnelId/:stepId/:blockId', limitTo(64 * 1024), async (c) => {
     const per = deps.config.PUBLIC_FORMS_PER_MINUTE;
     enforce(deps.limiter, `forms:${ipOf(c)}:${c.req.param('funnelId')}`, { capacity: per, perMinute: per });
     const input = parse(SubmitInput, await readBody(c));
-    return c.json(submitForm(deps, { funnelId: c.req.param('funnelId'), stepId: c.req.param('stepId'), blockId: c.req.param('blockId'), input }), 200);
+    return c.json(await submitForm(deps, { funnelId: c.req.param('funnelId'), stepId: c.req.param('stepId'), blockId: c.req.param('blockId'), input }), 200);
   });
 
   r.post('/api/public/checkout/:funnelId/:stepId/:blockId', limitTo(64 * 1024), async (c) => {

@@ -4,8 +4,9 @@ import { atLeast, type Auth } from '../auth/context.js';
 import { defaultStepDocument, firstHeading, safeUrl, type PageDocument } from '../blocks/index.js';
 import type { Deps } from '../deps.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
+import { inTx } from '../db/scope.js';
 import {
-  activeFunnelNames, insertFunnel, listSteps, patchFunnel, requireFunnel, requireTags, setFunnelTags, tagsByFunnel,
+  activeFunnelNames, insertFunnel, listSteps, lockDomain, lockFunnel, lockWorkspace, patchFunnel, requireFunnel, requireTags, setFunnelTags, tagsByFunnel,
 } from '../repos/funnels.js';
 import { like, placeholders } from '../repos/sql.js';
 import type { DomainRow, FunnelRow, StepRow } from '../repos/types.js';
@@ -71,11 +72,11 @@ export interface FunnelStats {
   sales: number;
 }
 
-function statsFor(deps: Deps, ws: string, ids: string[]): Map<string, FunnelStats> {
+async function statsFor(deps: Deps, ws: string, ids: string[]): Promise<Map<string, FunnelStats>> {
   const map = new Map<string, FunnelStats>();
   if (ids.length === 0) return map;
-  deps.events.flush();
-  const rows = deps.db.all<{ funnel_id: string; visits: number; optins: number; orders: number; cents: number }>(
+  await deps.events.flush();
+  const rows = await deps.db.all<{ funnel_id: string; visits: number; optins: number; orders: number; cents: number }>(
     `SELECT funnel_id, SUM(page_views) AS visits, SUM(optins) AS optins, SUM(orders) AS orders, SUM(cents) AS cents
      FROM event_rollups WHERE workspace_id = ? AND funnel_id IN (${placeholders(ids.length)}) GROUP BY funnel_id`,
     ws, ...ids,
@@ -84,10 +85,10 @@ function statsFor(deps: Deps, ws: string, ids: string[]): Map<string, FunnelStat
   return map;
 }
 
-function thumbnails(deps: Deps, ids: string[]): Map<string, string | null> {
+async function thumbnails(deps: Deps, ids: string[]): Promise<Map<string, string | null>> {
   const map = new Map<string, string | null>();
   if (ids.length === 0) return map;
-  const rows = deps.db.all<{ funnel_id: string; doc_json: string }>(
+  const rows = await deps.db.all<{ funnel_id: string; doc_json: string }>(
     `SELECT s.funnel_id, p.doc_json FROM steps s JOIN step_pages p ON p.step_id = s.id
      WHERE s.funnel_id IN (${placeholders(ids.length)}) AND s.position = (SELECT MIN(position) FROM steps WHERE funnel_id = s.funnel_id)`,
     ...ids,
@@ -126,20 +127,18 @@ function summarize(f: FunnelRow, extra: { domain: Pick<DomainRow, 'id' | 'hostna
 
 const EMPTY_STATS: FunnelStats = { visits: 0, optins: 0, orders: 0, sales: 0 };
 
-function summaries(deps: Deps, ws: string, rows: FunnelRow[]): Summary[] {
+async function summaries(deps: Deps, ws: string, rows: FunnelRow[]): Promise<Summary[]> {
   const ids = rows.map((r) => r.id);
-  const stats = statsFor(deps, ws, ids);
-  const tags = tagsByFunnel(deps.db, ws, ids);
-  const headings = thumbnails(deps, ids);
+  const [stats, tags, headings] = await Promise.all([statsFor(deps, ws, ids), tagsByFunnel(deps.db, ws, ids), thumbnails(deps, ids)]);
   const counts = new Map(
     ids.length
-      ? deps.db.all<{ funnel_id: string; n: number }>(`SELECT funnel_id, COUNT(*) AS n FROM steps WHERE workspace_id = ? AND funnel_id IN (${placeholders(ids.length)}) GROUP BY funnel_id`, ws, ...ids).map((r) => [r.funnel_id, r.n])
+      ? (await deps.db.all<{ funnel_id: string; n: number }>(`SELECT funnel_id, COUNT(*) AS n FROM steps WHERE workspace_id = ? AND funnel_id IN (${placeholders(ids.length)}) GROUP BY funnel_id`, ws, ...ids)).map((r) => [r.funnel_id, r.n] as const)
       : [],
   );
   const domainIds = [...new Set(rows.map((r) => r.domain_id).filter(Boolean))] as string[];
   const domains = new Map(
     domainIds.length
-      ? deps.db.all<DomainRow>(`SELECT * FROM domains WHERE workspace_id = ? AND id IN (${placeholders(domainIds.length)})`, ws, ...domainIds).map((d) => [d.id, d])
+      ? (await deps.db.all<DomainRow>(`SELECT * FROM domains WHERE workspace_id = ? AND id IN (${placeholders(domainIds.length)})`, ws, ...domainIds)).map((d) => [d.id, d] as const)
       : [],
   );
   return rows.map((f) =>
@@ -153,11 +152,11 @@ function summaries(deps: Deps, ws: string, rows: FunnelRow[]): Summary[] {
   );
 }
 
-export function listFunnels(deps: Deps, ws: string, q: z.infer<typeof ListQuery>) {
+export async function listFunnels(deps: Deps, ws: string, q: z.infer<typeof ListQuery>) {
   const where = ['f.workspace_id = ?', 'f.deleted_at IS NULL'];
   const params: (string | number)[] = [ws];
   if (q.search?.trim()) {
-    where.push(`f.name LIKE ? ESCAPE '\\'`);
+    where.push(deps.db.dialect.ilike('f.name'));
     params.push(like(q.search.trim()));
   }
   const statuses = (q.status ?? '').split(',').map((s) => s.trim()).filter((s) => s === 'live' || s === 'test');
@@ -171,31 +170,31 @@ export function listFunnels(deps: Deps, ws: string, q: z.infer<typeof ListQuery>
     params.push(ws, ...tagIds);
   }
   if (q.domain_connected) where.push(q.domain_connected === 'true' ? 'f.domain_id IS NOT NULL' : 'f.domain_id IS NULL');
-  const column = { updated: 'f.updated_at', created: 'f.created_at', name: 'f.name COLLATE NOCASE' }[q.sort];
+  const column = { updated: 'f.updated_at', created: 'f.created_at', name: deps.db.dialect.orderCi('f.name') }[q.sort];
   const dir = (q.order ?? (q.sort === 'name' ? 'asc' : 'desc')).toUpperCase();
   const clause = where.join(' AND ');
-  const total = deps.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM funnels f WHERE ${clause}`, ...params)!.n;
-  const rows = deps.db.all<FunnelRow>(
+  const total = (await deps.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM funnels f WHERE ${clause}`, ...params))!.n;
+  const rows = await deps.db.all<FunnelRow>(
     `SELECT f.* FROM funnels f WHERE ${clause} ORDER BY ${column} ${dir}, f.id ${dir} LIMIT ? OFFSET ?`,
     ...params, q.limit, (q.page - 1) * q.limit,
   );
-  return { data: summaries(deps, ws, rows), pagination: { page: q.page, limit: q.limit, total, totalPages: Math.max(1, Math.ceil(total / q.limit)) } };
+  return { data: await summaries(deps, ws, rows), pagination: { page: q.page, limit: q.limit, total, totalPages: Math.max(1, Math.ceil(total / q.limit)) } };
 }
 
-export function listTrash(deps: Deps, ws: string) {
-  const rows = deps.db.all<FunnelRow>('SELECT * FROM funnels WHERE workspace_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC', ws);
-  return { data: summaries(deps, ws, rows) };
+export async function listTrash(deps: Deps, ws: string) {
+  const rows = await deps.db.all<FunnelRow>('SELECT * FROM funnels WHERE workspace_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC, id DESC', ws);
+  return { data: await summaries(deps, ws, rows) };
 }
 
-export function filterCounts(deps: Deps, ws: string) {
-  const status = deps.db.all<{ status: string; n: number }>('SELECT status, COUNT(*) AS n FROM funnels WHERE workspace_id = ? AND deleted_at IS NULL GROUP BY status', ws);
-  const domain = deps.db.get<{ connected: number; total: number }>(
-    'SELECT COALESCE(SUM(domain_id IS NOT NULL), 0) AS connected, COUNT(*) AS total FROM funnels WHERE workspace_id = ? AND deleted_at IS NULL', ws,
-  )!;
-  const tags = deps.db.all<{ id: string; name: string; n: number }>(
+export async function filterCounts(deps: Deps, ws: string) {
+  const status = await deps.db.all<{ status: string; n: number }>('SELECT status, COUNT(*) AS n FROM funnels WHERE workspace_id = ? AND deleted_at IS NULL GROUP BY status', ws);
+  const domain = (await deps.db.get<{ connected: number; total: number }>(
+    `SELECT COALESCE(SUM(${deps.db.dialect.boolInt('domain_id IS NOT NULL')}), 0) AS connected, COUNT(*) AS total FROM funnels WHERE workspace_id = ? AND deleted_at IS NULL`, ws,
+  ))!;
+  const tags = await deps.db.all<{ id: string; name: string; n: number }>(
     `SELECT t.id, t.name, COUNT(f.id) AS n FROM tags t
      LEFT JOIN funnel_tags ft ON ft.tag_id = t.id LEFT JOIN funnels f ON f.id = ft.funnel_id AND f.deleted_at IS NULL
-     WHERE t.workspace_id = ? GROUP BY t.id ORDER BY t.name_lower`, ws,
+     WHERE t.workspace_id = ? GROUP BY t.id, t.name, t.name_lower ORDER BY t.name_lower`, ws,
   );
   return {
     status: { live: status.find((s) => s.status === 'live')?.n ?? 0, test: status.find((s) => s.status === 'test')?.n ?? 0 },
@@ -204,18 +203,18 @@ export function filterCounts(deps: Deps, ws: string) {
   };
 }
 
-export function getFunnelDetail(deps: Deps, ws: string, id: string, includeDeleted = false) {
-  const f = requireFunnel(deps.db, ws, id, includeDeleted);
-  const [summary] = summaries(deps, ws, [f]);
-  const domain = f.domain_id ? deps.db.get<DomainRow>('SELECT * FROM domains WHERE workspace_id = ? AND id = ?', ws, f.domain_id) : undefined;
-  const steps = listSteps(deps.db, ws, id).map((s) =>
+export async function getFunnelDetail(deps: Deps, ws: string, id: string, includeDeleted = false) {
+  const f = await requireFunnel(deps.db, ws, id, includeDeleted);
+  const [summary] = await summaries(deps, ws, [f]);
+  const domain = f.domain_id ? await deps.db.get<DomainRow>('SELECT * FROM domains WHERE workspace_id = ? AND id = ?', ws, f.domain_id) : undefined;
+  const steps = (await listSteps(deps.db, ws, id)).map((s) =>
     serializeStep(s, { isHome: domain?.default_home_step_id === s.id, is404: domain?.default_404_step_id === s.id }),
   );
   return { ...summary!, steps };
 }
 
-function requireDomain(deps: Deps, ws: string, id: string): DomainRow {
-  const d = deps.db.get<DomainRow>('SELECT * FROM domains WHERE workspace_id = ? AND id = ?', ws, id);
+async function requireDomain(deps: Deps, ws: string, id: string): Promise<DomainRow> {
+  const d = await deps.db.get<DomainRow>('SELECT * FROM domains WHERE workspace_id = ? AND id = ?', ws, id);
   if (!d) throw notFound('Domain');
   return d;
 }
@@ -231,8 +230,8 @@ function assertTrackingRole(auth: Auth, input: { header_tracking_code?: unknown;
  * applies the renames. The client list must be a subset of what the server finds (never invents
  * paths) and must cover every conflict; replacement paths must themselves be valid and free.
  */
-function resolveDomainConflicts(deps: Deps, ws: string, funnel: FunnelRow, domainId: string, client: z.infer<typeof ConflictResolution> | undefined): boolean {
-  const server = funnelDomainConflicts(deps.db, ws, funnel.id, domainId);
+async function resolveDomainConflicts(deps: Deps, ws: string, funnel: FunnelRow, domainId: string, client: z.infer<typeof ConflictResolution> | undefined): Promise<boolean> {
+  const server = await funnelDomainConflicts(deps.db, ws, funnel.id, domainId);
   if (server.length === 0) return false;
   if (!client || client.length === 0) throw conflict('PATH_CONFLICT', 'Some step paths are already used on this domain', { conflicts: server });
   if (client.length > server.length) throw badRequest('ROUTES_COUNT_MISMATCH', 'More conflicts were supplied than exist');
@@ -246,7 +245,7 @@ function resolveDomainConflicts(deps: Deps, ws: string, funnel: FunnelRow, domai
   const unresolved = server.filter((c) => !chosen.has(pathKey(c.path)));
   if (unresolved.length) throw conflict('PATH_CONFLICT_UNRESOLVED', 'Every conflicting path needs a replacement', { conflicts: unresolved });
 
-  const reserved = new Set([...domainPathIndex(deps.db, ws, domainId, funnel.id).keys(), ...listSteps(deps.db, ws, funnel.id).map((s) => s.path_key)]);
+  const reserved = new Set([...(await domainPathIndex(deps.db, ws, domainId, funnel.id)).keys(), ...(await listSteps(deps.db, ws, funnel.id)).map((s) => s.path_key)]);
   const used = new Set<string>();
   for (const [key, resolved] of chosen) {
     const rk = pathKey(resolved);
@@ -258,47 +257,50 @@ function resolveDomainConflicts(deps: Deps, ws: string, funnel: FunnelRow, domai
   const at = iso(deps);
   for (const c of server) {
     const resolved = chosen.get(pathKey(c.path))!;
-    deps.db.run('UPDATE steps SET base_path = ?, path_key = ?, updated_at = ? WHERE id = ?', resolved, pathKey(resolved), at, c.stepId);
-    if (pathKey(funnel.base_path) === pathKey(c.path)) patchFunnel(deps.db, ws, funnel.id, { base_path: resolved });
+    await deps.db.run('UPDATE steps SET base_path = ?, path_key = ?, updated_at = ? WHERE id = ?', resolved, pathKey(resolved), at, c.stepId);
+    if (pathKey(funnel.base_path) === pathKey(c.path)) await patchFunnel(deps.db, ws, funnel.id, { base_path: resolved });
   }
   return true;
 }
 
-export function createFunnel(deps: Deps, auth: Auth, input: z.infer<typeof CreateFunnelInput>) {
+export async function createFunnel(deps: Deps, auth: Auth, input: z.infer<typeof CreateFunnelInput>) {
   const ws = auth.workspaceId;
   assertTrackingRole(auth, input);
   const basePath = input.base_path ?? slugPath(input.name);
   assertValidPath(basePath);
-  return deps.db.tx(() => {
-    const at = iso(deps);
-    const domain = input.domain_id ? requireDomain(deps, ws, input.domain_id) : null;
+  const id = await inTx(deps, async (d) => {
+    const at = iso(d);
+    if (input.domain_id) await lockDomain(d.db, ws, input.domain_id); // serialises path checks of funnels attaching to the same domain
+    const domain = input.domain_id ? await requireDomain(d, ws, input.domain_id) : null;
     if (domain && domain.status !== 'active') throw conflict('DOMAIN_NOT_ACTIVE', 'The domain is not verified yet');
     const status = input.status ?? 'test';
     if (status === 'live' && !domain) throw conflict('DOMAIN_NOT_ADDED', 'Publishing needs an active domain');
-    const id = newId('fn');
-    requireTags(deps.db, ws, input.tags ?? []);
-    insertFunnel(deps.db, {
-      id, workspace_id: ws, name: input.name, base_path: basePath, domain_id: domain?.id ?? null, status,
+    const fid = newId('fn');
+    await requireTags(d.db, ws, input.tags ?? []);
+    await insertFunnel(d.db, {
+      id: fid, workspace_id: ws, name: input.name, base_path: basePath, domain_id: domain?.id ?? null, status,
       favicon: input.favicon ?? null, header_tracking_code: input.header_tracking_code ?? null, footer_tracking_code: input.footer_tracking_code ?? null,
       created_by: auth.userId, created_at: at, updated_at: at,
     });
-    const funnel = requireFunnel(deps.db, ws, id);
+    const funnel = await requireFunnel(d.db, ws, fid);
     if (domain) {
-      const hit = domainPathIndex(deps.db, ws, domain.id).get(pathKey(basePath));
+      const index = await domainPathIndex(d.db, ws, domain.id);
+      const hit = index.get(pathKey(basePath));
       if (hit) {
         const resolved = input.conflicts?.find((c) => pathKey(c.path) === pathKey(basePath))?.resolved_path;
-        const taken = new Set(domainPathIndex(deps.db, ws, domain.id).keys());
+        const taken = new Set(index.keys());
         if (!resolved) throw conflict('PATH_CONFLICT', `The path is already used on this domain by "${hit.funnelName}"`, { conflicts: [{ path: basePath, resolved_path: suggestPaths(basePath, taken, 1)[0] }], uniquePaths: suggestPaths(basePath, taken) });
         if (!isValidPath(resolved) || taken.has(pathKey(resolved))) throw badRequest('INVALID_RESOLVED_PATH', `"${resolved}" cannot be used as a replacement`);
-        patchFunnel(deps.db, ws, id, { base_path: resolved });
+        await patchFunnel(d.db, ws, fid, { base_path: resolved });
         funnel.base_path = resolved;
       }
     }
-    insertStep(deps, ws, funnel, { name: 'Landing page', base_path: funnel.base_path, doc: defaultStepDocument(input.name), scriptsOk: false });
-    if (input.tags?.length) setFunnelTags(deps.db, ws, id, input.tags);
-    regenerateFunnel(deps, ws, id);
-    return getFunnelDetail(deps, ws, id);
+    await insertStep(d, ws, funnel, { name: 'Landing page', base_path: funnel.base_path, doc: defaultStepDocument(input.name), scriptsOk: false });
+    if (input.tags?.length) await setFunnelTags(d.db, ws, fid, input.tags);
+    await regenerateFunnel(d, ws, fid);
+    return fid;
   });
+  return getFunnelDetail(deps, ws, id);
 }
 
 /**
@@ -308,12 +310,16 @@ export function createFunnel(deps: Deps, auth: Auth, input: z.infer<typeof Creat
  *  - `status: "live"` needs an attached, ACTIVE domain.
  *  - attaching a domain needs it to be ACTIVE and runs the cross-funnel path conflict check.
  */
-export function updateFunnel(deps: Deps, auth: Auth, id: string, input: z.infer<typeof UpdateFunnelInput>) {
+export async function updateFunnel(deps: Deps, auth: Auth, id: string, input: z.infer<typeof UpdateFunnelInput>) {
   const ws = auth.workspaceId;
   assertTrackingRole(auth, input);
-  return deps.db.tx(() => {
-    const funnel = requireFunnel(deps.db, ws, id);
-    const urlsBefore = liveUrlsForFunnel(deps, id);
+  await inTx(deps, async (d) => {
+    // Attaching: the target domain is locked before the funnel (lock order: domain, funnel, steps), so two funnels
+    // attaching to one domain run their path-conflict checks one after the other and never both pass.
+    const peek = await requireFunnel(d.db, ws, id);
+    if (input.domain_id && input.status !== 'test' && input.domain_id !== peek.domain_id) await lockDomain(d.db, ws, input.domain_id);
+    const funnel = await lockFunnel(d.db, ws, id);
+    const urlsBefore = await liveUrlsForFunnel(d, id);
     let domainId: string | null = input.domain_id !== undefined ? (input.domain_id ?? null) : funnel.domain_id;
     let status = input.status ?? funnel.status;
     if (input.status === 'test') domainId = null;
@@ -322,121 +328,125 @@ export function updateFunnel(deps: Deps, auth: Auth, id: string, input: z.infer<
 
     let pathsChanged = false;
     if (domainId) {
-      const domain = requireDomain(deps, ws, domainId);
+      const domain = await requireDomain(d, ws, domainId);
       if (domain.status !== 'active') throw conflict('DOMAIN_NOT_ACTIVE', 'The domain is not verified yet');
-      if (domainId !== funnel.domain_id) pathsChanged = resolveDomainConflicts(deps, ws, funnel, domainId, input.conflicts);
+      if (domainId !== funnel.domain_id) pathsChanged = await resolveDomainConflicts(d, ws, funnel, domainId, input.conflicts);
     }
 
-    const fields: Record<string, string | number | null> = { status, domain_id: domainId, updated_at: iso(deps) };
+    const fields: Record<string, string | number | null> = { status, domain_id: domainId, updated_at: iso(d) };
     if (input.name !== undefined) fields.name = input.name;
     if (input.favicon !== undefined) fields.favicon = input.favicon;
     if (input.header_tracking_code !== undefined) fields.header_tracking_code = input.header_tracking_code || null;
     if (input.footer_tracking_code !== undefined) fields.footer_tracking_code = input.footer_tracking_code || null;
-    patchFunnel(deps.db, ws, id, fields);
-    if (input.tags) setFunnelTags(deps.db, ws, id, input.tags);
-    if (pathsChanged || input.favicon !== undefined || input.header_tracking_code !== undefined || input.footer_tracking_code !== undefined) regenerateFunnel(deps, ws, id);
-    schedulePurge(deps, [...urlsBefore, ...liveUrlsForFunnel(deps, id)]);
-    return getFunnelDetail(deps, ws, id);
+    await patchFunnel(d.db, ws, id, fields);
+    if (input.tags) await setFunnelTags(d.db, ws, id, input.tags);
+    if (pathsChanged || input.favicon !== undefined || input.header_tracking_code !== undefined || input.footer_tracking_code !== undefined) await regenerateFunnel(d, ws, id);
+    await schedulePurge(d, [...urlsBefore, ...(await liveUrlsForFunnel(d, id))]);
   });
+  return getFunnelDetail(deps, ws, id);
 }
 
-export function duplicateFunnel(deps: Deps, auth: Auth, id: string) {
+export async function duplicateFunnel(deps: Deps, auth: Auth, id: string) {
   const ws = auth.workspaceId;
-  return deps.db.tx(() => {
-    const source = requireFunnel(deps.db, ws, id);
-    const at = iso(deps);
-    const newFunnelId = newId('fn');
-    const takenPaths = new Set(deps.db.all<{ p: string }>('SELECT base_path AS p FROM funnels WHERE workspace_id = ? AND deleted_at IS NULL', ws).map((r) => pathKey(r.p)));
-    insertFunnel(deps.db, {
-      ...source, id: newFunnelId, name: copyName(source.name, activeFunnelNames(deps.db, ws)), base_path: copyPath(source.base_path, takenPaths),
+  const newFunnelId = await inTx(deps, async (d) => {
+    await lockWorkspace(d.db, ws); // copy names are derived from the existing names
+    const source = await requireFunnel(d.db, ws, id);
+    const at = iso(d);
+    const fid = newId('fn');
+    const takenPaths = new Set((await d.db.all<{ p: string }>('SELECT base_path AS p FROM funnels WHERE workspace_id = ? AND deleted_at IS NULL', ws)).map((r) => pathKey(r.p)));
+    await insertFunnel(d.db, {
+      ...source, id: fid, name: copyName(source.name, await activeFunnelNames(d.db, ws)), base_path: copyPath(source.base_path, takenPaths),
       domain_id: null, status: 'test', created_by: auth.userId, created_at: at, updated_at: at,
     });
-    const funnel = requireFunnel(deps.db, ws, newFunnelId);
-    cloneSteps(deps, auth, source.id, funnel);
-    for (const t of tagsByFunnel(deps.db, ws, [id]).get(id) ?? []) deps.db.run('INSERT INTO funnel_tags (funnel_id, tag_id) VALUES (?, ?)', newFunnelId, t.id);
-    regenerateFunnel(deps, ws, newFunnelId);
-    return getFunnelDetail(deps, ws, newFunnelId);
+    const funnel = await requireFunnel(d.db, ws, fid);
+    await cloneSteps(d, auth, source.id, funnel);
+    for (const t of (await tagsByFunnel(d.db, ws, [id])).get(id) ?? []) await d.db.run('INSERT INTO funnel_tags (funnel_id, tag_id) VALUES (?, ?)', fid, t.id);
+    await regenerateFunnel(d, ws, fid);
+    return fid;
   });
+  return getFunnelDetail(deps, ws, newFunnelId);
 }
 
 /** Copies every step of `sourceId` (same workspace) into `target`, remapping "go to step" actions to the new step ids. */
-function cloneSteps(deps: Deps, auth: Auth, sourceId: string, target: FunnelRow): void {
+async function cloneSteps(deps: Deps, auth: Auth, sourceId: string, target: FunnelRow): Promise<void> {
   const ws = auth.workspaceId;
-  const steps = listSteps(deps.db, ws, sourceId);
-  const pages = new Map(deps.db.all<{ step_id: string; doc_json: string; scripts_ok: number }>('SELECT step_id, doc_json, scripts_ok FROM step_pages WHERE workspace_id = ? AND funnel_id = ?', ws, sourceId).map((p) => [p.step_id, p]));
+  const steps = await listSteps(deps.db, ws, sourceId);
+  const pages = new Map((await deps.db.all<{ step_id: string; doc_json: string; scripts_ok: number }>('SELECT step_id, doc_json, scripts_ok FROM step_pages WHERE workspace_id = ? AND funnel_id = ?', ws, sourceId)).map((p) => [p.step_id, p]));
   const idMap = new Map(steps.map((s) => [s.id, newId('stp')]));
-  const canScripts = scriptsAllowedFor(deps, auth);
+  const canScripts = await scriptsAllowedFor(deps, auth);
   for (const s of steps) {
     const page = pages.get(s.id);
     const doc = remapStepRefs(page ? JSON.parse(page.doc_json) : defaultStepDocument(s.name), idMap);
-    const copy = insertStep(deps, ws, target, { name: s.name, base_path: s.base_path, doc, scriptsOk: page?.scripts_ok === 1 && canScripts }, idMap.get(s.id));
-    deps.db.run('UPDATE steps SET title = ?, seo_description = ?, custom_css = ?, header_tracking_code = ?, footer_tracking_code = ? WHERE id = ?', s.title, s.seo_description, s.custom_css, s.header_tracking_code, s.footer_tracking_code, copy.id);
+    const copy = await insertStep(deps, ws, target, { name: s.name, base_path: s.base_path, doc, scriptsOk: page?.scripts_ok === 1 && canScripts }, idMap.get(s.id));
+    await deps.db.run('UPDATE steps SET title = ?, seo_description = ?, custom_css = ?, header_tracking_code = ?, footer_tracking_code = ? WHERE id = ?', s.title, s.seo_description, s.custom_css, s.header_tracking_code, s.footer_tracking_code, copy.id);
   }
 }
 
 export type TemplateStepInput = { name: string; base_path: string; doc: PageDocument };
 
 /** Creates a funnel with the given steps (templates, AI generation). Step ids in "go to step" actions are remapped by position index key. */
-export function createFunnelFromSteps(deps: Deps, auth: Auth, opts: { name: string; basePath: string; steps: (TemplateStepInput & { refId?: string })[] }) {
+export async function createFunnelFromSteps(deps: Deps, auth: Auth, opts: { name: string; basePath: string; steps: (TemplateStepInput & { refId?: string })[] }) {
   const ws = auth.workspaceId;
-  return deps.db.tx(() => {
-    const at = iso(deps);
-    const id = newId('fn');
-    const name = uniqueFunnelName(deps, ws, opts.name);
-    insertFunnel(deps.db, {
-      id, workspace_id: ws, name, base_path: opts.basePath, domain_id: null, status: 'test', favicon: null,
+  const id = await inTx(deps, async (d) => {
+    await lockWorkspace(d.db, ws);
+    const at = iso(d);
+    const fid = newId('fn');
+    const name = await uniqueFunnelName(d, ws, opts.name);
+    await insertFunnel(d.db, {
+      id: fid, workspace_id: ws, name, base_path: opts.basePath, domain_id: null, status: 'test', favicon: null,
       header_tracking_code: null, footer_tracking_code: null, created_by: auth.userId, created_at: at, updated_at: at,
     });
-    const funnel = requireFunnel(deps.db, ws, id);
+    const funnel = await requireFunnel(d.db, ws, fid);
     const idMap = new Map(opts.steps.map((s) => [s.refId ?? s.base_path, newId('stp')]));
     for (const s of opts.steps) {
-      insertStep(deps, ws, funnel, { name: s.name, base_path: s.base_path, doc: remapStepRefs(s.doc, idMap), scriptsOk: false }, idMap.get(s.refId ?? s.base_path));
+      await insertStep(d, ws, funnel, { name: s.name, base_path: s.base_path, doc: remapStepRefs(s.doc, idMap), scriptsOk: false }, idMap.get(s.refId ?? s.base_path));
     }
-    regenerateFunnel(deps, ws, id);
-    return getFunnelDetail(deps, ws, id);
+    await regenerateFunnel(d, ws, fid);
+    return fid;
   });
+  return getFunnelDetail(deps, ws, id);
 }
 
-function uniqueFunnelName(deps: Deps, ws: string, base: string): string {
-  const used = new Set(activeFunnelNames(deps.db, ws).map((n) => n.toLowerCase()));
+async function uniqueFunnelName(deps: Deps, ws: string, base: string): Promise<string> {
+  const used = new Set((await activeFunnelNames(deps.db, ws)).map((n) => n.toLowerCase()));
   let name = base;
   for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base} ${n}`;
   return name;
 }
 
 /** Soft delete: the funnel leaves lists and public serving, loses its domain (freeing the paths) but keeps all data. */
-export function softDeleteFunnel(deps: Deps, auth: Auth, id: string): void {
+export async function softDeleteFunnel(deps: Deps, auth: Auth, id: string): Promise<void> {
   const ws = auth.workspaceId;
-  deps.db.tx(() => {
-    requireFunnel(deps.db, ws, id);
-    schedulePurge(deps, liveUrlsForFunnel(deps, id));
-    const at = iso(deps);
-    patchFunnel(deps.db, ws, id, { deleted_at: at, status: 'test', domain_id: null, updated_at: at });
-    deps.pageCache.invalidate(listSteps(deps.db, ws, id).map((s) => s.id));
+  await inTx(deps, async (d) => {
+    await lockFunnel(d.db, ws, id);
+    await schedulePurge(d, await liveUrlsForFunnel(d, id));
+    const at = iso(d);
+    await patchFunnel(d.db, ws, id, { deleted_at: at, status: 'test', domain_id: null, updated_at: at });
+    d.pageCache.invalidate((await listSteps(d.db, ws, id)).map((s) => s.id));
   });
 }
 
-export function restoreFunnel(deps: Deps, auth: Auth, id: string) {
+export async function restoreFunnel(deps: Deps, auth: Auth, id: string) {
   const ws = auth.workspaceId;
-  deps.db.tx(() => {
-    const f = requireFunnel(deps.db, ws, id, true);
+  await inTx(deps, async (d) => {
+    const f = await lockFunnel(d.db, ws, id, true);
     if (!f.deleted_at) throw conflict('NOT_DELETED', 'The funnel is not in the trash');
-    patchFunnel(deps.db, ws, id, { deleted_at: null, updated_at: iso(deps) });
+    await patchFunnel(d.db, ws, id, { deleted_at: null, updated_at: iso(d) });
   });
   return getFunnelDetail(deps, ws, id);
 }
 
 /** Hard delete (owner only, trash only). Steps, pages, backups, events and orders go with it via ON DELETE CASCADE. */
-export function purgeFunnel(deps: Deps, auth: Auth, id: string): void {
+export async function purgeFunnel(deps: Deps, auth: Auth, id: string): Promise<void> {
   const ws = auth.workspaceId;
-  deps.db.tx(() => {
-    const f = requireFunnel(deps.db, ws, id, true);
+  await inTx(deps, async (d) => {
+    const f = await lockFunnel(d.db, ws, id, true);
     if (!f.deleted_at) throw conflict('NOT_IN_TRASH', 'Move the funnel to the trash before purging it');
-    const stepIds = listSteps(deps.db, ws, id).map((s) => s.id);
-    deps.db.run('UPDATE domains SET default_home_step_id = NULL WHERE workspace_id = ? AND default_home_step_id IN (SELECT id FROM steps WHERE funnel_id = ?)', ws, id);
-    deps.db.run('UPDATE domains SET default_404_step_id = NULL WHERE workspace_id = ? AND default_404_step_id IN (SELECT id FROM steps WHERE funnel_id = ?)', ws, id);
-    deps.db.run('DELETE FROM funnels WHERE workspace_id = ? AND id = ?', ws, id);
-    deps.pageCache.invalidate(stepIds);
+    const stepIds = (await listSteps(d.db, ws, id)).map((s) => s.id);
+    await d.db.run('UPDATE domains SET default_home_step_id = NULL WHERE workspace_id = ? AND default_home_step_id IN (SELECT id FROM steps WHERE funnel_id = ?)', ws, id);
+    await d.db.run('UPDATE domains SET default_404_step_id = NULL WHERE workspace_id = ? AND default_404_step_id IN (SELECT id FROM steps WHERE funnel_id = ?)', ws, id);
+    await d.db.run('DELETE FROM funnels WHERE workspace_id = ? AND id = ?', ws, id);
+    d.pageCache.invalidate(stepIds);
   });
 }
 
@@ -446,14 +456,16 @@ export const BulkTagInput = z.object({
   removeTagIds: z.array(z.string().max(64)).max(50).default([]),
 });
 
-export function bulkTag(deps: Deps, ws: string, input: z.infer<typeof BulkTagInput>) {
-  return deps.db.tx(() => {
-    const funnels = input.funnelIds.map((id) => requireFunnel(deps.db, ws, id));
-    requireTags(deps.db, ws, [...input.addTagIds, ...input.removeTagIds]);
-    for (const f of funnels) {
-      for (const t of input.addTagIds) deps.db.run('INSERT OR IGNORE INTO funnel_tags (funnel_id, tag_id) VALUES (?, ?)', f.id, t);
-      for (const t of input.removeTagIds) deps.db.run('DELETE FROM funnel_tags WHERE funnel_id = ? AND tag_id = ?', f.id, t);
-      patchFunnel(deps.db, ws, f.id, { updated_at: iso(deps) });
+export async function bulkTag(deps: Deps, ws: string, input: z.infer<typeof BulkTagInput>) {
+  return inTx(deps, async (d) => {
+    const funnels: FunnelRow[] = [];
+    for (const id of input.funnelIds) funnels.push(await requireFunnel(d.db, ws, id));
+    await requireTags(d.db, ws, [...input.addTagIds, ...input.removeTagIds]);
+    // Fixed order (by funnel id) so two overlapping bulk requests cannot lock rows in opposite orders.
+    for (const f of [...funnels].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+      for (const t of input.addTagIds) await d.db.run(`INSERT INTO funnel_tags (funnel_id, tag_id) VALUES (?, ?)${d.db.dialect.onConflictDoNothing()}`, f.id, t);
+      for (const t of input.removeTagIds) await d.db.run('DELETE FROM funnel_tags WHERE funnel_id = ? AND tag_id = ?', f.id, t);
+      await patchFunnel(d.db, ws, f.id, { updated_at: iso(d) });
     }
     return { updated: funnels.length };
   });

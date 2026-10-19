@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
-import { Db, migrate } from '../src/db/db.js';
 import { createLogger } from '../src/logger.js';
 import { RateLimiter } from '../src/util/ratelimit.js';
 import { PageCache } from '../src/util/pagecache.js';
 import { EventBus } from '../src/util/bus.js';
 import { DEMO_EMAIL, DEMO_PASSWORD, seedDemo } from '../src/seed.js';
-import { makeHarness } from './helpers.js';
+import { makeHarness, type Harness } from './helpers.js';
 
 describe('config', () => {
   it('works with zero env in development, generating a JWT secret', () => {
@@ -37,44 +36,6 @@ describe('config', () => {
     expect(c.ENABLE_WORKER).toBe(false);
     expect(c.AI_DAILY_CAP).toBe(0);
     for (const bad of [{ PORT: 'abc' }, { PORT: '70000' }, { NODE_ENV: 'staging' }, { WEBHOOK_MAX_ATTEMPTS: '0' }, { LOG_LEVEL: 'loud' }]) expect(() => loadConfig(bad)).toThrow(/Invalid environment/);
-  });
-});
-
-describe('sqlite layer', () => {
-  it('applies migrations once and enforces foreign keys', () => {
-    const db = new Db(':memory:');
-    expect(migrate(db)).toEqual(['001_init.sql', '002_perf_edge.sql', '003_visitor_days.sql']);
-    expect(migrate(db)).toEqual([]);
-    expect(() => db.run(`INSERT INTO users (id, workspace_id, email, name, password_hash, role, created_at) VALUES ('u', 'missing', 'a@b.c', 'n', 'h', 'owner', 'now')`)).toThrow(/FOREIGN KEY/);
-    expect(() => db.run(`INSERT INTO workspaces (id, name, created_at) VALUES ('w', 'n', 'now')`)).not.toThrow();
-    expect(() => db.run(`INSERT INTO users (id, workspace_id, email, name, password_hash, role, created_at) VALUES ('u', 'w', 'a@b.c', 'n', 'h', 'god', 'now')`)).toThrow(/CHECK/);
-  });
-
-  it('transactions commit, roll back, and nest with savepoints', () => {
-    const db = new Db(':memory:');
-    migrate(db);
-    const count = () => db.get<{ n: number }>('SELECT COUNT(*) AS n FROM workspaces')!.n;
-    const add = (id: string) => db.run(`INSERT INTO workspaces (id, name, created_at) VALUES (?, 'n', 'now')`, id);
-    db.tx(() => add('a'));
-    expect(count()).toBe(1);
-    expect(() => db.tx(() => { add('b'); throw new Error('boom'); })).toThrow('boom');
-    expect(count()).toBe(1);
-    db.tx(() => {
-      add('c');
-      expect(() => db.tx(() => { add('d'); throw new Error('inner'); })).toThrow('inner');
-      add('e');
-    });
-    expect(db.all<{ id: string }>('SELECT id FROM workspaces ORDER BY id').map((r) => r.id)).toEqual(['a', 'c', 'e']);
-    expect(() => db.tx(() => { add('f'); db.tx(() => add('g')); throw new Error('outer'); })).toThrow('outer');
-    expect(count()).toBe(3);
-    expect(db.tx(() => 42)).toBe(42);
-  });
-
-  it('binds undefined as NULL and booleans as integers', () => {
-    const db = new Db(':memory:');
-    db.exec('CREATE TABLE t (a, b)');
-    db.run('INSERT INTO t VALUES (?, ?)', undefined, true);
-    expect(db.get('SELECT a, b FROM t')).toEqual({ a: null, b: 1 });
   });
 });
 
@@ -142,7 +103,7 @@ describe('small utilities', () => {
 
 describe('demo seed', () => {
   it('creates a realistic demo workspace once, and its data flows through the real API', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const first = await seedDemo(h.deps);
     expect(first.created).toBe(true);
     expect((await seedDemo(h.deps)).created).toBe(false);

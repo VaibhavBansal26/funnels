@@ -52,12 +52,19 @@ Live chat widget, split testing, share-link shortener, media gallery/S3 uploads 
 
 ## Known limitations
 
-Single-node by design (in-memory limiter, cache and SSE bus). The builder's click-to-select uses a script inside a sandboxed iframe and has only been exercised through unit tests and a production build here, not in a real browser session.
+Single-node by default (in-memory limiter, cache and SSE bus; SQLite is one writer). PostgreSQL removes the database limit, not the in-memory ones. The builder's click-to-select uses a script inside a sandboxed iframe and has only been exercised through unit tests and a production build here, not in a real browser session.
+
+## Phase 3 decision record: async data layer and PostgreSQL
+
+* **Context.** Every service called synchronous `node:sqlite` directly, which blocks any server database, multiple replicas, and the later Redis/BullMQ, Stripe and admin work.
+* **Decision.** One small async `Db` interface (query/get/all/run, `transaction`, savepoints, `explain`) with three drivers: `SqliteDb` (zero-config default), `PgDb` (`pg` Pool, production) and `PgliteDb` (tests). `DATABASE_URL=postgres://` selects PostgreSQL. SQL stays hand-written (no ORM) with `?` placeholders; dialect differences are named in `db/dialect.ts`. Per-dialect migration directories with shared numbering, checked by an introspection test.
+* **Alternatives rejected.** An ORM or query builder (a large dependency and a rewrite of every query, for a codebase this size); keeping SQLite sync and adding Postgres beside it (two code paths in every service); `AsyncLocalStorage` for an ambient transaction (hides which handle a statement uses, and makes the SQLite single-connection rule impossible to see in code); `citext`/`COLLATE NOCASE` (not portable, the app already stores `name_lower`); database-generated ids (rows would stop being portable).
+* **Consequences.** Services take `deps` and use `deps.db`; inside `inTx` they receive a scoped copy. Writes that must be atomic across concurrent requests rely on row locks in a fixed order, not on JavaScript being single-threaded any more. PGlite is single-connection, so a real Postgres job is part of CI. SQLite triggers are gone: rollups are maintained by the application in the same transaction (docs/PERFORMANCE.md has the numbers). Per-process state (limiter, cache, SSE, buffer sets) is unchanged and still needs Redis before a second replica is safe.
 
 ## Phase 2 decisions
 
-* Analytics reads use trigger-maintained 15-minute rollups; funnel-level distinct visitors still scan raw events.
+* Analytics reads use 15-minute rollups (maintained by the application since phase 3); funnel-level distinct visitors scan raw events.
 * Event ingestion is write-behind (flush 250 ms or 5,000 rows, on shutdown, and before any read). `EVENT_BUFFER_MS=0` disables it.
 * Worker threads and Web Workers were measured and not adopted (docs/PERFORMANCE.md).
 * The edge worker is optional; the origin serves pages without it. Edge calls are signed and fail closed.
-* **Not done** from the phase 2 brief: PostgreSQL backend, Redis (cache, limiter, pub/sub, BullMQ), k6 scenarios, running the suite against two backends, OpenTelemetry, workerd-based worker tests, HPA in the active kustomization (single-replica by design, `deploy/k8s/optional/hpa.yaml` is provided), a Docker/compose run (not verified here: docker was not used), web workers.
+* **Not done** from the phase 2 brief: Redis (cache, limiter, pub/sub, BullMQ), k6 scenarios, OpenTelemetry, workerd-based worker tests, HPA in the active kustomization (single-replica by design, `deploy/k8s/optional/hpa.yaml` is provided), a Docker/compose run (not verified here: docker was not used), web workers.

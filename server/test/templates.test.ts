@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createBuilder, parseDocument, renderPage, collectBlocks } from '../src/blocks/index.js';
 import { isValidPath } from '../src/services/paths.js';
 import { CATEGORIES, SEED_TEMPLATES, seedTemplates } from '../src/templates/seed.js';
-import { makeFunnel, makeHarness } from './helpers.js';
+import { makeFunnel, makeHarness, type Harness } from './helpers.js';
+import { columnNames } from './support/schema.js';
 
 describe('seeded templates', () => {
   it('ships at least six distinct, valid, renderable templates covering the required use cases', () => {
@@ -36,20 +37,20 @@ describe('seeded templates', () => {
   });
 
   it('seeding is idempotent and templates are workspace-less rows in their own tables', async () => {
-    const h = makeHarness();
-    expect(seedTemplates(h.deps.db).inserted).toBe(0);
-    const cols = h.deps.db.all<{ name: string }>('PRAGMA table_info(templates)').map((c) => c.name);
+    const h = await makeHarness();
+    expect((await seedTemplates(h.deps.db)).inserted).toBe(0);
+    const cols = await columnNames(h.deps.db, 'templates');
     expect(cols).not.toContain('workspace_id');
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM funnels')).toEqual({ n: 0 });
-    h.deps.db.run(`UPDATE templates SET name = 'Edited by admin' WHERE slug = 'lead-magnet'`);
-    seedTemplates(h.deps.db);
-    expect(h.deps.db.get('SELECT name FROM templates WHERE slug = ?', 'lead-magnet')).toEqual({ name: 'Edited by admin' });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM funnels')).toEqual({ n: 0 });
+    await h.deps.db.run(`UPDATE templates SET name = 'Edited by admin' WHERE slug = 'lead-magnet'`);
+    await seedTemplates(h.deps.db);
+    expect(await h.deps.db.get('SELECT name FROM templates WHERE slug = ?', 'lead-magnet')).toEqual({ name: 'Edited by admin' });
   });
 });
 
 describe('templates API', () => {
   it('lists, filters by category and search, and shows details with step documents', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const all = (await h.call('GET', '/api/templates', { token: u.token })).json.data;
     expect(all.length).toBe(SEED_TEMPLATES.length);
@@ -70,7 +71,7 @@ describe('templates API', () => {
   });
 
   it('"use template" clones into the caller workspace, allows multiples with unique names, and is independent of the template', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const a = await h.register();
     const b = await h.register();
     const use = (token: string) => h.call('POST', '/api/templates/lead-magnet/use', { token });
@@ -95,7 +96,7 @@ describe('templates API', () => {
 
 describe('template administration (PLATFORM_ADMIN_EMAILS)', () => {
   it('is closed by default: nobody is a platform admin, whatever the host or role', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const owner = await h.register('boss@dashclicks.com');
     const f = await makeFunnel(h, owner.token);
     for (const host of ['app.dashclicks.com', 'localhost', 'app.funnels.test']) {
@@ -107,7 +108,7 @@ describe('template administration (PLATFORM_ADMIN_EMAILS)', () => {
   });
 
   it('allows only listed emails (case-insensitive) to create, edit and delete templates and categories', async () => {
-    const h = makeHarness({ env: { PLATFORM_ADMIN_EMAILS: 'Admin@Platform.test, other@platform.test' } });
+    const h = await makeHarness({ env: { PLATFORM_ADMIN_EMAILS: 'Admin@Platform.test, other@platform.test' } });
     const admin = await h.register('admin@platform.test');
     const nobody = await h.register('nobody@platform.test');
     const adminFunnel = await makeFunnel(h, admin.token, { name: 'Gold standard' });
@@ -138,7 +139,7 @@ describe('template administration (PLATFORM_ADMIN_EMAILS)', () => {
     expect((await h.call('GET', `/api/templates/${created.json.id}`, { token: admin.token })).status).toBe(404);
     expect((await h.call('DELETE', `/api/admin/template-categories/${cat.id}`, { token: nobody.token })).status).toBe(403);
     expect((await h.call('DELETE', `/api/admin/template-categories/${cat.id}`, { token: admin.token })).status).toBe(204);
-    expect(h.deps.db.get('SELECT category_id FROM templates WHERE id = ?', again.id)).toEqual({ category_id: null });
+    expect(await h.deps.db.get('SELECT category_id FROM templates WHERE id = ?', again.id)).toEqual({ category_id: null });
   });
 });
 
@@ -146,7 +147,7 @@ describe('saved custom blocks', () => {
   const block = createBuilder('c').heading('Reusable headline', { level: 1 });
 
   it('saves, lists and deletes per workspace', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const a = await h.register();
     const b = await h.register();
     const saved = await h.call('POST', '/api/blocks', { token: a.token, body: { name: 'Hero heading', block } });
@@ -160,7 +161,7 @@ describe('saved custom blocks', () => {
   });
 
   it('validates blocks with the same schema as pages', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const save = (body: object) => h.call('POST', '/api/blocks', { token: u.token, body });
     expect((await save({ name: 'x', block: { id: 'a', type: 'button', text: 'x', action: { type: 'link', url: 'javascript:alert(1)' } } })).json.error.code).toBe('INVALID_BLOCK');
@@ -171,9 +172,9 @@ describe('saved custom blocks', () => {
   });
 
   it('caps the number of saved blocks per workspace', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
-    for (let i = 0; i < 200; i++) h.deps.db.run('INSERT INTO custom_blocks (id, workspace_id, name, block_json, created_at) VALUES (?, ?, ?, ?, ?)', `blk_${i}`, u.wsId, 'b', JSON.stringify(block), '2026-01-01T00:00:00Z');
+    for (let i = 0; i < 200; i++) await h.deps.db.run('INSERT INTO custom_blocks (id, workspace_id, name, block_json, created_at) VALUES (?, ?, ?, ?, ?)', `blk_${i}`, u.wsId, 'b', JSON.stringify(block), '2026-01-01T00:00:00Z');
     const r = await h.call('POST', '/api/blocks', { token: u.token, body: { name: 'one too many', block } });
     expect(r.status).toBe(409);
     expect(r.json.error.code).toBe('LIMIT_REACHED');

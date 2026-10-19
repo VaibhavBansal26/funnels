@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { copyName, uniqueName } from '../src/services/paths.js';
-import { activeDomain, makeFunnel, makeHarness } from './helpers.js';
+import { activeDomain, makeFunnel, makeHarness, type Harness } from './helpers.js';
 
 describe('funnel create and read', () => {
   it('creates a funnel with an auto-created first step and default page', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const f = await makeFunnel(h, u.token, { name: 'Spring Sale' });
     expect(f).toMatchObject({ name: 'Spring Sale', status: 'test', basePath: '/spring-sale', domain: null, stepCount: 1 });
@@ -15,7 +15,7 @@ describe('funnel create and read', () => {
   });
 
   it('validates input', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const bad = [{ name: '' }, { name: 'x', base_path: 'no-slash' }, { name: 'x', base_path: '/a/b' }, { name: 'x', status: 'live' }, { name: 'x', favicon: 'javascript:alert(1)' }, { name: 'x'.repeat(200) }];
     for (const body of bad) expect([400, 409]).toContain((await h.call('POST', '/api/funnels', { token: u.token, body })).status);
@@ -24,7 +24,7 @@ describe('funnel create and read', () => {
   });
 
   it('rejects unknown tags and domains as not found', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     expect((await h.call('POST', '/api/funnels', { token: u.token, body: { name: 'x', tags: ['nope'] } })).status).toBe(404);
     expect((await h.call('POST', '/api/funnels', { token: u.token, body: { name: 'x', domain_id: 'nope' } })).status).toBe(404);
@@ -33,7 +33,7 @@ describe('funnel create and read', () => {
 
 describe('funnel list', () => {
   async function seed() {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const tagA = (await h.call('POST', '/api/tags', { token: u.token, body: { name: 'Promo' } })).json;
     const tagB = (await h.call('POST', '/api/tags', { token: u.token, body: { name: 'Evergreen' } })).json;
@@ -104,7 +104,7 @@ describe('funnel list', () => {
 
 describe('funnel update and status/domain state machine', () => {
   it('publishing needs an attached ACTIVE domain; test detaches the domain', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const f = await makeFunnel(h, u.token);
     const patch = (body: object) => h.call('PATCH', `/api/funnels/${f.id}`, { token: u.token, body });
@@ -141,7 +141,7 @@ describe('duplicate', () => {
   });
 
   it('clones steps, content and tags; forces test; drops the domain; remaps step links', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const tag = (await h.call('POST', '/api/tags', { token: u.token, body: { name: 'T' } })).json;
     const dom = await activeDomain(h, u.token);
@@ -171,7 +171,7 @@ describe('duplicate', () => {
 
 describe('soft delete, restore and purge', () => {
   it('moves to trash, hides everywhere, restores, and purges only from trash', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const dom = await activeDomain(h, u.token);
     const f = await makeFunnel(h, u.token, { name: 'Gone' });
@@ -196,12 +196,12 @@ describe('soft delete, restore and purge', () => {
     await h.call('DELETE', `/api/funnels/${f.id}`, { token: u.token });
     expect((await h.call('DELETE', `/api/funnels/${f.id}/purge`, { token: u.token })).status).toBe(204);
     expect((await h.call('GET', '/api/funnels/trash', { token: u.token })).json.data).toHaveLength(0);
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM steps')).toEqual({ n: 0 });
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM step_pages')).toEqual({ n: 0 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM steps')).toEqual({ n: 0 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM step_pages')).toEqual({ n: 0 });
   });
 
   it('a trashed funnel frees its domain paths', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const dom = await activeDomain(h, u.token);
     const a = await makeFunnel(h, u.token, { name: 'Same Path', base_path: '/promo' });
@@ -215,7 +215,7 @@ describe('soft delete, restore and purge', () => {
 
 describe('tags', () => {
   it('names are unique per workspace, case-insensitively', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const a = await h.register();
     const b = await h.register();
     expect((await h.call('POST', '/api/tags', { token: a.token, body: { name: 'Sale' } })).status).toBe(201);
@@ -228,7 +228,7 @@ describe('tags', () => {
   });
 
   it('deleting a tag removes it only from this workspace funnels', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const a = await h.register();
     const b = await h.register();
     const tagA = (await h.call('POST', '/api/tags', { token: a.token, body: { name: 'Shared' } })).json;
@@ -244,7 +244,7 @@ describe('tags', () => {
   });
 
   it('bulk delete is all-or-nothing and bulk tag works', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const t1 = (await h.call('POST', '/api/tags', { token: u.token, body: { name: 'One' } })).json;
     const t2 = (await h.call('POST', '/api/tags', { token: u.token, body: { name: 'Two' } })).json;

@@ -1,5 +1,5 @@
 import type { Config } from './config.js';
-import type { Db } from './db/db.js';
+import type { Db } from './db/index.js';
 import type { Logger } from './logger.js';
 import type { AiProvider } from './ai/types.js';
 import type { DnsResolver } from './dns/resolver.js';
@@ -31,4 +31,6 @@ export interface Deps {
   events: EventBuffer;
   purger: CloudflarePurger;
   domainProvider: DomainProvider;
+  /** Set only on transaction-scoped deps (see db/scope.ts): queues an effect to run after COMMIT. */
+  defer?: (effect: () => void) => void;
 }

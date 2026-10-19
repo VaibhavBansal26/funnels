@@ -10,7 +10,7 @@ const get = (h: Harness, path: string, headers: Record<string, string> = {}, hos
   h.app.request(path, { method, headers: { host, 'user-agent': 'Mozilla/5.0', ...headers } });
 
 async function liveSetup() {
-  const h = makeHarness();
+  const h = await makeHarness();
   const u = await h.register();
   const dom = await activeDomain(h, u.token, HOST);
   const f = await makeFunnel(h, u.token, { name: 'Promo', base_path: '/promo' });
@@ -126,7 +126,7 @@ describe('public serving by host and path', () => {
 
 describe('preview', () => {
   async function setup() {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const f = await makeFunnel(h, u.token, { name: 'Preview me', base_path: '/p' });
     const s2 = (await h.call('POST', `/api/funnels/${f.id}/steps`, { token: u.token, body: { name: 'Second', base_path: '/second' } })).json;
@@ -191,7 +191,7 @@ describe('preview', () => {
 
 describe('beacon.js', () => {
   it('is served as cacheable javascript', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const res = await h.app.request('/beacon.js');
     expect(res.headers.get('content-type')).toContain('javascript');
     expect(res.headers.get('cache-control')).toContain('max-age');

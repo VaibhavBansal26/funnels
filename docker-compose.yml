@@ -1,11 +1,27 @@
-# Local stack for THIS app. SQLite lives on a named volume (single replica: the data layer is SQLite).
-# docker compose up --build        -> http://localhost:3000
+# Local stack for THIS app: the app on PostgreSQL 17 (default), or on SQLite with --profile sqlite.
+# docker compose up --build                          -> http://localhost:3000 (PostgreSQL)
+# docker compose --profile sqlite up --build app-sqlite -> SQLite on a volume (single replica)
 # docker compose --profile edge up -> also runs the edge worker locally through wrangler (needs the secrets below)
 services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: funnels
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-funnels-local-only}
+      POSTGRES_DB: funnels
+    volumes: ["pg-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U funnels -d funnels"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   app:
     build: .
     ports: ["3000:3000"]
+    depends_on:
+      postgres: { condition: service_healthy }
     environment:
+      DATABASE_URL: postgres://funnels:${POSTGRES_PASSWORD:-funnels-local-only}@postgres:5432/funnels
       NODE_ENV: production
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ chars) in your shell or .env}
       APP_PUBLIC_URL: http://localhost:3000
@@ -15,11 +31,21 @@ services:
       CF_API_TOKEN: ${CF_API_TOKEN:-}
       CF_ZONE_ID: ${CF_ZONE_ID:-}
       TRUST_PROXY: "true"
-    volumes: ["funnels-data:/data"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/readyz"]
       interval: 15s
       timeout: 3s
+  app-sqlite:
+    profiles: ["sqlite"]
+    build: .
+    ports: ["3000:3000"]
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ chars) in your shell or .env}
+      APP_PUBLIC_URL: http://localhost:3000
+      APP_PUBLIC_CNAME_TARGET: sites.localhost
+      TRUST_PROXY: "true"
+    volumes: ["funnels-data:/data"]
   edge:
     profiles: ["edge"]
     image: node:22-alpine
@@ -32,3 +58,4 @@ services:
     depends_on: [app]
 volumes:
   funnels-data:
+  pg-data:

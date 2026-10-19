@@ -2,7 +2,7 @@ import { AnthropicProvider } from './ai/anthropic.js';
 import { HeuristicProvider } from './ai/heuristic.js';
 import type { AiProvider } from './ai/types.js';
 import type { Config } from './config.js';
-import { openDb } from './db/db.js';
+import { openDb } from './db/index.js';
 import type { Deps } from './deps.js';
 import { NodeDnsResolver } from './dns/resolver.js';
 import { type JobHandler, JobQueue, JobWorker } from './jobs/queue.js';
@@ -36,11 +36,11 @@ export function createDomainProvider(config: Config): DomainProvider {
 }
 
 /** Wires the production dependencies. Every one of them can be replaced through `overrides` (tests do). */
-export function createDeps(config: Config, overrides: Partial<Deps> = {}): Deps {
-  const db = overrides.db ?? openDb(config.DATABASE_PATH);
-  seedTemplates(db);
+export async function createDeps(config: Config, overrides: Partial<Deps> = {}): Promise<Deps> {
   const now = overrides.now ?? (() => new Date());
   const log = overrides.log ?? createLogger(config.LOG_LEVEL);
+  const db = overrides.db ?? (await openDb({ url: config.DATABASE_URL, sqlitePath: config.DATABASE_PATH, poolMax: config.DATABASE_POOL_MAX, log: (m, meta) => log.warn(m, meta) }));
+  await seedTemplates(db);
   return {
     config,
     db,

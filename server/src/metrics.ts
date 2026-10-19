@@ -12,8 +12,8 @@ export function createMetrics(deps: Deps) {
   new Gauge({ name: 'funnels_page_cache_entries', help: 'Rendered pages cached', registers: [registry], collect() { this.set(deps.pageCache.size); } });
   new Gauge({
     name: 'funnels_jobs', help: 'Jobs by status', labelNames: ['status'], registers: [registry],
-    collect() {
-      const rows = deps.db.all<{ status: string; n: number }>('SELECT status, COUNT(*) AS n FROM jobs GROUP BY status');
+    async collect() {
+      const rows = await deps.db.all<{ status: string; n: number }>('SELECT status, COUNT(*) AS n FROM jobs GROUP BY status');
       for (const s of ['queued', 'running', 'done', 'dead']) this.set({ status: s }, rows.find((r) => r.status === s)?.n ?? 0);
     },
   });

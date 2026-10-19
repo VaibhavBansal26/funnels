@@ -1,4 +1,4 @@
-import type { Db } from '../db/db.js';
+import type { Db } from '../db/index.js';
 import { pathKey, suggestPaths } from './paths.js';
 
 export interface PathOwner {
@@ -10,8 +10,8 @@ export interface PathOwner {
 }
 
 /** Path key -> owner for every step of every live (non-trashed) funnel attached to the domain. */
-export function domainPathIndex(db: Db, ws: string, domainId: string, excludeFunnelId?: string): Map<string, PathOwner> {
-  const rows = db.all<{ step_id: string; step_name: string; funnel_id: string; funnel_name: string; base_path: string; path_key: string }>(
+export async function domainPathIndex(db: Db, ws: string, domainId: string, excludeFunnelId?: string): Promise<Map<string, PathOwner>> {
+  const rows = await db.all<{ step_id: string; step_name: string; funnel_id: string; funnel_name: string; base_path: string; path_key: string }>(
     `SELECT s.id AS step_id, s.name AS step_name, f.id AS funnel_id, f.name AS funnel_name, s.base_path, s.path_key
      FROM steps s JOIN funnels f ON f.id = s.funnel_id
      WHERE f.workspace_id = ? AND f.domain_id = ? AND f.deleted_at IS NULL AND f.id != ?`,
@@ -33,9 +33,9 @@ export interface PathConflict {
  * Conflicts between a funnel's step paths and the paths already used on `domainId` by other funnels.
  * Each conflict carries a suggested free replacement; suggestions never collide with each other.
  */
-export function funnelDomainConflicts(db: Db, ws: string, funnelId: string, domainId: string): PathConflict[] {
-  const taken = domainPathIndex(db, ws, domainId, funnelId);
-  const own = db.all<{ id: string; base_path: string; path_key: string }>('SELECT id, base_path, path_key FROM steps WHERE workspace_id = ? AND funnel_id = ? ORDER BY position', ws, funnelId);
+export async function funnelDomainConflicts(db: Db, ws: string, funnelId: string, domainId: string): Promise<PathConflict[]> {
+  const taken = await domainPathIndex(db, ws, domainId, funnelId);
+  const own = await db.all<{ id: string; base_path: string; path_key: string }>('SELECT id, base_path, path_key FROM steps WHERE workspace_id = ? AND funnel_id = ? ORDER BY position', ws, funnelId);
   const reserved = new Set([...taken.keys(), ...own.map((s) => s.path_key)]);
   const out: PathConflict[] = [];
   for (const s of own) {
@@ -49,8 +49,8 @@ export function funnelDomainConflicts(db: Db, ws: string, funnelId: string, doma
 }
 
 /** Path keys used by the other steps of the same funnel. */
-export function funnelPathKeys(db: Db, ws: string, funnelId: string, excludeStepId?: string): Set<string> {
+export async function funnelPathKeys(db: Db, ws: string, funnelId: string, excludeStepId?: string): Promise<Set<string>> {
   return new Set(
-    db.all<{ path_key: string }>('SELECT path_key FROM steps WHERE workspace_id = ? AND funnel_id = ? AND id != ?', ws, funnelId, excludeStepId ?? '').map((r) => r.path_key),
+    (await db.all<{ path_key: string }>('SELECT path_key FROM steps WHERE workspace_id = ? AND funnel_id = ? AND id != ?', ws, funnelId, excludeStepId ?? '')).map((r) => r.path_key),
   );
 }

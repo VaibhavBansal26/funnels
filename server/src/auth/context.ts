@@ -26,8 +26,8 @@ interface UserRow {
   name: string;
 }
 
-function loadAuth(deps: Deps, userId: string): Auth {
-  const u = deps.db.get<UserRow>('SELECT id, workspace_id, role, email, name FROM users WHERE id = ?', userId);
+async function loadAuth(deps: Deps, userId: string): Promise<Auth> {
+  const u = await deps.db.get<UserRow>('SELECT id, workspace_id, role, email, name FROM users WHERE id = ?', userId);
   if (!u) throw unauthorized('Account no longer exists');
   return { userId: u.id, workspaceId: u.workspace_id, role: u.role, email: u.email, name: u.name };
 }
@@ -44,7 +44,7 @@ export function authenticate(deps: Deps, opts: { allowTicket?: boolean } = {}): 
       if (ticket) userId = await verifyStreamTicket(deps.config, ticket, deps.now());
     }
     if (!userId) throw unauthorized();
-    c.set('auth', loadAuth(deps, userId));
+    c.set('auth', await loadAuth(deps, userId));
     await next();
   };
 }

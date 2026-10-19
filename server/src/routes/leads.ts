@@ -11,16 +11,16 @@ const csv = (body: ReadableStream<Uint8Array>, name: string) =>
 export function leadRoutes(deps: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
   r.use('*', authenticate(deps));
-  r.get('/', (c) => c.json(leads.listLeads(deps, authOf(c).workspaceId, queryOf(c, leads.LeadQuery))));
-  r.get('/export', (c) => csv(leads.leadsCsvStream(deps, authOf(c).workspaceId, queryOf(c, leads.LeadQuery)), 'leads.csv'));
+  r.get('/', async (c) => c.json(await leads.listLeads(deps, authOf(c).workspaceId, queryOf(c, leads.LeadQuery))));
+  r.get('/export', async (c) => csv(leads.leadsCsvStream(deps, authOf(c).workspaceId, queryOf(c, leads.LeadQuery)), 'leads.csv'));
   return r;
 }
 
 export function orderRoutes(deps: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
   r.use('*', authenticate(deps));
-  r.get('/', (c) => c.json(orders.listOrders(deps, authOf(c).workspaceId, queryOf(c, orders.OrderQuery))));
-  r.get('/export', (c) => csv(orders.ordersCsvStream(deps, authOf(c).workspaceId, queryOf(c, orders.OrderQuery)), 'orders.csv'));
-  r.get('/:id', (c) => c.json(orders.getOrder(deps, authOf(c).workspaceId, c.req.param('id'))));
+  r.get('/', async (c) => c.json(await orders.listOrders(deps, authOf(c).workspaceId, queryOf(c, orders.OrderQuery))));
+  r.get('/export', async (c) => csv(orders.ordersCsvStream(deps, authOf(c).workspaceId, queryOf(c, orders.OrderQuery)), 'orders.csv'));
+  r.get('/:id', async (c) => c.json(await orders.getOrder(deps, authOf(c).workspaceId, c.req.param('id'))));
   return r;
 }

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { csvCell, neutralizeCell, toCsv } from '../src/util/csv.js';
+import { migrationFiles } from '../src/db/migrate.js';
 import { checkoutTarget, formTarget, makeHarness, type Harness } from './helpers.js';
 
 const UA = { 'user-agent': 'Mozilla/5.0 Chrome' };
@@ -24,7 +25,7 @@ describe('csv helpers', () => {
 });
 
 async function leadsWorld() {
-  const h = makeHarness();
+  const h = await makeHarness();
   const u = await h.register();
   const t = await formTarget(h, u.token);
   const submit = (fields: object, sub?: string) => h.call('POST', t.path, { body: { fields: { ...fields, _consent: true }, consent: true, submissionId: sub }, headers: UA });
@@ -81,7 +82,7 @@ describe('leads', () => {
 
 describe('orders', () => {
   async function ordersWorld() {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const t = await checkoutTarget(h, u.token);
     const buy = (email: string, name?: string) => h.call('POST', t.mainPath, { body: { email, name, bumpBlockIds: [t.bumpId] }, headers: UA });
@@ -152,7 +153,7 @@ describe('notifications and the SSE stream', () => {
   }
 
   it('streams new lead and new sale toasts to the right workspace only, via ticket or bearer', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const a = await h.register();
     const b = await h.register();
     const ta = await formTarget(h, a.token);
@@ -174,7 +175,7 @@ describe('notifications and the SSE stream', () => {
   });
 
   it('requires a valid credential: no auth, bad tickets, expired tickets and access tokens passed as tickets are refused', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const a = await h.register();
     expect((await h.app.request('/api/events/stream')).status).toBe(401);
     expect((await h.app.request('/api/events/stream?ticket=garbage')).status).toBe(401);
@@ -205,17 +206,17 @@ describe('notifications and the SSE stream', () => {
 
 describe('platform plumbing', () => {
   it('health, readiness and security headers', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const health = await h.call('GET', '/healthz');
     expect(health.json).toEqual({ status: 'ok' });
     expect(health.headers.get('x-content-type-options')).toBe('nosniff');
     expect(health.headers.get('x-request-id')).toBeTruthy();
     const ready = await h.call('GET', '/readyz');
-    expect(ready.json).toMatchObject({ status: 'ready', migrations: 3 });
+    expect(ready.json).toMatchObject({ status: 'ready', migrations: migrationFiles(h.deps.db.dialect.name).length });
   });
 
   it('unknown API routes return the JSON error model; malformed JSON and unhandled errors are mapped', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const nf = await h.call('GET', '/api/nope', { token: u.token });
     expect(nf.status).toBe(404);
@@ -226,7 +227,7 @@ describe('platform plumbing', () => {
   });
 
   it('CORS allow-list applies to the authenticated API only for listed origins', async () => {
-    const h = makeHarness({ env: { CORS_ORIGINS: 'https://app.example.org' } });
+    const h = await makeHarness({ env: { CORS_ORIGINS: 'https://app.example.org' } });
     const ok = await h.app.request('/api/funnels', { headers: { origin: 'https://app.example.org' } });
     expect(ok.headers.get('access-control-allow-origin')).toBe('https://app.example.org');
     const bad = await h.app.request('/api/funnels', { headers: { origin: 'https://evil.example' } });
@@ -239,7 +240,7 @@ describe('platform plumbing', () => {
     writeFileSync(join(dir, 'index.html'), '<!doctype html><title>app</title>');
     writeFileSync(join(dir, 'assets', 'app.js'), 'console.log(1)');
     writeFileSync(join(dir, '..', 'funnels-secret.txt'), 'top secret');
-    const h = makeHarness({ env: { WEB_DIST: dir } });
+    const h = await makeHarness({ env: { WEB_DIST: dir } });
     const index = await h.app.request('/funnels/abc/builder');
     expect(index.status).toBe(200);
     expect(await index.text()).toContain('<title>app</title>');

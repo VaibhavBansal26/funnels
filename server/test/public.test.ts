@@ -4,13 +4,13 @@ import { checkoutTarget, formTarget, makeFunnel, makeHarness, type Harness } fro
 const UA = { 'user-agent': 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/120 Safari/537.36' };
 
 async function setup() {
-  const h = makeHarness();
+  const h = await makeHarness();
   const u = await h.register();
   const f = await makeFunnel(h, u.token);
   const stepId = f.steps[0].id as string;
   const post = (body: unknown, headers: Record<string, string> = {}, raw?: string) =>
     h.call('POST', '/api/public/events', { body: raw === undefined ? body : undefined, raw, headers: { ...UA, ...headers } });
-  const count = (type?: string) => h.deps.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM events ${type ? `WHERE type = '${type}'` : ''}`)!.n;
+  const count = async (type?: string) => (await h.deps.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM events ${type ? `WHERE type = '${type}'` : ''}`))!.n;
   return { h, u, f, stepId, post, count, view: (visitorId: string, extra: object = {}) => ({ funnelId: f.id, stepId, type: 'page_view', visitorId, ...extra }) };
 }
 
@@ -20,7 +20,7 @@ describe('POST /api/public/events', () => {
     const r = await post({ ...view('v-1'), workspaceId: 'ws_evil', utms: { source: 'google', medium: 'cpc' }, url: 'https://x.test/a' });
     expect(r.status).toBe(202);
     expect(r.json).toEqual({ ok: true, recorded: true });
-    const row = h.deps.db.get<any>('SELECT * FROM events')!;
+    const row = (await h.deps.db.get<any>('SELECT * FROM events'))!;
     expect(row).toMatchObject({ workspace_id: u.wsId, funnel_id: f.id, type: 'page_view', visitor_id: 'v-1', unique_visit: 1 });
     expect(JSON.parse(row.utm_json)).toEqual({ source: 'google', medium: 'cpc' });
   });
@@ -30,7 +30,7 @@ describe('POST /api/public/events', () => {
     await post(view('v-1', { unique: false }));
     await post(view('v-1', { unique: true }));
     await post(view('v-2'));
-    const flags = h.deps.db.all<{ unique_visit: number }>('SELECT unique_visit FROM events ORDER BY rowid').map((r) => r.unique_visit);
+    const flags = (await h.deps.db.all<{ unique_visit: number }>('SELECT unique_visit FROM events ORDER BY id')).map((r) => r.unique_visit);
     expect(flags).toEqual([1, 0, 1]);
   });
 
@@ -47,7 +47,7 @@ describe('POST /api/public/events', () => {
     }
     await h.call('DELETE', `/api/funnels/${f.id}`, { token: u.token });
     expect((await post({ funnelId: f.id, stepId, type: 'page_view', visitorId: 'v' })).json.reason).toBe('unknown_funnel');
-    expect(count()).toBe(0);
+    expect(await count()).toBe(0);
   });
 
   it('rejects malformed payloads with 400 and nothing is stored', async () => {
@@ -67,14 +67,14 @@ describe('POST /api/public/events', () => {
     }
     expect((await post(undefined, {}, '{not json')).json.error.code).toBe('INVALID_JSON');
     expect((await post(undefined, {}, '')).status).toBe(400);
-    expect(count()).toBe(0);
+    expect(await count()).toBe(0);
   });
 
   it('accepts text/plain bodies (sendBeacon)', async () => {
     const { post, view, count } = await setup();
     const r = await post(undefined, { 'content-type': 'text/plain;charset=UTF-8' }, JSON.stringify(view('v-9')));
     expect(r.status).toBe(202);
-    expect(count('page_view')).toBe(1);
+    expect(await count('page_view')).toBe(1);
   });
 
   it('rejects oversized payloads with 413', async () => {
@@ -82,7 +82,7 @@ describe('POST /api/public/events', () => {
     const r = await post(view('v-1', { utms: { source: 'x'.repeat(20_000) } }));
     expect(r.status).toBe(413);
     expect(r.json.error.code).toBe('PAYLOAD_TOO_LARGE');
-    expect(count()).toBe(0);
+    expect(await count()).toBe(0);
   });
 
   it('ignores bots, crawlers, tools and missing user agents', async () => {
@@ -91,7 +91,7 @@ describe('POST /api/public/events', () => {
       const r = await post(view('v-bot'), { 'user-agent': ua });
       expect([ua, r.status, r.json.reason]).toEqual([ua, 202, 'bot']);
     }
-    expect(count()).toBe(0);
+    expect(await count()).toBe(0);
     expect((await post(view('v-human'))).json.recorded).toBe(true);
   });
 
@@ -104,7 +104,7 @@ describe('POST /api/public/events', () => {
     expect((await post(optin('resp-2'))).json.recorded).toBe(true);
     expect((await post(optin())).json.recorded).toBe(true);
     expect((await post(optin())).json.recorded).toBe(true); // no id: cannot dedupe
-    expect(count('optin')).toBe(4);
+    expect(await count('optin')).toBe(4);
     const other = await makeFunnel(h, u.token, { name: 'Other' });
     expect((await post({ funnelId: other.id, stepId: other.steps[0].id, type: 'optin', externalId: 'resp-1' })).json.recorded).toBe(true);
   });
@@ -113,11 +113,11 @@ describe('POST /api/public/events', () => {
     const { post, view, count, f, stepId } = await setup();
     expect((await post(view('v', { preview: true }))).json.reason).toBe('preview');
     expect((await post({ funnelId: f.id, stepId, type: 'page_view' })).json.reason).toBe('no_visitor');
-    expect(count()).toBe(0);
+    expect(await count()).toBe(0);
   });
 
   it('rate limits per IP and funnel with 429 + Retry-After, independent between IPs and funnels', async () => {
-    const h = makeHarness({ env: { PUBLIC_EVENTS_PER_MINUTE: '5' } });
+    const h = await makeHarness({ env: { PUBLIC_EVENTS_PER_MINUTE: '5' } });
     const u = await h.register();
     const f = await makeFunnel(h, u.token);
     const g = await makeFunnel(h, u.token, { name: 'G' });
@@ -148,7 +148,7 @@ describe('public forms', () => {
   const submit = (h: Harness, t: { path: string }, body: unknown, headers: Record<string, string> = {}) => h.call('POST', t.path, { body, headers: { ...UA, ...headers } });
 
   it('creates a lead, an opt-in event, a notification and fires the webhook', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const t = await formTarget(h, u.token);
     await h.call('POST', '/api/webhooks', { token: u.token, body: { url: 'https://hooks.example.com/in', events: ['funnel.optin'] } });
@@ -158,15 +158,15 @@ describe('public forms', () => {
     const leads = (await h.call('GET', '/api/leads', { token: u.token })).json.data;
     expect(leads).toHaveLength(1);
     expect(leads[0]).toMatchObject({ email: 'ada@example.com', name: 'Ada Lovelace', submissions: 1, firstFunnelId: t.funnelId });
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM events WHERE type = ?', 'optin')).toEqual({ n: 1 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM events WHERE type = ?', 'optin')).toEqual({ n: 1 });
     const notes = (await h.call('GET', '/api/notifications', { token: u.token })).json;
     expect(notes.unread).toBe(1);
     expect(notes.data[0]).toMatchObject({ type: 'new_lead', title: 'New lead' });
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM jobs WHERE type = ?', 'webhook.deliver')).toEqual({ n: 1 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM jobs WHERE type = ?', 'webhook.deliver')).toEqual({ n: 1 });
   });
 
   it('dedupes leads by email within a workspace (case-insensitive) but not across workspaces', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const a = await h.register();
     const b = await h.register();
     const ta = await formTarget(h, a.token);
@@ -178,37 +178,37 @@ describe('public forms', () => {
     expect(la).toHaveLength(1);
     expect(la[0]).toMatchObject({ name: 'Ada L.', submissions: 2 });
     expect((await h.call('GET', '/api/leads', { token: b.token })).json.data).toHaveLength(1);
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM events WHERE type = ?', 'optin')).toEqual({ n: 3 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM events WHERE type = ?', 'optin')).toEqual({ n: 3 });
   });
 
   it('is idempotent for the same submission id', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const t = await formTarget(h, u.token);
     const body = { fields: { ...fields, _consent: true }, consent: true, submissionId: 'sub-12345678' };
     expect((await submit(h, t, body)).json.recorded).toBe(true);
     expect((await submit(h, t, body)).json).toMatchObject({ recorded: false, duplicate: true });
     expect((await h.call('GET', '/api/leads', { token: u.token })).json.data[0].submissions).toBe(1);
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM events WHERE type = ?', 'optin')).toEqual({ n: 1 });
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM notifications')).toEqual({ n: 1 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM events WHERE type = ?', 'optin')).toEqual({ n: 1 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM notifications')).toEqual({ n: 1 });
   });
 
   it('honeypot: pretends success and stores nothing', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const t = await formTarget(h, u.token);
     const r = await submit(h, t, { fields: { ...fields }, _hp: 'http://spam.example', consent: true });
     expect(r.status).toBe(200);
     expect(r.json).toEqual({ ok: true, recorded: false });
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM leads')).toEqual({ n: 0 });
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM events')).toEqual({ n: 0 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM leads')).toEqual({ n: 0 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM events')).toEqual({ n: 0 });
   });
 
   it('validates against the block definition: required, formats, lengths, options, consent', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const f = (await h.call('POST', '/api/templates/book-a-call/use', { token: u.token })).json;
-    const doc = h.deps.db.get<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE step_id = ?', f.steps[0].id)!.doc_json;
+    const doc = (await h.deps.db.get<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE step_id = ?', f.steps[0].id))!.doc_json;
     const block = /"id":"(bc\d+)","type":"form"/.exec(doc)![1];
     const t = { path: `/api/public/forms/${f.id}/${f.steps[0].id}/${block}` };
     const ok = { name: 'Ada', email: 'ada@example.com', phone: '+1 (555) 010-9999', topic: 'More leads', notes: 'hello', _consent: true };
@@ -231,12 +231,12 @@ describe('public forms', () => {
     expect(await errs({ notes: 'x'.repeat(5001) })).toEqual(['notes']);
     expect(await errs({}, false)).toEqual(['_consent']);
     expect(await errs({ unexpected: 'dropped', topic: 'More leads' })).toBe(200); // unknown keys ignored
-    const stored = JSON.parse(h.deps.db.get<{ data_json: string }>('SELECT data_json FROM leads')!.data_json);
+    const stored = JSON.parse((await h.deps.db.get<{ data_json: string }>('SELECT data_json FROM leads'))!.data_json);
     expect(stored).not.toHaveProperty('unexpected');
   });
 
   it('accepts url-encoded form posts (no-JS fallback) and rejects bad bodies', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const t = await formTarget(h, u.token);
     const r = await h.call('POST', t.path, { raw: 'name=Ada&email=ada%40example.com&_consent=yes', headers: { ...UA, 'content-type': 'application/x-www-form-urlencoded' } });
@@ -247,7 +247,7 @@ describe('public forms', () => {
   });
 
   it('unknown funnel/step/block and wrong block type are 404', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const t = await formTarget(h, u.token);
     const body = { fields: { ...fields, _consent: true }, consent: true };
@@ -260,12 +260,12 @@ describe('public forms', () => {
   });
 
   it('preview submissions are accepted but not recorded; rate limited per IP', async () => {
-    const h = makeHarness({ env: { PUBLIC_FORMS_PER_MINUTE: '3' } });
+    const h = await makeHarness({ env: { PUBLIC_FORMS_PER_MINUTE: '3' } });
     const u = await h.register();
     const t = await formTarget(h, u.token);
     const r = await submit(h, t, { fields: { ...fields, _consent: true }, consent: true, preview: true });
     expect(r.json).toEqual({ ok: true, recorded: false });
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM leads')).toEqual({ n: 0 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM leads')).toEqual({ n: 0 });
     await submit(h, t, { fields: {} });
     expect((await submit(h, t, { fields: {} })).status).toBe(422);
     const limited = await submit(h, t, { fields: {} });
@@ -278,7 +278,7 @@ describe('public checkout (mock payment provider)', () => {
   const buy = (h: Harness, path: string, body: unknown) => h.call('POST', path, { body, headers: UA });
 
   it('records orders for the main offer and a selected bump, and prices come from the stored block', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const t = await checkoutTarget(h, u.token);
     const r = await buy(h, t.mainPath, { email: 'Buyer@Example.com', name: 'Bea', bumpBlockIds: [t.bumpId], amountCents: 1, price: 0.01, visitorId: 'v1', submissionId: 'sub-order-1' });
@@ -287,13 +287,13 @@ describe('public checkout (mock payment provider)', () => {
     const orders = (await h.call('GET', '/api/orders', { token: u.token })).json.data;
     expect(orders).toHaveLength(2);
     expect(orders[0]).toMatchObject({ email: 'buyer@example.com', provider: 'mock' });
-    expect(h.deps.db.get('SELECT COUNT(*) AS n, SUM(amount_cents) AS s FROM events WHERE type = ?', 'order')).toEqual({ n: 2, s: 11400 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n, SUM(amount_cents) AS s FROM events WHERE type = ?', 'order')).toEqual({ n: 2, s: 11400 });
     expect((await h.call('GET', '/api/leads', { token: u.token })).json.data).toHaveLength(1); // buyers are leads too
     expect((await h.call('GET', '/api/notifications', { token: u.token })).json.data.filter((n: any) => n.type === 'new_sale')).toHaveLength(2);
   });
 
   it('is idempotent per submission id', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const t = await checkoutTarget(h, u.token);
     const body = { email: 'b@example.com', bumpBlockIds: [t.bumpId], submissionId: 'sub-order-2' };
@@ -301,22 +301,22 @@ describe('public checkout (mock payment provider)', () => {
     const second = await buy(h, t.mainPath, body);
     expect(second.json).toMatchObject({ duplicate: true, recorded: false, orderId: first.json.orderId });
     expect(second.json.orders).toHaveLength(2);
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM orders')).toEqual({ n: 2 });
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM events WHERE type = ?', 'order')).toEqual({ n: 2 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM orders')).toEqual({ n: 2 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM events WHERE type = ?', 'order')).toEqual({ n: 2 });
   });
 
   it('declined cards record nothing', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const t = await checkoutTarget(h, u.token);
     const r = await buy(h, t.mainPath, { email: 'decline@example.com' });
     expect(r.status).toBe(402);
     expect(r.json.error).toMatchObject({ code: 'PAYMENT_FAILED', details: { reason: 'card_declined' } });
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM orders')).toEqual({ n: 0 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM orders')).toEqual({ n: 0 });
   });
 
   it('validates email, bumps and honeypot; bumps cannot be bought alone', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const t = await checkoutTarget(h, u.token);
     expect((await buy(h, t.mainPath, { email: 'nope' })).status).toBe(422);
@@ -326,11 +326,11 @@ describe('public checkout (mock payment provider)', () => {
     expect((await buy(h, bumpPath, { email: 'a@b.co' })).json.error.code).toBe('NOT_PURCHASABLE');
     expect((await buy(h, t.mainPath, { email: 'a@b.co', _hp: 'bot' })).json).toMatchObject({ recorded: false });
     expect((await buy(h, t.mainPath, { email: 'a@b.co', preview: true })).json).toMatchObject({ recorded: false });
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM orders')).toEqual({ n: 0 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM orders')).toEqual({ n: 0 });
   });
 
   it('one-click upsell reuses the identity of an earlier order in the same funnel only', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const t = await checkoutTarget(h, u.token);
     const main = await buy(h, t.mainPath, { email: 'buyer@example.com', name: 'Bea' });
@@ -338,7 +338,7 @@ describe('public checkout (mock payment provider)', () => {
     expect((await buy(h, t.upsellPath, { previousOrderId: 'ord_nope' })).json.error.code).toBe('PREVIOUS_ORDER_REQUIRED');
     const up = await buy(h, t.upsellPath, { previousOrderId: main.json.orderId, email: 'someone-else@example.com' });
     expect(up.status).toBe(200);
-    const row = h.deps.db.get<any>('SELECT * FROM orders WHERE is_upsell = 1')!;
+    const row = (await h.deps.db.get<any>('SELECT * FROM orders WHERE is_upsell = 1'))!;
     expect(row).toMatchObject({ email: 'buyer@example.com', name: 'Bea', parent_order_id: main.json.orderId, amount_cents: 9700 });
     // an order of another workspace's funnel cannot be referenced
     const other = await h.register();

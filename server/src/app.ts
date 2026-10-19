@@ -56,9 +56,9 @@ export function createApp(deps: Deps): Hono {
   app.use('*', hostRouting(deps));
 
   app.get('/healthz', (c) => c.json({ status: 'ok' }));
-  app.get('/readyz', (c) => {
-    deps.db.get('SELECT 1');
-    return c.json({ status: 'ready', eventBuffer: deps.events.depth, migrations: deps.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations')!.n });
+  app.get('/readyz', async (c) => {
+    await deps.db.get('SELECT 1');
+    return c.json({ status: 'ready', eventBuffer: deps.events.depth, migrations: (await deps.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations'))!.n });
   });
 
   app.route('/', edgeRoutes(deps));

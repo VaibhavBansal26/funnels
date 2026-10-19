@@ -1,5 +1,5 @@
 import { createBuilder, documentOf, field, type Block, type PageDocument } from '../blocks/index.js';
-import type { Db } from '../db/db.js';
+import type { Db } from '../db/index.js';
 
 export interface SeedTemplate {
   slug: string;
@@ -196,19 +196,28 @@ function newsletter(): SeedTemplate {
 
 export const SEED_TEMPLATES: SeedTemplate[] = [leadMagnet(), webinar(), launch(), salesFunnel(), thankYou(), bookCall(), newsletter()];
 
-/** Idempotent: inserts missing categories and templates by slug, never overwrites edits made by platform admins. */
-export function seedTemplates(db: Db, now = new Date()): { inserted: number } {
+/**
+ * Idempotent: inserts missing categories and templates by slug, never overwrites edits made by platform admins.
+ * Ids are deterministic and every insert is `ON CONFLICT DO NOTHING`, so several replicas booting at once cannot collide.
+ */
+export async function seedTemplates(db: Db, now = new Date()): Promise<{ inserted: number }> {
   const at = now.toISOString();
-  let inserted = 0;
-  db.tx(() => {
-    CATEGORIES.forEach((c, i) => db.run('INSERT OR IGNORE INTO template_categories (id, name, slug, position) VALUES (?, ?, ?, ?)', `cat_${c.slug}`, c.name, c.slug, i));
+  const skip = db.dialect.onConflictDoNothing();
+  return db.transaction(async (tx) => {
+    let inserted = 0;
+    for (const [i, c] of CATEGORIES.entries()) {
+      await tx.run(`INSERT INTO template_categories (id, name, slug, position) VALUES (?, ?, ?, ?)${skip}`, `cat_${c.slug}`, c.name, c.slug, i);
+    }
     for (const t of SEED_TEMPLATES) {
-      if (db.get('SELECT 1 FROM templates WHERE slug = ?', t.slug)) continue;
+      if (await tx.get('SELECT 1 FROM templates WHERE slug = ?', t.slug)) continue;
       const id = `tpl_${t.slug}`;
-      db.run('INSERT INTO templates (id, slug, name, description, category_id, base_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', id, t.slug, t.name, t.description, `cat_${t.category}`, t.basePath, at, at);
-      t.steps.forEach((s, i) => db.run('INSERT INTO template_steps (id, template_id, name, base_path, position, doc_json) VALUES (?, ?, ?, ?, ?, ?)', `${id}_${i + 1}`, id, s.name, s.path, i + 1, JSON.stringify(s.doc)));
+      const r = await tx.run(`INSERT INTO templates (id, slug, name, description, category_id, base_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)${skip}`, id, t.slug, t.name, t.description, `cat_${t.category}`, t.basePath, at, at);
+      if (r.changes === 0) continue;
+      for (const [i, s] of t.steps.entries()) {
+        await tx.run(`INSERT INTO template_steps (id, template_id, name, base_path, position, doc_json) VALUES (?, ?, ?, ?, ?, ?)${skip}`, `${id}_${i + 1}`, id, s.name, s.path, i + 1, JSON.stringify(s.doc));
+      }
       inserted++;
     }
+    return { inserted };
   });
-  return { inserted };
 }

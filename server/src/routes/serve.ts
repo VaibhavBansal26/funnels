@@ -25,10 +25,10 @@ const hostOf = (c: Context, trustProxy: boolean): string => {
 // Paths that stay reachable on customer domains because published pages call them.
 const PASSTHROUGH = /^\/(api\/public\/|beacon\.js$|healthz$|readyz$)/;
 
-function pageFor(deps: Deps, step: StepRow): { html: string; checksum: string } | null {
+async function pageFor(deps: Deps, step: StepRow): Promise<{ html: string; checksum: string } | null> {
   const cached = deps.pageCache.get(step.id);
   if (cached) return cached;
-  const row = deps.db.get<PageRow>('SELECT html, checksum FROM step_pages WHERE step_id = ?', step.id);
+  const row = await deps.db.get<PageRow>('SELECT html, checksum FROM step_pages WHERE step_id = ?', step.id);
   if (!row) return null;
   deps.pageCache.set(step.id, { html: row.html, checksum: row.checksum });
   return { html: row.html, checksum: row.checksum };
@@ -46,8 +46,8 @@ function trackingCookies(deps: Deps, c: Context, funnelId: string, stepId: strin
   for (const [k, v] of Object.entries(utms ?? {})) setCookie(c, `utm_${k}`, encodeURIComponent(v), base);
 }
 
-function sendPage(deps: Deps, c: Context, step: StepRow, status = 200): Response {
-  const page = pageFor(deps, step);
+async function sendPage(deps: Deps, c: Context, step: StepRow, status = 200): Promise<Response> {
+  const page = await pageFor(deps, step);
   if (!page) return messagePage(404, 'Page not found', 'This page has no content yet.');
   trackingCookies(deps, c, step.funnel_id, step.id);
   const etag = `"${page.checksum}"`;
@@ -64,28 +64,28 @@ export type Resolution =
   | { kind: 'missing' };
 
 /** Maps (hostname, path, query) to what a visitor should get. Shared by the in-process host router and the signed edge endpoint. */
-export function resolveLive(deps: Deps, host: string, pathname: string, search: string): Resolution {
-  const domain = host ? deps.db.get<DomainRow>('SELECT * FROM domains WHERE hostname = ?', host) : undefined;
+export async function resolveLive(deps: Deps, host: string, pathname: string, search: string): Promise<Resolution> {
+  const domain = host ? await deps.db.get<DomainRow>('SELECT * FROM domains WHERE hostname = ?', host) : undefined;
   if (!domain) return { kind: 'none' };
   // A registered hostname never falls through to the app (which would serve the admin UI on a customer's domain).
   if (domain.status !== 'active') return { kind: 'inactive' };
   const key = pathKey(pathname);
-  const step = deps.db.get<StepRow>(
+  const step = await deps.db.get<StepRow>(
     `SELECT s.* FROM steps s JOIN funnels f ON f.id = s.funnel_id
      WHERE f.domain_id = ? AND f.status = 'live' AND f.deleted_at IS NULL AND s.path_key = ? ORDER BY f.updated_at DESC LIMIT 1`,
     domain.id, key,
   );
   // Canonical form: a different case or trailing slash is a permanent redirect to the stored path.
   if (step) return pathname !== step.base_path ? { kind: 'redirect', location: step.base_path + search } : { kind: 'page', status: 200, step };
-  const liveStep = (id: string | null): StepRow | undefined =>
+  const liveStep = async (id: string | null): Promise<StepRow | undefined> =>
     id
       ? deps.db.get<StepRow>(`SELECT s.* FROM steps s JOIN funnels f ON f.id = s.funnel_id WHERE s.id = ? AND f.domain_id = ? AND f.status = 'live' AND f.deleted_at IS NULL`, id, domain.id)
       : undefined;
   if (key === '/') {
-    const home = liveStep(domain.default_home_step_id);
+    const home = await liveStep(domain.default_home_step_id);
     if (home) return { kind: 'page', status: 200, step: home };
   }
-  const notFound = liveStep(domain.default_404_step_id);
+  const notFound = await liveStep(domain.default_404_step_id);
   return notFound ? { kind: 'page', status: 404, step: notFound } : { kind: 'missing' };
 }
 
@@ -93,11 +93,11 @@ export function resolveLive(deps: Deps, host: string, pathname: string, search: 
 export function hostRouting(deps: Deps): MiddlewareHandler {
   return async (c, next) => {
     const host = hostOf(c, deps.config.TRUST_PROXY);
-    if (!host || !deps.db.get('SELECT 1 FROM domains WHERE hostname = ?', host)) return next();
+    if (!host || !(await deps.db.get('SELECT 1 FROM domains WHERE hostname = ?', host))) return next();
     const url = new URL(c.req.url);
     if (PASSTHROUGH.test(url.pathname)) return next();
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD') return messagePage(405, 'Method not allowed', 'This page only accepts GET requests.');
-    const r = resolveLive(deps, host, url.pathname, url.search);
+    const r = await resolveLive(deps, host, url.pathname, url.search);
     switch (r.kind) {
       case 'redirect':
         return c.redirect(r.location, 301);
@@ -120,16 +120,16 @@ export function previewRoutes(deps: Deps): Hono {
     const claims = token ? await verifyPreviewToken(deps.config, token, funnelId, deps.now()) : null;
     const noStore = { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-robots-tag': 'noindex, nofollow' };
     if (!claims) return messagePage(401, 'Preview link expired', 'Open the preview again from the builder to get a fresh link.');
-    const funnel = deps.db.get<FunnelRow>('SELECT * FROM funnels WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL', funnelId, claims.workspaceId);
+    const funnel = await deps.db.get<FunnelRow>('SELECT * FROM funnels WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL', funnelId, claims.workspaceId);
     if (!funnel) return messagePage(404, 'Funnel not found', 'This funnel no longer exists.');
-    const steps = listSteps(deps.db, funnel.workspace_id, funnel.id);
+    const steps = await listSteps(deps.db, funnel.workspace_id, funnel.id);
     const prefix = `/preview/${encodeURIComponent(funnel.id)}`;
     const rest = new URL(c.req.url).pathname.slice(prefix.length) || '/';
     const step = rest === '/' && !steps.some((s) => s.path_key === '/') ? steps[0] : steps.find((s) => s.path_key === pathKey(rest));
     if (!step) return messagePage(404, 'Step not found', 'No step of this funnel uses this path.');
-    const page = deps.db.get<PageRow>('SELECT * FROM step_pages WHERE step_id = ?', step.id);
+    const page = await deps.db.get<PageRow>('SELECT * FROM step_pages WHERE step_id = ?', step.id);
     if (!page) return messagePage(404, 'Step not found', 'This step has no content yet.');
-    const workspaceScripts = deps.db.get<{ v: number }>('SELECT allow_custom_scripts AS v FROM workspaces WHERE id = ?', funnel.workspace_id)?.v === 1;
+    const workspaceScripts = (await deps.db.get<{ v: number }>('SELECT allow_custom_scripts AS v FROM workspaces WHERE id = ?', funnel.workspace_id))?.v === 1;
     const { html } = renderStep(deps, {
       funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'preview',
       hrefFor: (s) => `${prefix}${s.base_path}?token=${encodeURIComponent(token)}`,

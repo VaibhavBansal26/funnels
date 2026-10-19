@@ -10,7 +10,7 @@ export function aiRoutes(deps: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
   r.use('*', authenticate(deps));
   r.use('*', bodyLimit({ maxSize: 256 * 1024, onError: () => { throw new AppError(413, 'PAYLOAD_TOO_LARGE', 'The request body is too large'); } }));
-  r.get('/status', (c) => c.json(ai.usage(deps, authOf(c).workspaceId)));
+  r.get('/status', async (c) => c.json(await ai.usage(deps, authOf(c).workspaceId)));
   r.post('/funnel', async (c) => c.json(await ai.generateFunnel(deps, authOf(c), await bodyOf(c, ai.FunnelRequest)), 201));
   r.post('/rewrite', async (c) => c.json(await ai.rewriteCopy(deps, authOf(c), await bodyOf(c, ai.RewriteRequest))));
   r.post('/headlines', async (c) => c.json(await ai.headlineVariants(deps, authOf(c), await bodyOf(c, ai.HeadlineRequest))));

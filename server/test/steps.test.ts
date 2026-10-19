@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { copyPath, isValidPath, pathKey, slugPath, suggestPaths } from '../src/services/paths.js';
-import { activeDomain, makeFunnel, makeHarness } from './helpers.js';
+import { activeDomain, makeFunnel, makeHarness, type Harness } from './helpers.js';
 
 describe('path regex', () => {
   const accept = ['/', '/a', '/offer-1', '/a/', '/Offer', '/%20x', '/abc-def-123', '/a1', '/x!', '/%E2%82%AC'];
@@ -30,7 +30,7 @@ describe('path regex', () => {
 
 describe('steps', () => {
   it('creates, updates, duplicates and deletes steps with contiguous positions', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const f = await makeFunnel(h, u.token, { name: 'Flow' });
     const base = `/api/funnels/${f.id}/steps`;
@@ -54,25 +54,25 @@ describe('steps', () => {
   });
 
   it('the page content of a new step renders into the cached html with the settings', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const f = await makeFunnel(h, u.token);
     const s = f.steps[0];
     await h.call('PATCH', `/api/funnels/${f.id}/steps/${s.id}`, { token: u.token, body: { title: 'My Title', seo_description: 'Desc' } });
-    const html = (h.deps.db.get<{ html: string }>('SELECT html FROM step_pages WHERE step_id = ?', s.id))!.html;
+    const html = (await h.deps.db.get<{ html: string }>('SELECT html FROM step_pages WHERE step_id = ?', s.id))!.html;
     expect(html).toContain('<title>My Title</title>');
     expect(html).toContain('content="Desc"');
   });
 
   it('refuses to delete the last step', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const f = await makeFunnel(h, u.token);
     expect((await h.call('DELETE', `/api/funnels/${f.id}/steps/${f.steps[0].id}`, { token: u.token })).json.error.code).toBe('LAST_STEP');
   });
 
   it('only admins edit step tracking code', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const owner = await h.register();
     const member = await h.member(owner, 'member');
     const f = await makeFunnel(h, owner.token);
@@ -82,22 +82,22 @@ describe('steps', () => {
   });
 
   it('tracking code is only injected when the workspace allows custom scripts', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const owner = await h.register();
     const f = await makeFunnel(h, owner.token);
     await h.call('PATCH', `/api/funnels/${f.id}/steps/${f.steps[0].id}`, { token: owner.token, body: { header_tracking_code: '<script>HEADCODE</script>' } });
-    const html = () => h.deps.db.get<{ html: string }>('SELECT html FROM step_pages WHERE step_id = ?', f.steps[0].id)!.html;
-    expect(html()).not.toContain('HEADCODE');
+    const html = async () => (await h.deps.db.get<{ html: string }>('SELECT html FROM step_pages WHERE step_id = ?', f.steps[0].id))!.html;
+    expect(await html()).not.toContain('HEADCODE');
     await h.call('PATCH', '/api/workspace', { token: owner.token, body: { allowCustomScripts: true } });
-    expect(html()).toContain('HEADCODE');
+    expect(await html()).toContain('HEADCODE');
     await h.call('PATCH', '/api/workspace', { token: owner.token, body: { allowCustomScripts: false } });
-    expect(html()).not.toContain('HEADCODE');
+    expect(await html()).not.toContain('HEADCODE');
   });
 });
 
 describe('path uniqueness', () => {
   it('within a funnel: create, update and duplicate collide with suggestions (case/trailing slash insensitive)', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const f = await makeFunnel(h, u.token, { name: 'Flow', base_path: '/start' });
     const base = `/api/funnels/${f.id}/steps`;
@@ -114,7 +114,7 @@ describe('path uniqueness', () => {
   });
 
   it('across a domain: other funnels block create/update/duplicate and validate-path reports them', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const dom = await activeDomain(h, u.token);
     const a = await makeFunnel(h, u.token, { name: 'A', base_path: '/promo' });
@@ -143,7 +143,7 @@ describe('path uniqueness', () => {
   });
 
   it('duplicating a step on a domain picks a path free on the whole domain', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const dom = await activeDomain(h, u.token);
     const a = await makeFunnel(h, u.token, { name: 'A', base_path: '/a' });
@@ -158,7 +158,7 @@ describe('path uniqueness', () => {
 
 describe('conflict resolution on domain attach', () => {
   async function setup() {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const dom = await activeDomain(h, u.token);
     const a = await makeFunnel(h, u.token, { name: 'A', base_path: '/promo' });
@@ -211,7 +211,7 @@ describe('conflict resolution on domain attach', () => {
   });
 
   it('creating a funnel straight onto a domain uses the same resolution', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const dom = await activeDomain(h, u.token);
     const a = await makeFunnel(h, u.token, { name: 'A', base_path: '/promo', domain_id: dom });
@@ -222,13 +222,13 @@ describe('conflict resolution on domain attach', () => {
     const ok = await h.call('POST', '/api/funnels', { token: u.token, body: { name: 'B', base_path: '/promo', domain_id: dom, conflicts: [{ path: '/promo', resolved_path: '/promo-1001' }] } });
     expect(ok.status).toBe(201);
     expect(ok.json.steps[0].path).toBe('/promo-1001');
-    expect(h.deps.db.get('SELECT COUNT(*) AS n FROM funnels')).toEqual({ n: 2 }); // the failed attempt left nothing behind
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM funnels')).toEqual({ n: 2 }); // the failed attempt left nothing behind
   });
 });
 
 describe('reorder', () => {
   async function setup() {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const f = await makeFunnel(h, u.token, { name: 'R' });
     const base = `/api/funnels/${f.id}/steps`;
@@ -274,9 +274,9 @@ describe('reorder', () => {
 
   it('re-renders next-step links after reordering', async () => {
     const { h, s, put } = await setup();
-    const html = (i: number) => h.deps.db.get<{ html: string }>('SELECT html FROM step_pages WHERE step_id = ?', s[i].id)!.html;
-    expect(html(0)).toContain('href="/b">Continue');
+    const html = async (i: number) => (await h.deps.db.get<{ html: string }>('SELECT html FROM step_pages WHERE step_id = ?', s[i].id))!.html;
+    expect(await html(0)).toContain('href="/b">Continue');
     await put([{ stepId: s[0].id, order: 2 }, { stepId: s[1].id, order: 1 }, { stepId: s[2].id, order: 3 }, { stepId: s[3].id, order: 4 }]);
-    expect(html(0)).toContain('href="/c">Continue');
+    expect(await html(0)).toContain('href="/c">Continue');
   });
 });

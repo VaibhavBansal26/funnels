@@ -1,6 +1,6 @@
 # Funnels
 
-Build, publish and measure marketing funnels: a block-based page builder, templates, custom domains with DNS verification, public serving, analytics, leads and orders, signed webhooks and AI assistance. TypeScript, Hono, `node:sqlite`, React 19.
+Build, publish and measure marketing funnels: a block-based page builder, templates, custom domains with DNS verification, public serving, analytics, leads and orders, signed webhooks and AI assistance. TypeScript, Hono, SQLite or PostgreSQL, React 19.
 
 ## Run
 
@@ -19,14 +19,26 @@ npm run build && NODE_ENV=production JWT_SECRET=<32+ chars> npm start   # serves
 docker build -t funnels . && docker run -p 3000:3000 -v funnels-data:/data -e JWT_SECRET=... funnels
 ```
 
-Configuration is environment-only, see `.env.example`. Nothing is required in development.
+### Databases
+
+Zero config uses SQLite (`node:sqlite`, file at `DATABASE_PATH`). Set `DATABASE_URL=postgres://user:pass@host:5432/db` and the same code runs on PostgreSQL (tested on 17 and 18) with a `pg` connection pool; migrations are applied at boot under an advisory lock, so several replicas can start together.
+
+```bash
+# PostgreSQL locally (needs Docker): app + postgres:17
+JWT_SECRET=$(openssl rand -base64 48) docker compose up --build        # http://localhost:3000
+# SQLite in Docker (single replica): docker compose --profile sqlite up --build app-sqlite
+# Without Docker, against any Postgres you have:
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/funnels npm run dev --prefix server
+```
+
+Configuration is environment-only, see `.env.example` and `docs/CONFIGURATION.md`. Nothing is required in development.
 
 ## Layout
 
 ```
 server/  Hono API, services, repositories, SQL migrations, block renderer, tests
 web/     React app, builder, tests
-docs/    ARCHITECTURE, APPROACH, AI, TESTING, MIGRATION-NOTES
+docs/    ARCHITECTURE, APPROACH, AI, TESTING, PERFORMANCE, MIGRATION-NOTES
 ```
 
 ## Try it

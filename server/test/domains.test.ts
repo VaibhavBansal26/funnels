@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeDomain, makeFunnel, makeHarness, type Harness } from './helpers.js';
+import { activeDomain, failOn, makeFunnel, makeHarness, type Harness } from './helpers.js';
 
 async function newDomain(h: Harness, token: string, hostname = 'shop.example.com') {
   const r = await h.call('POST', '/api/domains', { token, body: { hostname } });
@@ -13,7 +13,7 @@ const verify = (h: Harness, token: string, id: string) => h.call('POST', `/api/d
 
 describe('domain registry', () => {
   it('adds a pending domain with DNS instructions', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const d = await newDomain(h, u.token, 'Shop.Example.COM');
     expect(d).toMatchObject({ hostname: 'shop.example.com', status: 'pending', funnelCount: 0 });
@@ -24,7 +24,7 @@ describe('domain registry', () => {
   });
 
   it('validates hostnames and keeps them globally unique', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const a = await h.register();
     const b = await h.register();
     const add = (hostname: string, token = a.token) => h.call('POST', '/api/domains', { token, body: { hostname } });
@@ -44,7 +44,7 @@ describe('domain registry', () => {
 
 describe('DNS verification states', () => {
   it('pending with a reason until both records match, then active', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const d = await newDomain(h, u.token);
     let r = (await verify(h, u.token, d.id)).json;
@@ -73,7 +73,7 @@ describe('DNS verification states', () => {
   });
 
   it('a DNS resolver error leaves the status untouched and reports a retryable error', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const d = await newDomain(h, u.token);
     h.dns.fail = true;
@@ -85,7 +85,7 @@ describe('DNS verification states', () => {
   });
 
   it('pending domains fail after the timeout and can recover', async () => {
-    const h = makeHarness({ env: { DOMAIN_VERIFY_TIMEOUT_HOURS: '48', ACCESS_TOKEN_TTL_SECONDS: '864000' } });
+    const h = await makeHarness({ env: { DOMAIN_VERIFY_TIMEOUT_HOURS: '48', ACCESS_TOKEN_TTL_SECONDS: '864000' } });
     const u = await h.register();
     const d = await newDomain(h, u.token);
     h.clock.advance(47 * 3600_000);
@@ -100,7 +100,7 @@ describe('DNS verification states', () => {
   });
 
   it('an active domain that loses its DNS becomes failed and its funnels revert to test in one step', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const dom = await activeDomain(h, u.token);
     const f1 = await makeFunnel(h, u.token, { name: 'One', base_path: '/one' });
@@ -115,7 +115,7 @@ describe('DNS verification states', () => {
   });
 
   it('active domains stay active across re-verification', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const dom = await activeDomain(h, u.token);
     const first = (await h.call('GET', `/api/domains/${dom}`, { token: u.token })).json;
@@ -128,14 +128,14 @@ describe('DNS verification states', () => {
 
 describe('background re-verification (job queue)', () => {
   it('polls pending domains with backoff until active', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const d = await newDomain(h, u.token);
     expect(await h.worker.tick()).toBe(0); // not due yet
     h.clock.advance(61_000);
     expect(await h.worker.tick()).toBe(1);
     expect((await h.call('GET', `/api/domains/${d.id}`, { token: u.token })).json.status).toBe('pending');
-    const queued = h.deps.db.all<{ run_at: number }>(`SELECT run_at FROM jobs WHERE type = 'domain.verify' AND status = 'queued'`);
+    const queued = await h.deps.db.all<{ run_at: number }>(`SELECT run_at FROM jobs WHERE type = 'domain.verify' AND status = 'queued'`);
     expect(queued).toHaveLength(1); // exactly one pending job per domain (dedupe)
     expect(queued[0]!.run_at - h.clock.now().getTime()).toBe(120_000); // backoff doubled
     dnsOk(h, d);
@@ -149,7 +149,7 @@ describe('background re-verification (job queue)', () => {
 
 describe('deleting a domain', () => {
   async function withFunnels() {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const dom = await activeDomain(h, u.token);
     const f1 = await makeFunnel(h, u.token, { name: 'One', base_path: '/one' });
@@ -167,7 +167,7 @@ describe('deleting a domain', () => {
 
   it('is atomic: when the delete fails the funnels are left exactly as they were', async () => {
     const { h, u, dom, f1, f2 } = await withFunnels();
-    h.deps.db.exec(`CREATE TRIGGER block_domain_delete BEFORE DELETE ON domains BEGIN SELECT RAISE(ABORT, 'simulated failure'); END`);
+    await failOn(h.deps.db, 'domains', 'DELETE');
     const r = await h.call('DELETE', `/api/domains/${dom}`, { token: u.token });
     expect(r.status).toBe(500);
     for (const f of [f1, f2]) expect((await h.call('GET', `/api/funnels/${f.id}`, { token: u.token })).json).toMatchObject({ status: 'live', domain: { id: dom } });
@@ -176,7 +176,7 @@ describe('deleting a domain', () => {
 
   it('is atomic when the status change of a lost domain fails midway', async () => {
     const { h, u, dom, f1 } = await withFunnels();
-    h.deps.db.exec(`CREATE TRIGGER block_domain_update BEFORE UPDATE OF status ON domains BEGIN SELECT RAISE(ABORT, 'simulated failure'); END`);
+    await failOn(h.deps.db, 'domains', 'UPDATE', 'status');
     h.dns.cname.clear();
     expect((await verify(h, u.token, dom)).status).toBe(500);
     expect((await h.call('GET', `/api/funnels/${f1.id}`, { token: u.token })).json).toMatchObject({ status: 'live', domain: { id: dom } });
@@ -185,7 +185,7 @@ describe('deleting a domain', () => {
 
 describe('default home and 404 pages', () => {
   it('assigns steps of funnels on the domain and clears them when the step goes away', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const u = await h.register();
     const dom = await activeDomain(h, u.token);
     const f = await makeFunnel(h, u.token, { name: 'F', base_path: '/f' });

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Deps } from '../deps.js';
 import { newId } from '../util/ids.js';
 import { sanitizeUtms } from './publicblocks.js';
+import type { EventRow } from './eventbuffer.js';
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 
@@ -31,31 +32,34 @@ export interface EventResult {
   reason?: 'bot' | 'unknown_funnel' | 'duplicate' | 'preview' | 'no_visitor';
 }
 
-export function recordPublicEvent(deps: Deps, input: z.infer<typeof PublicEventInput>, userAgent: string | undefined): EventResult {
+export async function recordPublicEvent(deps: Deps, input: z.infer<typeof PublicEventInput>, userAgent: string | undefined): Promise<EventResult> {
   if (isBot(userAgent)) return { ok: true, recorded: false, reason: 'bot' };
   if (input.preview) return { ok: true, recorded: false, reason: 'preview' };
   // The workspace is always derived from the funnel; unknown, trashed or mismatched ids are silently ignored.
-  const funnel = deps.db.get<{ id: string; workspace_id: string }>('SELECT id, workspace_id FROM funnels WHERE id = ? AND deleted_at IS NULL', input.funnelId);
-  const step = funnel ? deps.db.get<{ id: string }>('SELECT id FROM steps WHERE id = ? AND funnel_id = ?', input.stepId, input.funnelId) : undefined;
+  const funnel = await deps.db.get<{ id: string; workspace_id: string }>('SELECT id, workspace_id FROM funnels WHERE id = ? AND deleted_at IS NULL', input.funnelId);
+  const step = funnel ? await deps.db.get<{ id: string }>('SELECT id FROM steps WHERE id = ? AND funnel_id = ?', input.stepId, input.funnelId) : undefined;
   if (!funnel || !step) return { ok: true, recorded: false, reason: 'unknown_funnel' };
 
   const at = deps.now().toISOString();
   const utm = JSON.stringify(sanitizeUtms(input.utms));
-  const row = (type: 'page_view' | 'optin', unique: number, external: string | null) => ({
+  const row = (type: 'page_view' | 'optin', unique: number, external: string | null): EventRow => ({
     id: newId('evt'), workspace_id: funnel.workspace_id, funnel_id: funnel.id, step_id: step.id, type, visitor_id: input.visitorId ?? null,
-    unique_visit: unique, external_id: external, utm_json: utm, url: input.url ?? null, created_at: at,
+    unique_visit: unique, lead_id: null, order_id: null, external_id: external, amount_cents: 0, currency: null, utm_json: utm, url: input.url ?? null, created_at: at,
   });
   if (input.type === 'page_view') {
     if (!input.visitorId) return { ok: true, recorded: false, reason: 'no_visitor' };
     // "Unique" is decided by the server from history (stored and still-queued rows), not by the client's claim.
-    const seen = deps.events.hasQueuedView(funnel.id, step.id, input.visitorId) || deps.db.get('SELECT 1 FROM events WHERE funnel_id = ? AND step_id = ? AND type = ? AND visitor_id = ? LIMIT 1', funnel.id, step.id, 'page_view', input.visitorId);
-    deps.events.add(row('page_view', seen ? 0 : 1, null));
+    // The queue is consulted after the database read and nothing awaits before `add`, so two concurrent first views cannot both be unique.
+    const stored = await deps.db.get('SELECT 1 FROM events WHERE funnel_id = ? AND step_id = ? AND type = ? AND visitor_id = ? LIMIT 1', funnel.id, step.id, 'page_view', input.visitorId);
+    const seen = stored !== undefined || deps.events.hasQueuedView(funnel.id, step.id, input.visitorId);
+    await deps.events.add(row('page_view', seen ? 0 : 1, null));
     return { ok: true, recorded: true };
   }
   const external = input.externalId ? `ext:${input.externalId}` : null;
-  if (external && (deps.events.hasQueuedExternal(funnel.id, external) || deps.db.get('SELECT 1 FROM events WHERE funnel_id = ? AND type = ? AND external_id = ?', funnel.id, 'optin', external))) {
-    return { ok: true, recorded: false, reason: 'duplicate' };
+  if (external) {
+    const stored = await deps.db.get('SELECT 1 FROM events WHERE funnel_id = ? AND type = ? AND external_id = ?', funnel.id, 'optin', external);
+    if (stored !== undefined || deps.events.hasQueuedExternal(funnel.id, external)) return { ok: true, recorded: false, reason: 'duplicate' };
   }
-  deps.events.add(row('optin', 0, external));
+  await deps.events.add(row('optin', 0, external));
   return { ok: true, recorded: true };
 }

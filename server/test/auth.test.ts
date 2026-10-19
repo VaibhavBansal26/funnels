@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hashPassword, verifyPassword } from '../src/auth/password.js';
 import { signAccessToken, verifyAccessToken } from '../src/auth/tokens.js';
-import { makeHarness } from './helpers.js';
+import { makeHarness, type Harness } from './helpers.js';
 
 describe('password hashing', () => {
   it('hashes with a random salt and verifies', async () => {
@@ -17,7 +17,7 @@ describe('password hashing', () => {
 
 describe('auth', () => {
   it('registers an owner with a workspace and returns a usable token', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const r = await h.call('POST', '/api/auth/register', { body: { email: 'Ann@Example.test', password: 'long-enough-pw', name: 'Ann' } });
     expect(r.status).toBe(201);
     expect(r.json.user).toMatchObject({ email: 'ann@example.test', role: 'owner' });
@@ -27,7 +27,7 @@ describe('auth', () => {
   });
 
   it('rejects duplicate emails (case-insensitive), short passwords and bad emails', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     await h.register('dup@example.test');
     expect((await h.call('POST', '/api/auth/register', { body: { email: 'DUP@example.test', password: 'long-enough-pw', name: 'x' } })).json.error.code).toBe('EMAIL_TAKEN');
     expect((await h.call('POST', '/api/auth/register', { body: { email: 'a@b.test', password: 'short', name: 'x' } })).status).toBe(400);
@@ -36,7 +36,7 @@ describe('auth', () => {
   });
 
   it('logs in, and treats wrong password and unknown email identically', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     await h.register('login@example.test');
     const ok = await h.call('POST', '/api/auth/login', { body: { email: 'login@example.test', password: 'correct horse battery' } });
     expect(ok.status).toBe(200);
@@ -48,7 +48,7 @@ describe('auth', () => {
   });
 
   it('rejects missing, malformed, tampered, wrong-use and expired tokens', async () => {
-    const h = makeHarness({ env: { ACCESS_TOKEN_TTL_SECONDS: String(12 * 3600) } });
+    const h = await makeHarness({ env: { ACCESS_TOKEN_TTL_SECONDS: String(12 * 3600) } });
     const u = await h.register();
     expect((await h.call('GET', '/api/funnels')).status).toBe(401);
     expect((await h.call('GET', '/api/funnels', { token: 'garbage' })).status).toBe(401);
@@ -64,7 +64,7 @@ describe('auth', () => {
   });
 
   it('a deleted user token stops working', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const owner = await h.register();
     const m = await h.member(owner, 'member');
     expect((await h.call('GET', '/api/auth/me', { token: m.token })).status).toBe(200);
@@ -73,7 +73,7 @@ describe('auth', () => {
   });
 
   it('rate limits login attempts with 429 and Retry-After', async () => {
-    const h = makeHarness({ env: { AUTH_ATTEMPTS_PER_MINUTE: '3' } });
+    const h = await makeHarness({ env: { AUTH_ATTEMPTS_PER_MINUTE: '3' } });
     const attempt = () => h.call('POST', '/api/auth/login', { body: { email: 'x@example.test', password: 'bad' } });
     expect((await attempt()).status).toBe(401);
     await attempt();
@@ -89,7 +89,7 @@ describe('auth', () => {
 
 describe('roles', () => {
   it('only owners manage members and workspace settings', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const owner = await h.register();
     const admin = await h.member(owner, 'admin');
     const member = await h.member(owner, 'member');
@@ -102,7 +102,7 @@ describe('roles', () => {
   });
 
   it('members cannot delete funnels, manage domains or webhooks; admins can', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const owner = await h.register();
     const admin = await h.member(owner, 'admin');
     const member = await h.member(owner, 'member');
@@ -118,7 +118,7 @@ describe('roles', () => {
   });
 
   it('only owners purge; the owner role is protected', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const owner = await h.register();
     const admin = await h.member(owner, 'admin');
     const f = (await h.call('POST', '/api/funnels', { token: admin.token, body: { name: 'x' } })).json;
@@ -131,7 +131,7 @@ describe('roles', () => {
   });
 
   it('role changes apply immediately to existing tokens', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const owner = await h.register();
     const m = await h.member(owner, 'admin');
     expect((await h.call('GET', '/api/webhooks', { token: m.token })).status).toBe(200);
@@ -140,7 +140,7 @@ describe('roles', () => {
   });
 
   it('tracking code and scripts are admin/owner only', async () => {
-    const h = makeHarness();
+    const h = await makeHarness();
     const owner = await h.register();
     const member = await h.member(owner, 'member');
     const f = (await h.call('POST', '/api/funnels', { token: member.token, body: { name: 'x' } })).json;

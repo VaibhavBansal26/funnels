@@ -1,14 +1,29 @@
 # Testing
 
-Vitest in both packages. Server tests are HTTP integration tests through `app.request()` against an in-memory SQLite database with injected fakes (clock, DNS resolver, HTTP client, host lookup, AI provider). No test touches the network.
+Vitest in both packages. Server tests are HTTP integration tests through `app.request()` with injected fakes (clock, DNS resolver, HTTP client, host lookup, AI provider). No test touches the network. The whole server suite runs against every database backend (below).
 
 ```
 npm test                  # server + web
-npm test --prefix server  # 400+ tests, about 10 s
+npm test --prefix server  # whole suite on SQLite AND PGlite (~480 tests each), about 80 s
 npm test --prefix web     # ~50 tests (jsdom + Testing Library)
 npm run typecheck         # tsc --noEmit in both packages
 npm run build             # tsc + vite build
 ```
+
+### Database matrix
+
+`TEST_DB` picks the engine(s); the Vitest config turns each into a project that runs every `test/**/*.test.ts` file:
+
+| `TEST_DB` | Engine | Notes |
+|---|---|---|
+| `both` (default) | SQLite `:memory:` + PGlite | `npm test` |
+| `sqlite` | `node:sqlite` in memory | ~6 s |
+| `pglite` | `@electric-sql/pglite` (PostgreSQL 18 in WASM, in process) | ~55 s; one instance per worker is reused and `TRUNCATE`d between tests because booting one costs ~1 s |
+| `pg` | a real server at `TEST_PG_URL` (`postgres://user:pass@host:5432/db`) | one throwaway database per worker process; this is what the `test-postgres` CI job runs on `postgres:17` |
+
+`makeHarness()` is async because the database is. PGlite has one connection, so it proves dialect correctness but not multi-connection behaviour; `test/pg-real.test.ts` (skipped unless `TEST_PG_URL` is set) covers that: parallel saves/duplicates/reorders/domain attach/submissions/rate limit/AI cap on a pool of 12 connections, a forced deadlock that must be retried transparently, `SKIP LOCKED` job claiming, concurrent migration runs, and no leaked connections.
+
+Data-layer tests: `db.test.ts` (migrations, constraints and error mapping, transactions, savepoints, handle misuse, queueing behind a transaction, every dialect helper executed on the live engine), `schema-equivalence.test.ts` (introspects SQLite and PostgreSQL and diffs tables, columns, indexes), `pg-driver.test.ts` (the `pg` Pool code path on a scripted pool: SQL text, isolation level, COMMIT/ROLLBACK, savepoints, retry on 40001/40P01, statement naming, connection release), `no-direct-sqlite.test.ts` (no driver import, `.raw`, or SQLite-only SQL outside `src/db/`).
 
 Test helpers (`server/test/helpers.ts`): `makeHarness()` builds an app with a controllable clock (`FakeClock`), `FakeDns`, `FakeHttp`; `register`, `member`, `activeDomain`, `makeFunnel`, `fromTemplate`, `formTarget`, `checkoutTarget` set up common worlds.
 
@@ -20,7 +35,7 @@ Test helpers (`server/test/helpers.ts`): `makeHarness()` builds an app with a co
 | Sanitiser and schema | `blocks.sanitize-schema.test.ts` | handlers, entity/whitespace URL tricks, malformed nesting, style filtering, hostile 50,000-deep JSON, versions |
 | Paths | `steps.test.ts` | accept/reject table, intra-funnel and cross-funnel collisions, `/path-NNNN` suggestions, resolution subset validation, create-with-domain |
 | Reorder | `steps.test.ts` | duplicate ids/orders, partial set, foreign ids, bad numbers, gap normalisation, link re-render |
-| State machine | `funnels.test.ts`, `domains.test.ts` | live needs active domain, test detaches, domain loss/deletion revert in one transaction, rollback when the delete or the status update fails (SQLite triggers inject the failure) |
+| State machine | `funnels.test.ts`, `domains.test.ts` | live needs active domain, test detaches, domain loss/deletion revert in one transaction, rollback when the delete or the status update fails (a trigger injects the failure, written per dialect by `failOn`) |
 | Versions | `pages.test.ts` | pruning at exactly 10/11, per step, autosave exempt, restore creates a backup, version conflicts, scripts policy |
 | Funnels | `funnels.test.ts` | search/filters/sort/pagination, stats, duplicate naming, soft delete/restore/purge, tag case-insensitivity and scoping |
 | Tenancy and roles | `tenancy.test.ts`, `auth.test.ts` | 404 for every resource type, no existence leak, role matrix, instant role changes |
@@ -38,8 +53,8 @@ Test helpers (`server/test/helpers.ts`): `makeHarness()` builds an app with a co
 
 ## Not covered
 
-Real browsers (drag and drop, the sandboxed canvas script), real DNS, real Anthropic calls, concurrent multi-process access to the SQLite file.
+Real browsers (drag and drop, the sandboxed canvas script), real DNS, real Anthropic calls, concurrent multi-process access to the SQLite file, Redis, PostgreSQL versions other than 17 (CI) and 18 (PGlite and the local verification run), PostgreSQL behind a connection pooler such as pgbouncer in transaction mode (named prepared statements would need to be disabled there).
 
 ## Phase 2 additions
 
-`server/test/phase2.test.ts` covers the edge signing contract (skew, replay, fail-closed), the edge endpoint, purge jobs and the Cloudflare adapters (mocked `fetch`), CF-Connecting-IP trust, the event buffer (batching, overflow, shutdown flush, read-your-writes), rollup triggers, `EXPLAIN QUERY PLAN` index checks, an N+1 guard, gzip/metrics, 2,600-row streaming CSV, and `Promise.all` concurrency tests: same-version saves (one winner), parallel duplicates/reorders/domain attach, parallel identical submissions and exact rate limiting. `edge/test/edge.test.ts` tests the worker with fake Cache/KV, verifying each signed call with the origin's real verifier. These run in the normal `npm test` (430 server tests, 14 edge tests, 51 web tests). Not covered: workerd/miniflare, Redis, PostgreSQL.
+`server/test/phase2.test.ts` covers the edge signing contract (skew, replay, fail-closed), the edge endpoint, purge jobs and the Cloudflare adapters (mocked `fetch`), CF-Connecting-IP trust, the event buffer (batching, overflow, shutdown flush, read-your-writes), batched rollup maintenance (compared with a raw `GROUP BY` per local day in UTC, New York, Kolkata and Auckland), `EXPLAIN` index checks on every engine (PostgreSQL runs them with sequential scans disabled), an N+1 guard, gzip/metrics, 2,600-row streaming CSV, and `Promise.all` concurrency tests: same-version saves (one winner), parallel duplicates/reorders/domain attach, parallel identical submissions and exact rate limiting. `edge/test/edge.test.ts` tests the worker with fake Cache/KV, verifying each signed call with the origin's real verifier. These run in the normal `npm test` (about 480 server tests per backend, 14 edge tests, 51 web tests). Not covered: workerd/miniflare, Redis.

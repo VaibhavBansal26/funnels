@@ -2,6 +2,8 @@ import { z } from 'zod';
 import type { CheckoutBlock } from '../blocks/index.js';
 import { findBlock } from '../blocks/index.js';
 import type { Deps } from '../deps.js';
+import { isUniqueViolation } from '../db/index.js';
+import { inTx } from '../db/scope.js';
 import { AppError, badRequest, notFound } from '../errors.js';
 import { like } from '../repos/sql.js';
 import { csvStream } from '../util/csv.js';
@@ -9,6 +11,7 @@ import { newId } from '../util/ids.js';
 import { addDays, isDay, startOfDayUtc } from '../util/time.js';
 import { upsertLead } from './leads.js';
 import { notify } from './notifications.js';
+import { insertEvents } from './rollups.js';
 import { EMAIL_RE, resolvePublicBlock, sanitizeUtms } from './publicblocks.js';
 import { fireWebhookEvent } from './webhooks.js';
 
@@ -64,7 +67,7 @@ export interface CheckoutResult {
  * one-click upsell reuses the payment method of an earlier order in the same funnel.
  */
 export async function checkout(deps: Deps, p: { funnelId: string; stepId: string; blockId: string; input: z.infer<typeof CheckoutInput> }): Promise<CheckoutResult> {
-  const { funnel, step, block, workspaceId: ws, doc } = resolvePublicBlock(deps, p.funnelId, p.stepId, p.blockId, 'checkout');
+  const { funnel, step, block, workspaceId: ws, doc } = await resolvePublicBlock(deps, p.funnelId, p.stepId, p.blockId, 'checkout');
   const input = p.input;
   if (input._hp) return { ok: true, recorded: false, orders: [], declined: [] };
   if (block.orderBump) throw badRequest('NOT_PURCHASABLE', 'Order bumps are purchased together with the main offer');
@@ -74,7 +77,7 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
   let paymentMethodRef: string | undefined;
   let parentOrderId: string | null = null;
   if (block.oneClickUpsell) {
-    const prev = input.previousOrderId ? deps.db.get<OrderRow>('SELECT * FROM orders WHERE workspace_id = ? AND funnel_id = ? AND id = ?', ws, funnel.id, input.previousOrderId) : undefined;
+    const prev = input.previousOrderId ? await deps.db.get<OrderRow>('SELECT * FROM orders WHERE workspace_id = ? AND funnel_id = ? AND id = ?', ws, funnel.id, input.previousOrderId) : undefined;
     if (!prev) throw badRequest('PREVIOUS_ORDER_REQUIRED', 'A completed earlier order is required for a one-click upsell');
     email = prev.email;
     name = prev.name;
@@ -94,9 +97,9 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
 
   const idemBase = input.submissionId ? `${block.id}:${input.submissionId}` : null;
   if (idemBase) {
-    const main = deps.db.get<OrderRow>('SELECT * FROM orders WHERE workspace_id = ? AND funnel_id = ? AND idem_key = ?', ws, funnel.id, `${idemBase}:${block.id}`);
+    const main = await deps.db.get<OrderRow>('SELECT * FROM orders WHERE workspace_id = ? AND funnel_id = ? AND idem_key = ?', ws, funnel.id, `${idemBase}:${block.id}`);
     if (main) {
-      const rest = deps.db.all<OrderRow>('SELECT * FROM orders WHERE workspace_id = ? AND parent_order_id = ? ORDER BY created_at, rowid', ws, main.id);
+      const rest = await deps.db.all<OrderRow>('SELECT * FROM orders WHERE workspace_id = ? AND parent_order_id = ? ORDER BY created_at, id', ws, main.id);
       return { ok: true, recorded: false, duplicate: true, orderId: main.id, orders: [main, ...rest].map(serializeLine), declined: [] };
     }
   }
@@ -131,37 +134,36 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
   }
 
   try {
-    persistOrders(deps, { ws, funnel, step, created, email, name, visitorId: input.visitorId, utms: input.utms });
+    await persistOrders(deps, { ws, funnel, step, created, email, name, visitorId: input.visitorId, utms: input.utms });
   } catch (e) {
     // A concurrent request with the same submission id won the race; the provider call was idempotent too.
-    if (/UNIQUE/i.test((e as Error).message) && idemBase) return { ok: true, recorded: false, duplicate: true, orders: [], declined: [] };
+    if (isUniqueViolation(e) && idemBase) return { ok: true, recorded: false, duplicate: true, orders: [], declined: [] };
     throw e;
   }
   return { ok: true, recorded: true, orderId: created[0]?.id, orders: created.map(serializeLine), declined };
 }
 
-/** Writes orders, their `order` events, the buyer lead, notifications and webhook deliveries in one transaction. */
+/** Writes orders, their `order` events (and rollups), the buyer lead, notifications and webhook deliveries in one transaction. */
 function persistOrders(
   deps: Deps,
   p: { ws: string; funnel: { id: string; name: string }; step: { id: string; name: string }; created: OrderRow[]; email: string; name: string | null; visitorId?: string; utms?: unknown },
-): void {
+): Promise<void> {
   const { ws, funnel, step, created } = p;
-  deps.db.tx(() => {
-    const lead = upsertLead(deps, ws, { email: p.email, name: p.name, funnelId: funnel.id, countSubmission: false });
+  return inTx(deps, async (d) => {
+    const lead = await upsertLead(d, ws, { email: p.email, name: p.name, funnelId: funnel.id, countSubmission: false });
     for (const o of created) {
       o.lead_id = lead.id;
-      deps.db.run(
+      await d.db.run(
         `INSERT INTO orders (id, workspace_id, funnel_id, step_id, block_id, lead_id, email, name, product_name, amount_cents, currency, is_bump, is_upsell, parent_order_id, provider, provider_ref, payment_method_ref, idem_key, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         o.id, o.workspace_id, o.funnel_id, o.step_id, o.block_id, o.lead_id, o.email, o.name, o.product_name, o.amount_cents, o.currency, o.is_bump, o.is_upsell, o.parent_order_id, o.provider, o.provider_ref, o.payment_method_ref, o.idem_key, o.created_at,
       );
-      deps.db.run(
-        `INSERT INTO events (id, workspace_id, funnel_id, step_id, type, visitor_id, unique_visit, lead_id, order_id, external_id, amount_cents, currency, utm_json, created_at)
-         VALUES (?, ?, ?, ?, 'order', ?, 0, ?, ?, ?, ?, ?, ?, ?)`,
-        newId('evt'), ws, funnel.id, step.id, p.visitorId ?? null, lead.id, o.id, `order:${o.id}`, o.amount_cents, o.currency, JSON.stringify(sanitizeUtms(p.utms)), o.created_at,
-      );
-      notify(deps, ws, { type: 'new_sale', title: 'New sale', body: `${o.email} bought ${o.product_name}`, data: { orderId: o.id, funnelId: funnel.id, amountCents: o.amount_cents, currency: o.currency } });
-      fireWebhookEvent(deps, ws, 'funnel.purchase', {
+      await insertEvents(d.db, [{
+        id: newId('evt'), workspace_id: ws, funnel_id: funnel.id, step_id: step.id, type: 'order', visitor_id: p.visitorId ?? null, unique_visit: 0, lead_id: lead.id, order_id: o.id,
+        external_id: `order:${o.id}`, amount_cents: o.amount_cents, currency: o.currency, utm_json: JSON.stringify(sanitizeUtms(p.utms)), url: null, created_at: o.created_at,
+      }]);
+      await notify(d, ws, { type: 'new_sale', title: 'New sale', body: `${o.email} bought ${o.product_name}`, data: { orderId: o.id, funnelId: funnel.id, amountCents: o.amount_cents, currency: o.currency } });
+      await fireWebhookEvent(d, ws, 'funnel.purchase', {
         funnel: { id: funnel.id, name: funnel.name },
         step: { id: step.id, name: step.name },
         order: { id: o.id, productName: o.product_name, amount: o.amount_cents / 100, currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1, email: o.email, name: o.name },
@@ -179,11 +181,11 @@ export const OrderQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
-function filter(ws: string, q: z.infer<typeof OrderQuery>) {
+function filter(deps: Deps, ws: string, q: z.infer<typeof OrderQuery>) {
   const where = ['o.workspace_id = ?'];
   const params: (string | number)[] = [ws];
   if (q.search?.trim()) {
-    where.push(`(o.email LIKE ? ESCAPE '\\' OR o.product_name LIKE ? ESCAPE '\\')`);
+    where.push(`(${deps.db.dialect.ilike('o.email')} OR ${deps.db.dialect.ilike('o.product_name')})`);
     params.push(like(q.search.trim()), like(q.search.trim()));
   }
   if (q.funnelId) {
@@ -204,10 +206,10 @@ function filter(ws: string, q: z.infer<typeof OrderQuery>) {
 type Joined = OrderRow & { funnel_name: string | null; step_name: string | null };
 const SELECT = `SELECT o.*, f.name AS funnel_name, s.name AS step_name FROM orders o LEFT JOIN funnels f ON f.id = o.funnel_id LEFT JOIN steps s ON s.id = o.step_id`;
 
-export function listOrders(deps: Deps, ws: string, q: z.infer<typeof OrderQuery>) {
-  const { clause, params } = filter(ws, q);
-  const total = deps.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM orders o WHERE ${clause}`, ...params)!.n;
-  const rows = deps.db.all<Joined>(`${SELECT} WHERE ${clause} ORDER BY o.created_at DESC, o.rowid DESC LIMIT ? OFFSET ?`, ...params, q.limit, (q.page - 1) * q.limit);
+export async function listOrders(deps: Deps, ws: string, q: z.infer<typeof OrderQuery>) {
+  const { clause, params } = filter(deps, ws, q);
+  const total = (await deps.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM orders o WHERE ${clause}`, ...params))!.n;
+  const rows = await deps.db.all<Joined>(`${SELECT} WHERE ${clause} ORDER BY o.created_at DESC, o.id DESC LIMIT ? OFFSET ?`, ...params, q.limit, (q.page - 1) * q.limit);
   return {
     data: rows.map((o) => ({ ...serializeLine(o), funnelId: o.funnel_id, funnelName: o.funnel_name, stepName: o.step_name, email: o.email, name: o.name, amount: o.amount_cents / 100, provider: o.provider, providerRef: o.provider_ref, createdAt: o.created_at })),
     pagination: { page: q.page, limit: q.limit, total, totalPages: Math.max(1, Math.ceil(total / q.limit)) },
@@ -215,23 +217,23 @@ export function listOrders(deps: Deps, ws: string, q: z.infer<typeof OrderQuery>
 }
 
 export function ordersCsvStream(deps: Deps, ws: string, q: z.infer<typeof OrderQuery>): ReadableStream<Uint8Array> {
-  const { clause, params } = filter(ws, q);
-  return csvStream<{ at: string; rid: number }>(['Order', 'Date', 'Funnel', 'Step', 'Product', 'Amount', 'Currency', 'Bump', 'Upsell', 'Email', 'Name', 'Provider reference'], (cursor) => {
-    const rows = deps.db.all<Joined & { rid: number }>(
-      `SELECT o.rowid AS rid, o.*, f.name AS funnel_name, s.name AS step_name FROM orders o LEFT JOIN funnels f ON f.id = o.funnel_id LEFT JOIN steps s ON s.id = o.step_id
-       WHERE ${clause} ${cursor ? 'AND (o.created_at < ? OR (o.created_at = ? AND o.rowid < ?))' : ''} ORDER BY o.created_at DESC, o.rowid DESC LIMIT 1000`,
-      ...params, ...(cursor ? [cursor.at, cursor.at, cursor.rid] : []),
+  const { clause, params } = filter(deps, ws, q);
+  return csvStream<{ at: string; id: string }>(['Order', 'Date', 'Funnel', 'Step', 'Product', 'Amount', 'Currency', 'Bump', 'Upsell', 'Email', 'Name', 'Provider reference'], async (cursor) => {
+    const rows = await deps.db.all<Joined>(
+      `SELECT o.*, f.name AS funnel_name, s.name AS step_name FROM orders o LEFT JOIN funnels f ON f.id = o.funnel_id LEFT JOIN steps s ON s.id = o.step_id
+       WHERE ${clause} ${cursor ? 'AND (o.created_at < ? OR (o.created_at = ? AND o.id < ?))' : ''} ORDER BY o.created_at DESC, o.id DESC LIMIT 1000`,
+      ...params, ...(cursor ? [cursor.at, cursor.at, cursor.id] : []),
     );
     const last = rows[rows.length - 1];
     return {
       rows: rows.map((o) => [o.id, o.created_at, o.funnel_name, o.step_name, o.product_name, (o.amount_cents / 100).toFixed(2), o.currency, o.is_bump ? 'yes' : 'no', o.is_upsell ? 'yes' : 'no', o.email, o.name, o.provider_ref]),
-      cursor: rows.length === 1000 && last ? { at: last.created_at, rid: last.rid } : null,
+      cursor: rows.length === 1000 && last ? { at: last.created_at, id: last.id } : null,
     };
   });
 }
 
-export function getOrder(deps: Deps, ws: string, id: string) {
-  const o = deps.db.get<Joined>(`${SELECT} WHERE o.workspace_id = ? AND o.id = ?`, ws, id);
+export async function getOrder(deps: Deps, ws: string, id: string) {
+  const o = await deps.db.get<Joined>(`${SELECT} WHERE o.workspace_id = ? AND o.id = ?`, ws, id);
   if (!o) throw notFound('Order');
   return { ...serializeLine(o), funnelId: o.funnel_id, email: o.email, name: o.name, createdAt: o.created_at };
 }

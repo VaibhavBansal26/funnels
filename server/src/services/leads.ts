@@ -6,6 +6,8 @@ import { like } from '../repos/sql.js';
 import { csvStream } from '../util/csv.js';
 import { newId } from '../util/ids.js';
 import { addDays, isDay, startOfDayUtc } from '../util/time.js';
+import { inTx } from '../db/scope.js';
+import { insertEvents } from './rollups.js';
 import { notify } from './notifications.js';
 import { EMAIL_RE, resolvePublicBlock, sanitizeUtms } from './publicblocks.js';
 import { fireWebhookEvent } from './webhooks.js';
@@ -73,25 +75,28 @@ interface LeadRow {
   updated_at: string;
 }
 
-/** Dedupe by email within the workspace: later submissions update the same lead instead of creating a new one. */
-export function upsertLead(deps: Deps, ws: string, lead: { email: string; name?: string | null; phone?: string | null; data?: Record<string, string>; funnelId: string; countSubmission?: boolean }): { id: string; created: boolean } {
+/**
+ * Dedupe by email within the workspace: later submissions update the same lead instead of creating a new one.
+ * Safe under concurrency: the insert is `ON CONFLICT DO NOTHING` on (workspace_id, email); the loser re-reads the
+ * winner's row with a row lock (`FOR UPDATE`) and merges into it, so two simultaneous submissions never lose a field.
+ */
+export async function upsertLead(deps: Deps, ws: string, lead: { email: string; name?: string | null; phone?: string | null; data?: Record<string, string>; funnelId: string; countSubmission?: boolean }): Promise<{ id: string; created: boolean }> {
   const email = lead.email.toLowerCase();
   const at = deps.now().toISOString();
-  const existing = deps.db.get<LeadRow>('SELECT * FROM leads WHERE workspace_id = ? AND email = ?', ws, email);
-  if (existing) {
-    const merged = { ...(JSON.parse(existing.data_json) as Record<string, string>), ...(lead.data ?? {}) };
-    deps.db.run(
-      'UPDATE leads SET name = ?, phone = ?, data_json = ?, submissions = submissions + ?, updated_at = ? WHERE id = ?',
-      lead.name || existing.name, lead.phone || existing.phone, JSON.stringify(merged), lead.countSubmission === false ? 0 : 1, at, existing.id,
-    );
-    return { id: existing.id, created: false };
-  }
+  const submissions = lead.countSubmission === false ? 0 : 1;
   const id = newId('lead');
-  deps.db.run(
-    'INSERT INTO leads (id, workspace_id, email, name, phone, data_json, first_funnel_id, submissions, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    id, ws, email, lead.name ?? null, lead.phone ?? null, JSON.stringify(lead.data ?? {}), lead.funnelId, lead.countSubmission === false ? 0 : 1, at, at,
+  const inserted = await deps.db.run(
+    `INSERT INTO leads (id, workspace_id, email, name, phone, data_json, first_funnel_id, submissions, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)${deps.db.dialect.onConflictDoNothing(['workspace_id', 'email'])}`,
+    id, ws, email, lead.name ?? null, lead.phone ?? null, JSON.stringify(lead.data ?? {}), lead.funnelId, submissions, at, at,
   );
-  return { id, created: true };
+  if (inserted.changes === 1) return { id, created: true };
+  const existing = (await deps.db.get<LeadRow>(`SELECT * FROM leads WHERE workspace_id = ? AND email = ?${deps.db.dialect.forUpdate()}`, ws, email))!;
+  const merged = { ...(JSON.parse(existing.data_json) as Record<string, string>), ...(lead.data ?? {}) };
+  await deps.db.run(
+    'UPDATE leads SET name = ?, phone = ?, data_json = ?, submissions = submissions + ?, updated_at = ? WHERE id = ?',
+    lead.name || existing.name, lead.phone || existing.phone, JSON.stringify(merged), submissions, at, existing.id,
+  );
+  return { id: existing.id, created: false };
 }
 
 export interface SubmitResult {
@@ -101,8 +106,10 @@ export interface SubmitResult {
   leadId?: string;
 }
 
-export function submitForm(deps: Deps, p: { funnelId: string; stepId: string; blockId: string; input: z.infer<typeof SubmitInput> }): SubmitResult {
-  const { funnel, step, block, workspaceId: ws } = resolvePublicBlock(deps, p.funnelId, p.stepId, p.blockId, 'form');
+class DuplicateSubmission extends Error {}
+
+export async function submitForm(deps: Deps, p: { funnelId: string; stepId: string; blockId: string; input: z.infer<typeof SubmitInput> }): Promise<SubmitResult> {
+  const { funnel, step, block, workspaceId: ws } = await resolvePublicBlock(deps, p.funnelId, p.stepId, p.blockId, 'form');
   // Bots fill the hidden field: pretend success so they learn nothing, store nothing.
   if (p.input._hp) return { ok: true, recorded: false };
   const values = validateSubmission(block, p.input.fields, p.input.consent ?? p.input.fields['_consent']);
@@ -114,27 +121,32 @@ export function submitForm(deps: Deps, p: { funnelId: string; stepId: string; bl
   const nameField = block.fields.find((f) => f.type === 'name');
   const phoneField = block.fields.find((f) => f.type === 'phone');
 
-  const result = deps.db.tx((): SubmitResult => {
-    const externalId = p.input.submissionId ? `form:${block.id}:${p.input.submissionId}` : null;
-    if (externalId && deps.db.get('SELECT 1 FROM events WHERE funnel_id = ? AND type = ? AND external_id = ?', funnel.id, 'optin', externalId)) {
-      return { ok: true, recorded: false, duplicate: true };
-    }
-    const lead = upsertLead(deps, ws, { email, name: nameField ? values[nameField.id] : null, phone: phoneField ? values[phoneField.id] : null, data: values, funnelId: funnel.id });
-    deps.db.run(
-      `INSERT INTO events (id, workspace_id, funnel_id, step_id, type, visitor_id, unique_visit, lead_id, external_id, utm_json, url, created_at)
-       VALUES (?, ?, ?, ?, 'optin', ?, 0, ?, ?, ?, ?, ?)`,
-      newId('evt'), ws, funnel.id, step.id, p.input.visitorId ?? null, lead.id, externalId, JSON.stringify(sanitizeUtms(p.input.utms)), p.input.url?.slice(0, 500) ?? null, deps.now().toISOString(),
-    );
-    notify(deps, ws, { type: 'new_lead', title: 'New lead', body: `${email} opted in on ${funnel.name}`, data: { leadId: lead.id, funnelId: funnel.id, stepId: step.id } });
-    fireWebhookEvent(deps, ws, 'funnel.optin', {
-      funnel: { id: funnel.id, name: funnel.name },
-      step: { id: step.id, name: step.name },
-      lead: { id: lead.id, email, name: nameField ? (values[nameField.id] ?? null) : null, phone: phoneField ? (values[phoneField.id] ?? null) : null },
-      fields: values,
+  try {
+    return await inTx(deps, async (d): Promise<SubmitResult> => {
+      const externalId = p.input.submissionId ? `form:${block.id}:${p.input.submissionId}` : null;
+      if (externalId && (await d.db.get('SELECT 1 FROM events WHERE funnel_id = ? AND type = ? AND external_id = ?', funnel.id, 'optin', externalId))) {
+        return { ok: true, recorded: false, duplicate: true };
+      }
+      const lead = await upsertLead(d, ws, { email, name: nameField ? values[nameField.id] : null, phone: phoneField ? values[phoneField.id] : null, data: values, funnelId: funnel.id });
+      const stored = await insertEvents(d.db, [{
+        id: newId('evt'), workspace_id: ws, funnel_id: funnel.id, step_id: step.id, type: 'optin', visitor_id: p.input.visitorId ?? null, unique_visit: 0, lead_id: lead.id,
+        order_id: null, external_id: externalId, amount_cents: 0, currency: null, utm_json: JSON.stringify(sanitizeUtms(p.input.utms)), url: p.input.url?.slice(0, 500) ?? null, created_at: d.now().toISOString(),
+      }]);
+      // A concurrent request with the same submission id won the unique index: undo this attempt's lead update.
+      if (stored.size === 0) throw new DuplicateSubmission();
+      await notify(d, ws, { type: 'new_lead', title: 'New lead', body: `${email} opted in on ${funnel.name}`, data: { leadId: lead.id, funnelId: funnel.id, stepId: step.id } });
+      await fireWebhookEvent(d, ws, 'funnel.optin', {
+        funnel: { id: funnel.id, name: funnel.name },
+        step: { id: step.id, name: step.name },
+        lead: { id: lead.id, email, name: nameField ? (values[nameField.id] ?? null) : null, phone: phoneField ? (values[phoneField.id] ?? null) : null },
+        fields: values,
+      });
+      return { ok: true, recorded: true, leadId: lead.id };
     });
-    return { ok: true, recorded: true, leadId: lead.id };
-  });
-  return result;
+  } catch (e) {
+    if (e instanceof DuplicateSubmission) return { ok: true, recorded: false, duplicate: true };
+    throw e;
+  }
 }
 
 export const LeadQuery = z.object({
@@ -146,11 +158,11 @@ export const LeadQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
-function leadFilter(ws: string, q: z.infer<typeof LeadQuery>) {
+function leadFilter(deps: Deps, ws: string, q: z.infer<typeof LeadQuery>) {
   const where = ['l.workspace_id = ?'];
   const params: (string | number)[] = [ws];
   if (q.search?.trim()) {
-    where.push(`(l.email LIKE ? ESCAPE '\\' OR l.name LIKE ? ESCAPE '\\')`);
+    where.push(`(${deps.db.dialect.ilike('l.email')} OR ${deps.db.dialect.ilike('l.name')})`);
     params.push(like(q.search.trim()), like(q.search.trim()));
   }
   if (q.funnelId) {
@@ -173,11 +185,11 @@ const serializeLead = (l: LeadRow & { funnel_name: string | null }) => ({
   firstFunnelId: l.first_funnel_id, firstFunnelName: l.funnel_name, submissions: l.submissions, createdAt: l.created_at, updatedAt: l.updated_at,
 });
 
-export function listLeads(deps: Deps, ws: string, q: z.infer<typeof LeadQuery>) {
-  const { clause, params } = leadFilter(ws, q);
-  const total = deps.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM leads l WHERE ${clause}`, ...params)!.n;
-  const rows = deps.db.all<LeadRow & { funnel_name: string | null }>(
-    `SELECT l.*, f.name AS funnel_name FROM leads l LEFT JOIN funnels f ON f.id = l.first_funnel_id WHERE ${clause} ORDER BY l.created_at DESC, l.rowid DESC LIMIT ? OFFSET ?`,
+export async function listLeads(deps: Deps, ws: string, q: z.infer<typeof LeadQuery>) {
+  const { clause, params } = leadFilter(deps, ws, q);
+  const total = (await deps.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM leads l WHERE ${clause}`, ...params))!.n;
+  const rows = await deps.db.all<LeadRow & { funnel_name: string | null }>(
+    `SELECT l.*, f.name AS funnel_name FROM leads l LEFT JOIN funnels f ON f.id = l.first_funnel_id WHERE ${clause} ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?`,
     ...params, q.limit, (q.page - 1) * q.limit,
   );
   return { data: rows.map(serializeLead), pagination: { page: q.page, limit: q.limit, total, totalPages: Math.max(1, Math.ceil(total / q.limit)) } };
@@ -185,16 +197,16 @@ export function listLeads(deps: Deps, ws: string, q: z.infer<typeof LeadQuery>) 
 
 const PAGE = 1000;
 
-/** Streaming export: keyset pages of 1000 rows (newest first), so exports of any size use bounded memory. */
+/** Streaming export: keyset pages of 1000 rows (newest first, cursor = (created_at, id)), so exports of any size use bounded memory. */
 export function leadsCsvStream(deps: Deps, ws: string, q: z.infer<typeof LeadQuery>): ReadableStream<Uint8Array> {
-  const { clause, params } = leadFilter(ws, q);
-  return csvStream<{ at: string; rid: number }>(['Email', 'Name', 'Phone', 'First funnel', 'Submissions', 'Created', 'Last activity'], (cursor) => {
-    const rows = deps.db.all<LeadRow & { funnel_name: string | null; rid: number }>(
-      `SELECT l.*, l.rowid AS rid, f.name AS funnel_name FROM leads l LEFT JOIN funnels f ON f.id = l.first_funnel_id
-       WHERE ${clause} ${cursor ? 'AND (l.created_at < ? OR (l.created_at = ? AND l.rowid < ?))' : ''} ORDER BY l.created_at DESC, l.rowid DESC LIMIT ?`,
-      ...params, ...(cursor ? [cursor.at, cursor.at, cursor.rid] : []), PAGE,
+  const { clause, params } = leadFilter(deps, ws, q);
+  return csvStream<{ at: string; id: string }>(['Email', 'Name', 'Phone', 'First funnel', 'Submissions', 'Created', 'Last activity'], async (cursor) => {
+    const rows = await deps.db.all<LeadRow & { funnel_name: string | null }>(
+      `SELECT l.*, f.name AS funnel_name FROM leads l LEFT JOIN funnels f ON f.id = l.first_funnel_id
+       WHERE ${clause} ${cursor ? 'AND (l.created_at < ? OR (l.created_at = ? AND l.id < ?))' : ''} ORDER BY l.created_at DESC, l.id DESC LIMIT ?`,
+      ...params, ...(cursor ? [cursor.at, cursor.at, cursor.id] : []), PAGE,
     );
     const last = rows[rows.length - 1];
-    return { rows: rows.map((l) => [l.email, l.name, l.phone, l.funnel_name, l.submissions, l.created_at, l.updated_at]), cursor: rows.length === PAGE && last ? { at: last.created_at, rid: last.rid } : null };
+    return { rows: rows.map((l) => [l.email, l.name, l.phone, l.funnel_name, l.submissions, l.created_at, l.updated_at]), cursor: rows.length === PAGE && last ? { at: last.created_at, id: last.id } : null };
   });
 }
