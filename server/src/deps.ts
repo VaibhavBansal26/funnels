@@ -9,6 +9,9 @@ import type { JobQueue } from './jobs/queue.js';
 import type { RateLimiter } from './util/ratelimit.js';
 import type { EventBus } from './util/bus.js';
 import type { PageCache } from './util/pagecache.js';
+import type { EventBuffer } from './services/eventbuffer.js';
+import type { CloudflarePurger } from './edge/purger.js';
+import type { DomainProvider } from './edge/domainProvider.js';
 
 /** Everything with side effects is injected, so tests swap in fakes and never touch the network. */
 export interface Deps {
@@ -25,4 +28,7 @@ export interface Deps {
   limiter: RateLimiter;
   bus: EventBus;
   pageCache: PageCache;
+  events: EventBuffer;
+  purger: CloudflarePurger;
+  domainProvider: DomainProvider;
 }

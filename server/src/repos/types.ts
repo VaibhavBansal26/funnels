@@ -66,6 +66,9 @@ export interface DomainRow {
   failure_reason: string | null;
   default_home_step_id: string | null;
   default_404_step_id: string | null;
+  provider: 'manual' | 'cloudflare';
+  provider_ref: string | null;
+  provider_records: string | null;
   verified_at: string | null;
   last_checked_at: string | null;
   created_at: string;

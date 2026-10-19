@@ -3,7 +3,7 @@ import type { FormBlock, FormField } from '../blocks/index.js';
 import type { Deps } from '../deps.js';
 import { AppError } from '../errors.js';
 import { like } from '../repos/sql.js';
-import { toCsv } from '../util/csv.js';
+import { csvStream } from '../util/csv.js';
 import { newId } from '../util/ids.js';
 import { addDays, isDay, startOfDayUtc } from '../util/time.js';
 import { notify } from './notifications.js';
@@ -183,10 +183,18 @@ export function listLeads(deps: Deps, ws: string, q: z.infer<typeof LeadQuery>) 
   return { data: rows.map(serializeLead), pagination: { page: q.page, limit: q.limit, total, totalPages: Math.max(1, Math.ceil(total / q.limit)) } };
 }
 
-export function leadsCsv(deps: Deps, ws: string, q: z.infer<typeof LeadQuery>): string {
+const PAGE = 1000;
+
+/** Streaming export: keyset pages of 1000 rows (newest first), so exports of any size use bounded memory. */
+export function leadsCsvStream(deps: Deps, ws: string, q: z.infer<typeof LeadQuery>): ReadableStream<Uint8Array> {
   const { clause, params } = leadFilter(ws, q);
-  const rows = deps.db.all<LeadRow & { funnel_name: string | null }>(
-    `SELECT l.*, f.name AS funnel_name FROM leads l LEFT JOIN funnels f ON f.id = l.first_funnel_id WHERE ${clause} ORDER BY l.created_at DESC, l.rowid DESC LIMIT 50000`, ...params,
-  );
-  return toCsv(['Email', 'Name', 'Phone', 'First funnel', 'Submissions', 'Created', 'Last activity'], rows.map((l) => [l.email, l.name, l.phone, l.funnel_name, l.submissions, l.created_at, l.updated_at]));
+  return csvStream<{ at: string; rid: number }>(['Email', 'Name', 'Phone', 'First funnel', 'Submissions', 'Created', 'Last activity'], (cursor) => {
+    const rows = deps.db.all<LeadRow & { funnel_name: string | null; rid: number }>(
+      `SELECT l.*, l.rowid AS rid, f.name AS funnel_name FROM leads l LEFT JOIN funnels f ON f.id = l.first_funnel_id
+       WHERE ${clause} ${cursor ? 'AND (l.created_at < ? OR (l.created_at = ? AND l.rowid < ?))' : ''} ORDER BY l.created_at DESC, l.rowid DESC LIMIT ?`,
+      ...params, ...(cursor ? [cursor.at, cursor.at, cursor.rid] : []), PAGE,
+    );
+    const last = rows[rows.length - 1];
+    return { rows: rows.map((l) => [l.email, l.name, l.phone, l.funnel_name, l.submissions, l.created_at, l.updated_at]), cursor: rows.length === PAGE && last ? { at: last.created_at, rid: last.rid } : null };
+  });
 }

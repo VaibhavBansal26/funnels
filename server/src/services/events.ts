@@ -41,24 +41,21 @@ export function recordPublicEvent(deps: Deps, input: z.infer<typeof PublicEventI
 
   const at = deps.now().toISOString();
   const utm = JSON.stringify(sanitizeUtms(input.utms));
+  const row = (type: 'page_view' | 'optin', unique: number, external: string | null) => ({
+    id: newId('evt'), workspace_id: funnel.workspace_id, funnel_id: funnel.id, step_id: step.id, type, visitor_id: input.visitorId ?? null,
+    unique_visit: unique, external_id: external, utm_json: utm, url: input.url ?? null, created_at: at,
+  });
   if (input.type === 'page_view') {
     if (!input.visitorId) return { ok: true, recorded: false, reason: 'no_visitor' };
-    // "Unique" is decided by the server from history, not by the client's claim.
-    const seen = deps.db.get('SELECT 1 FROM events WHERE funnel_id = ? AND step_id = ? AND type = ? AND visitor_id = ? LIMIT 1', funnel.id, step.id, 'page_view', input.visitorId);
-    deps.db.run(
-      `INSERT INTO events (id, workspace_id, funnel_id, step_id, type, visitor_id, unique_visit, utm_json, url, created_at) VALUES (?, ?, ?, ?, 'page_view', ?, ?, ?, ?, ?)`,
-      newId('evt'), funnel.workspace_id, funnel.id, step.id, input.visitorId, seen ? 0 : 1, utm, input.url ?? null, at,
-    );
+    // "Unique" is decided by the server from history (stored and still-queued rows), not by the client's claim.
+    const seen = deps.events.hasQueuedView(funnel.id, step.id, input.visitorId) || deps.db.get('SELECT 1 FROM events WHERE funnel_id = ? AND step_id = ? AND type = ? AND visitor_id = ? LIMIT 1', funnel.id, step.id, 'page_view', input.visitorId);
+    deps.events.add(row('page_view', seen ? 0 : 1, null));
     return { ok: true, recorded: true };
   }
-  try {
-    deps.db.run(
-      `INSERT INTO events (id, workspace_id, funnel_id, step_id, type, visitor_id, unique_visit, external_id, utm_json, url, created_at) VALUES (?, ?, ?, ?, 'optin', ?, 0, ?, ?, ?, ?)`,
-      newId('evt'), funnel.workspace_id, funnel.id, step.id, input.visitorId ?? null, input.externalId ? `ext:${input.externalId}` : null, utm, input.url ?? null, at,
-    );
-  } catch (e) {
-    if (/UNIQUE/i.test((e as Error).message)) return { ok: true, recorded: false, reason: 'duplicate' };
-    throw e;
+  const external = input.externalId ? `ext:${input.externalId}` : null;
+  if (external && (deps.events.hasQueuedExternal(funnel.id, external) || deps.db.get('SELECT 1 FROM events WHERE funnel_id = ? AND type = ? AND external_id = ?', funnel.id, 'optin', external))) {
+    return { ok: true, recorded: false, reason: 'duplicate' };
   }
+  deps.events.add(row('optin', 0, external));
   return { ok: true, recorded: true };
 }

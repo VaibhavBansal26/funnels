@@ -211,7 +211,7 @@ describe('platform plumbing', () => {
     expect(health.headers.get('x-content-type-options')).toBe('nosniff');
     expect(health.headers.get('x-request-id')).toBeTruthy();
     const ready = await h.call('GET', '/readyz');
-    expect(ready.json).toMatchObject({ status: 'ready', migrations: 1 });
+    expect(ready.json).toMatchObject({ status: 'ready', migrations: 2 });
   });
 
   it('unknown API routes return the JSON error model; malformed JSON and unhandled errors are mapped', async () => {

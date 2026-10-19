@@ -3,6 +3,7 @@ import type { Deps } from '../deps.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import type { DomainRow, StepRow } from '../repos/types.js';
 import { newId, newToken } from '../util/ids.js';
+import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 
 const HOST_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})$/;
 export const CHALLENGE_PREFIX = '_funnels-challenge.';
@@ -26,7 +27,10 @@ function hostOf(url: string): string {
 }
 
 export function serializeDomain(deps: Deps, d: DomainRow, funnelCount = 0) {
+  const extra = d.provider_records ? (JSON.parse(d.provider_records) as { type: string; name: string; value: string }[]) : [];
   return {
+    provider: d.provider,
+    extraRecords: extra,
     id: d.id,
     hostname: d.hostname,
     status: d.status,
@@ -67,17 +71,19 @@ export function enqueueVerification(deps: Deps, domainId: string, attempt = 0): 
   deps.jobs.enqueue('domain.verify', { domainId, attempt }, { delayMs, maxAttempts: 3, dedupeKey: `domain.verify:${domainId}` });
 }
 
-export function createDomain(deps: Deps, ws: string, input: z.infer<typeof DomainInput>) {
+export async function createDomain(deps: Deps, ws: string, input: z.infer<typeof DomainInput>) {
   const hostname = normalizeHostname(input.hostname);
   const reserved = new Set([hostOf(deps.config.APP_PUBLIC_URL), deps.config.APP_PUBLIC_CNAME_TARGET.toLowerCase(), 'localhost']);
   if (!HOST_RE.test(hostname)) throw badRequest('INVALID_HOSTNAME', 'Enter a valid hostname such as offers.example.com (no protocol, path or port)');
   if (reserved.has(hostname)) throw badRequest('HOSTNAME_RESERVED', 'This hostname is reserved');
   const id = newId('dom');
   const at = deps.now().toISOString();
+  if (deps.db.get('SELECT 1 FROM domains WHERE hostname = ?', hostname)) throw conflict('DOMAIN_TAKEN', 'This hostname is already registered');
+  const external = await deps.domainProvider.create(hostname);
   try {
     deps.db.run(
-      'INSERT INTO domains (id, workspace_id, hostname, status, verification_token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      id, ws, hostname, 'pending', newToken(18), at, at,
+      'INSERT INTO domains (id, workspace_id, hostname, status, verification_token, provider, provider_ref, provider_records, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      id, ws, hostname, 'pending', newToken(18), deps.domainProvider.name, external?.externalId ?? null, external?.records ? JSON.stringify(external.records) : null, at, at,
     );
   } catch (e) {
     if (/UNIQUE/i.test((e as Error).message)) throw conflict('DOMAIN_TAKEN', 'This hostname is already registered');
@@ -94,12 +100,15 @@ export function createDomain(deps: Deps, ws: string, input: z.infer<typeof Domai
 export function revertFunnelsOnDomain(deps: Deps, ws: string, domainId: string): string[] {
   const at = deps.now().toISOString();
   const ids = deps.db.all<{ id: string }>('SELECT id FROM funnels WHERE workspace_id = ? AND domain_id = ?', ws, domainId).map((r) => r.id);
+  for (const id of ids) schedulePurge(deps, liveUrlsForFunnel(deps, id));
   deps.db.run(`UPDATE funnels SET status = 'test', domain_id = NULL, updated_at = ? WHERE workspace_id = ? AND domain_id = ?`, at, ws, domainId);
   deps.db.run('UPDATE domains SET default_home_step_id = NULL, default_404_step_id = NULL WHERE workspace_id = ? AND id = ?', ws, domainId);
   return ids;
 }
 
-export function deleteDomain(deps: Deps, ws: string, id: string): void {
+export async function deleteDomain(deps: Deps, ws: string, id: string): Promise<void> {
+  const d = requireDomain(deps, ws, id);
+  if (d.provider === 'cloudflare' && d.provider_ref) await deps.domainProvider.remove(d.provider_ref).catch((e) => deps.log.warn('provider delete failed', { error: (e as Error).message }));
   deps.db.tx(() => {
     requireDomain(deps, ws, id);
     revertFunnelsOnDomain(deps, ws, id);
@@ -117,6 +126,7 @@ export interface VerifyResult {
 export async function verifyDomain(deps: Deps, ws: string, id: string): Promise<VerifyResult> {
   const d = requireDomain(deps, ws, id);
   const at = deps.now();
+  if (d.provider === 'cloudflare' && d.provider_ref) return verifyViaProvider(deps, d, at);
   const target = deps.config.APP_PUBLIC_CNAME_TARGET.toLowerCase().replace(/\.$/, '');
   const expectedTxt = `funnels-verify=${d.verification_token}`;
   let cname: string[];
@@ -148,6 +158,27 @@ export async function verifyDomain(deps: Deps, ws: string, id: string): Promise<
     if (d.status === 'active' && status !== 'active') revertFunnelsOnDomain(deps, ws, id);
   });
   return { domain: getDomain(deps, ws, id), checks: { cname: { ok: cnameOk, found: cname }, txt: { ok: txtOk } } };
+}
+
+/** Cloudflare for SaaS: the provider owns hostname + certificate validation; we mirror its status and apply the same transitions. */
+async function verifyViaProvider(deps: Deps, d: DomainRow, at: Date): Promise<VerifyResult> {
+  let p;
+  try {
+    p = await deps.domainProvider.get(d.provider_ref!);
+  } catch (e) {
+    deps.log.warn('provider lookup failed', { hostname: d.hostname, error: (e as Error).message });
+    deps.db.run('UPDATE domains SET last_checked_at = ?, updated_at = ? WHERE id = ?', at.toISOString(), at.toISOString(), d.id);
+    return { domain: getDomain(deps, d.workspace_id, d.id), checks: null, error: 'The domain provider could not be reached. Try again shortly.' };
+  }
+  deps.db.tx(() => {
+    deps.db.run(
+      'UPDATE domains SET status = ?, failure_reason = ?, provider_records = ?, verified_at = ?, last_checked_at = ?, updated_at = ? WHERE id = ?',
+      p.status, p.status === 'active' ? null : (p.reason ?? null), p.records ? JSON.stringify(p.records) : d.provider_records,
+      p.status === 'active' ? (d.verified_at ?? at.toISOString()) : d.verified_at, at.toISOString(), at.toISOString(), d.id,
+    );
+    if (d.status === 'active' && p.status !== 'active') revertFunnelsOnDomain(deps, d.workspace_id, d.id);
+  });
+  return { domain: getDomain(deps, d.workspace_id, d.id), checks: null };
 }
 
 /** Job handler: re-checks a pending domain, rescheduling with backoff until it is active or has failed. */

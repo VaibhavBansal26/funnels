@@ -4,7 +4,7 @@ import { findBlock } from '../blocks/index.js';
 import type { Deps } from '../deps.js';
 import { AppError, badRequest, notFound } from '../errors.js';
 import { like } from '../repos/sql.js';
-import { toCsv } from '../util/csv.js';
+import { csvStream } from '../util/csv.js';
 import { newId } from '../util/ids.js';
 import { addDays, isDay, startOfDayUtc } from '../util/time.js';
 import { upsertLead } from './leads.js';
@@ -209,13 +209,20 @@ export function listOrders(deps: Deps, ws: string, q: z.infer<typeof OrderQuery>
   };
 }
 
-export function ordersCsv(deps: Deps, ws: string, q: z.infer<typeof OrderQuery>): string {
+export function ordersCsvStream(deps: Deps, ws: string, q: z.infer<typeof OrderQuery>): ReadableStream<Uint8Array> {
   const { clause, params } = filter(ws, q);
-  const rows = deps.db.all<Joined>(`${SELECT} WHERE ${clause} ORDER BY o.created_at DESC, o.rowid DESC LIMIT 50000`, ...params);
-  return toCsv(
-    ['Order', 'Date', 'Funnel', 'Step', 'Product', 'Amount', 'Currency', 'Bump', 'Upsell', 'Email', 'Name', 'Provider reference'],
-    rows.map((o) => [o.id, o.created_at, o.funnel_name, o.step_name, o.product_name, (o.amount_cents / 100).toFixed(2), o.currency, o.is_bump ? 'yes' : 'no', o.is_upsell ? 'yes' : 'no', o.email, o.name, o.provider_ref]),
-  );
+  return csvStream<{ at: string; rid: number }>(['Order', 'Date', 'Funnel', 'Step', 'Product', 'Amount', 'Currency', 'Bump', 'Upsell', 'Email', 'Name', 'Provider reference'], (cursor) => {
+    const rows = deps.db.all<Joined & { rid: number }>(
+      `SELECT o.rowid AS rid, o.*, f.name AS funnel_name, s.name AS step_name FROM orders o LEFT JOIN funnels f ON f.id = o.funnel_id LEFT JOIN steps s ON s.id = o.step_id
+       WHERE ${clause} ${cursor ? 'AND (o.created_at < ? OR (o.created_at = ? AND o.rowid < ?))' : ''} ORDER BY o.created_at DESC, o.rowid DESC LIMIT 1000`,
+      ...params, ...(cursor ? [cursor.at, cursor.at, cursor.rid] : []),
+    );
+    const last = rows[rows.length - 1];
+    return {
+      rows: rows.map((o) => [o.id, o.created_at, o.funnel_name, o.step_name, o.product_name, (o.amount_cents / 100).toFixed(2), o.currency, o.is_bump ? 'yes' : 'no', o.is_upsell ? 'yes' : 'no', o.email, o.name, o.provider_ref]),
+      cursor: rows.length === 1000 && last ? { at: last.created_at, rid: last.rid } : null,
+    };
+  });
 }
 
 export function getOrder(deps: Deps, ws: string, id: string) {

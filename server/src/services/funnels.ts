@@ -14,6 +14,7 @@ import { copyName, copyPath, isValidPath, pathKey, slugPath, suggestPaths } from
 import { domainPathIndex, funnelDomainConflicts } from './pathconflicts.js';
 import { regenerateFunnel, scriptsAllowedFor } from './pages.js';
 import { remapStepRefs } from './docs.js';
+import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 import { insertStep, assertValidPath, serializeStep } from './steps.js';
 
 const iso = (deps: Deps) => deps.now().toISOString();
@@ -73,13 +74,10 @@ export interface FunnelStats {
 function statsFor(deps: Deps, ws: string, ids: string[]): Map<string, FunnelStats> {
   const map = new Map<string, FunnelStats>();
   if (ids.length === 0) return map;
+  deps.events.flush();
   const rows = deps.db.all<{ funnel_id: string; visits: number; optins: number; orders: number; cents: number }>(
-    `SELECT funnel_id,
-            COALESCE(SUM(type = 'page_view'), 0) AS visits,
-            COALESCE(SUM(type = 'optin'), 0) AS optins,
-            COALESCE(SUM(type = 'order'), 0) AS orders,
-            COALESCE(SUM(CASE WHEN type = 'order' THEN amount_cents ELSE 0 END), 0) AS cents
-     FROM events WHERE workspace_id = ? AND funnel_id IN (${placeholders(ids.length)}) GROUP BY funnel_id`,
+    `SELECT funnel_id, SUM(page_views) AS visits, SUM(optins) AS optins, SUM(orders) AS orders, SUM(cents) AS cents
+     FROM event_rollups WHERE workspace_id = ? AND funnel_id IN (${placeholders(ids.length)}) GROUP BY funnel_id`,
     ws, ...ids,
   );
   for (const r of rows) map.set(r.funnel_id, { visits: r.visits, optins: r.optins, orders: r.orders, sales: r.cents / 100 });
@@ -315,6 +313,7 @@ export function updateFunnel(deps: Deps, auth: Auth, id: string, input: z.infer<
   assertTrackingRole(auth, input);
   return deps.db.tx(() => {
     const funnel = requireFunnel(deps.db, ws, id);
+    const urlsBefore = liveUrlsForFunnel(deps, id);
     let domainId: string | null = input.domain_id !== undefined ? (input.domain_id ?? null) : funnel.domain_id;
     let status = input.status ?? funnel.status;
     if (input.status === 'test') domainId = null;
@@ -336,6 +335,7 @@ export function updateFunnel(deps: Deps, auth: Auth, id: string, input: z.infer<
     patchFunnel(deps.db, ws, id, fields);
     if (input.tags) setFunnelTags(deps.db, ws, id, input.tags);
     if (pathsChanged || input.favicon !== undefined || input.header_tracking_code !== undefined || input.footer_tracking_code !== undefined) regenerateFunnel(deps, ws, id);
+    schedulePurge(deps, [...urlsBefore, ...liveUrlsForFunnel(deps, id)]);
     return getFunnelDetail(deps, ws, id);
   });
 }
@@ -409,6 +409,7 @@ export function softDeleteFunnel(deps: Deps, auth: Auth, id: string): void {
   const ws = auth.workspaceId;
   deps.db.tx(() => {
     requireFunnel(deps.db, ws, id);
+    schedulePurge(deps, liveUrlsForFunnel(deps, id));
     const at = iso(deps);
     patchFunnel(deps.db, ws, id, { deleted_at: at, status: 'test', domain_id: null, updated_at: at });
     deps.pageCache.invalidate(listSteps(deps.db, ws, id).map((s) => s.id));

@@ -12,11 +12,11 @@ export function domainRoutes(deps: Deps): Hono<AppEnv> {
   r.get('/', (c) => c.json(domains.listDomains(deps, ws(c))));
   r.get('/:id', (c) => c.json(domains.getDomain(deps, ws(c), c.req.param('id'))));
   r.get('/:id/routes', (c) => c.json(domains.domainRoutes(deps, ws(c), c.req.param('id'))));
-  r.post('/', requireRole('admin'), async (c) => c.json(domains.createDomain(deps, ws(c), await bodyOf(c, domains.DomainInput)), 201));
+  r.post('/', requireRole('admin'), async (c) => c.json(await domains.createDomain(deps, ws(c), await bodyOf(c, domains.DomainInput)), 201));
   r.post('/:id/verify', requireRole('admin'), async (c) => c.json(await domains.verifyDomain(deps, ws(c), c.req.param('id'))));
   r.put('/:id/default-pages', requireRole('admin'), async (c) => c.json(domains.setDefaultPages(deps, ws(c), c.req.param('id'), await bodyOf(c, domains.DefaultPagesInput))));
-  r.delete('/:id', requireRole('admin'), (c) => {
-    domains.deleteDomain(deps, ws(c), c.req.param('id'));
+  r.delete('/:id', requireRole('admin'), async (c) => {
+    await domains.deleteDomain(deps, ws(c), c.req.param('id'));
     return c.body(null, 204);
   });
   return r;

@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync, StatementSync } from 'node:sqlite';
 
 // `node:sqlite` is loaded through createRequire because bundlers/test runners do not
 // recognise it as a builtin when it is imported statically.
@@ -17,6 +17,7 @@ const clean = (params: Param[]) =>
 export class Db {
   readonly raw: DatabaseSync;
   private depth = 0;
+  private statements = new Map<string, StatementSync>();
 
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
@@ -25,16 +26,27 @@ export class Db {
     this.raw.exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL');
   }
 
+  /** Prepared statements are cached by SQL text (bounded), so hot queries are compiled once. */
+  private stmt(sql: string): StatementSync {
+    let s = this.statements.get(sql);
+    if (!s) {
+      s = this.raw.prepare(sql);
+      if (this.statements.size >= 400) this.statements.delete(this.statements.keys().next().value!);
+      this.statements.set(sql, s);
+    }
+    return s;
+  }
+
   get<T = Record<string, unknown>>(sql: string, ...params: Param[]): T | undefined {
-    return this.raw.prepare(sql).get(...clean(params)) as T | undefined;
+    return this.stmt(sql).get(...clean(params)) as T | undefined;
   }
 
   all<T = Record<string, unknown>>(sql: string, ...params: Param[]): T[] {
-    return this.raw.prepare(sql).all(...clean(params)) as T[];
+    return this.stmt(sql).all(...clean(params)) as T[];
   }
 
   run(sql: string, ...params: Param[]): { changes: number } {
-    const r = this.raw.prepare(sql).run(...clean(params));
+    const r = this.stmt(sql).run(...clean(params));
     return { changes: Number(r.changes) };
   }
 
@@ -60,7 +72,12 @@ export class Db {
     }
   }
 
+  explain(sql: string, ...params: Param[]): string[] {
+    return this.raw.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...clean(params)).map((r) => String((r as { detail: string }).detail));
+  }
+
   close(): void {
+    this.statements.clear();
     this.raw.close();
   }
 }

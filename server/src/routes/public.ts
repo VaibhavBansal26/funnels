@@ -35,7 +35,7 @@ async function readBody(c: Context): Promise<unknown> {
 
 export function publicRoutes(deps: Deps): Hono {
   const r = new Hono();
-  const ipOf = (c: Context) => clientIp(c, deps.config.TRUST_PROXY);
+  const ipOf = (c: Context) => clientIp(c, deps.config);
   const idOf = (v: unknown) => (typeof v === 'object' && v !== null && typeof (v as { funnelId?: unknown }).funnelId === 'string' ? String((v as { funnelId: string }).funnelId).slice(0, 64) : '-');
 
   r.get('/beacon.js', (c) => c.body(BEACON_JS, 200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' }));

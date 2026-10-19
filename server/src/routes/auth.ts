@@ -9,7 +9,7 @@ import { bodyOf } from './util.js';
 export function authRoutes(deps: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
   const perMinute = deps.config.AUTH_ATTEMPTS_PER_MINUTE;
-  const limit = rateLimit(deps.limiter, 'auth', { capacity: perMinute, perMinute }, (c) => clientIp(c, deps.config.TRUST_PROXY));
+  const limit = rateLimit(deps.limiter, 'auth', { capacity: perMinute, perMinute }, (c) => clientIp(c, deps.config));
 
   r.post('/auth/register', limit, async (c) => c.json(await accounts.register(deps, await bodyOf(c, accounts.RegisterInput)), 201));
   r.post('/auth/login', limit, async (c) => c.json(await accounts.login(deps, await bodyOf(c, accounts.LoginInput))));

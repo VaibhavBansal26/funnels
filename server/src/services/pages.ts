@@ -6,6 +6,7 @@ import { AppError, conflict, notFound } from '../errors.js';
 import { requireFunnel, requireStep, listSteps } from '../repos/funnels.js';
 import type { BackupRow, FunnelRow, PageRow, StepRow } from '../repos/types.js';
 import { newId } from '../util/ids.js';
+import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 
 export const MAX_BACKUPS = 10;
 
@@ -65,6 +66,7 @@ export function regenerateFunnel(deps: Deps, ws: string, funnelId: string): void
     if (checksum !== page.checksum) deps.db.run('UPDATE step_pages SET html = ?, checksum = ? WHERE step_id = ?', html, checksum, step.id);
   }
   deps.pageCache.invalidate(steps.map((s) => s.id));
+  schedulePurge(deps, liveUrlsForFunnel(deps, funnelId));
 }
 
 export function regenerateWorkspace(deps: Deps, ws: string): void {
@@ -149,6 +151,7 @@ export function savePage(deps: Deps, auth: Auth, funnelId: string, stepId: strin
     deps.db.run('UPDATE funnels SET updated_at = ? WHERE id = ?', at, funnelId);
     pruneBackups(deps, stepId);
     deps.pageCache.invalidate([stepId]);
+    schedulePurge(deps, liveUrlsForFunnel(deps, funnelId));
     return { stepId, version, checksum, updatedAt: at };
   });
 }

@@ -56,40 +56,58 @@ function sendPage(deps: Deps, c: Context, step: StepRow, status = 200): Response
   return c.html(page.html, status as 200, headers);
 }
 
+export type Resolution =
+  | { kind: 'none' }
+  | { kind: 'inactive' }
+  | { kind: 'redirect'; location: string }
+  | { kind: 'page'; status: 200 | 404; step: StepRow }
+  | { kind: 'missing' };
+
+/** Maps (hostname, path, query) to what a visitor should get. Shared by the in-process host router and the signed edge endpoint. */
+export function resolveLive(deps: Deps, host: string, pathname: string, search: string): Resolution {
+  const domain = host ? deps.db.get<DomainRow>('SELECT * FROM domains WHERE hostname = ?', host) : undefined;
+  if (!domain) return { kind: 'none' };
+  // A registered hostname never falls through to the app (which would serve the admin UI on a customer's domain).
+  if (domain.status !== 'active') return { kind: 'inactive' };
+  const key = pathKey(pathname);
+  const step = deps.db.get<StepRow>(
+    `SELECT s.* FROM steps s JOIN funnels f ON f.id = s.funnel_id
+     WHERE f.domain_id = ? AND f.status = 'live' AND f.deleted_at IS NULL AND s.path_key = ? ORDER BY f.updated_at DESC LIMIT 1`,
+    domain.id, key,
+  );
+  // Canonical form: a different case or trailing slash is a permanent redirect to the stored path.
+  if (step) return pathname !== step.base_path ? { kind: 'redirect', location: step.base_path + search } : { kind: 'page', status: 200, step };
+  const liveStep = (id: string | null): StepRow | undefined =>
+    id
+      ? deps.db.get<StepRow>(`SELECT s.* FROM steps s JOIN funnels f ON f.id = s.funnel_id WHERE s.id = ? AND f.domain_id = ? AND f.status = 'live' AND f.deleted_at IS NULL`, id, domain.id)
+      : undefined;
+  if (key === '/') {
+    const home = liveStep(domain.default_home_step_id);
+    if (home) return { kind: 'page', status: 200, step: home };
+  }
+  const notFound = liveStep(domain.default_404_step_id);
+  return notFound ? { kind: 'page', status: 404, step: notFound } : { kind: 'missing' };
+}
+
 /** Resolves the Host header to an active domain and serves its live funnels' steps. Everything else falls through to the app. */
 export function hostRouting(deps: Deps): MiddlewareHandler {
   return async (c, next) => {
     const host = hostOf(c, deps.config.TRUST_PROXY);
-    const domain = host ? deps.db.get<DomainRow>('SELECT * FROM domains WHERE hostname = ?', host) : undefined;
-    if (!domain) return next();
+    if (!host || !deps.db.get('SELECT 1 FROM domains WHERE hostname = ?', host)) return next();
     const url = new URL(c.req.url);
     if (PASSTHROUGH.test(url.pathname)) return next();
-    // A registered hostname never falls through to the app (which would serve the admin UI on a customer's domain).
-    if (domain.status !== 'active') return messagePage(404, 'Domain not connected', 'This domain has not been connected yet.');
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD') return messagePage(405, 'Method not allowed', 'This page only accepts GET requests.');
-
-    const key = pathKey(url.pathname);
-    const step = deps.db.get<StepRow>(
-      `SELECT s.* FROM steps s JOIN funnels f ON f.id = s.funnel_id
-       WHERE f.domain_id = ? AND f.status = 'live' AND f.deleted_at IS NULL AND s.path_key = ? ORDER BY f.updated_at DESC LIMIT 1`,
-      domain.id, key,
-    );
-    if (step) {
-      // Canonical form: a different case or trailing slash is a permanent redirect to the stored path.
-      if (url.pathname !== step.base_path) return c.redirect(step.base_path + url.search, 301);
-      return sendPage(deps, c, step);
+    const r = resolveLive(deps, host, url.pathname, url.search);
+    switch (r.kind) {
+      case 'redirect':
+        return c.redirect(r.location, 301);
+      case 'page':
+        return sendPage(deps, c, r.step, r.status);
+      case 'inactive':
+        return messagePage(404, 'Domain not connected', 'This domain has not been connected yet.');
+      default:
+        return messagePage(404, 'Page not found', 'The page you are looking for does not exist.');
     }
-    const liveStep = (id: string | null): StepRow | undefined =>
-      id
-        ? deps.db.get<StepRow>(`SELECT s.* FROM steps s JOIN funnels f ON f.id = s.funnel_id WHERE s.id = ? AND f.domain_id = ? AND f.status = 'live' AND f.deleted_at IS NULL`, id, domain.id)
-        : undefined;
-    if (key === '/') {
-      const home = liveStep(domain.default_home_step_id);
-      if (home) return sendPage(deps, c, home);
-    }
-    const notFound = liveStep(domain.default_404_step_id);
-    if (notFound) return sendPage(deps, c, notFound, 404);
-    return messagePage(404, 'Page not found', 'The page you are looking for does not exist.');
   };
 }
 

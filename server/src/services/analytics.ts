@@ -55,43 +55,45 @@ interface StepAgg {
   cents: number;
 }
 
-const AGG = `COALESCE(SUM(type = 'page_view'), 0) AS views, COALESCE(SUM(type = 'page_view' AND unique_visit = 1), 0) AS uniques,
-             COALESCE(SUM(type = 'optin'), 0) AS optins, COALESCE(SUM(type = 'order'), 0) AS orders,
-             COALESCE(SUM(CASE WHEN type = 'order' THEN amount_cents ELSE 0 END), 0) AS cents`;
+const AGG = `COALESCE(SUM(page_views), 0) AS views, COALESCE(SUM(unique_views), 0) AS uniques, COALESCE(SUM(optins), 0) AS optins,
+             COALESCE(SUM(orders), 0) AS orders, COALESCE(SUM(cents), 0) AS cents`;
+
+/** Reads come from `event_rollups` (15-minute UTC buckets kept by a trigger), never from a scan of raw events. */
+const bounds = (r: Range) => [r.startUtc.slice(0, 16), r.endUtc.slice(0, 16)] as const;
 
 function series(deps: Deps, ws: string, funnelId: string, range: Range, stepId?: string) {
-  const rows = deps.db.all<{ minute: string; type: string; unique_visit: number; n: number; cents: number }>(
-    `SELECT substr(created_at, 1, 16) AS minute, type, unique_visit, COUNT(*) AS n, COALESCE(SUM(amount_cents), 0) AS cents
-     FROM events WHERE workspace_id = ? AND funnel_id = ? AND created_at >= ? AND created_at < ? ${stepId ? 'AND step_id = ?' : ''}
-     GROUP BY minute, type, unique_visit`,
-    ws, funnelId, range.startUtc, range.endUtc, ...(stepId ? [stepId] : []),
+  const [from, to] = bounds(range);
+  const rows = deps.db.all<{ bucket: string; views: number; uniques: number; optins: number; orders: number; cents: number }>(
+    `SELECT bucket, ${AGG} FROM event_rollups WHERE funnel_id = ? AND workspace_id = ? AND bucket >= ? AND bucket < ? ${stepId ? 'AND step_id = ?' : ''} GROUP BY bucket`,
+    funnelId, ws, from, to, ...(stepId ? [stepId] : []),
   );
   const days = new Map(eachDay(range.from, range.to).map((d) => [d, { date: d, pageViews: 0, uniqueVisits: 0, optIns: 0, orders: 0, gross: 0, cents: 0 }]));
   for (const r of rows) {
-    // Bucketing happens per minute in the requested zone so half-hour offsets and DST shifts land on the right local day.
-    const day = days.get(dayKey(`${r.minute}:00.000Z`, range.tz));
+    // Buckets are 15-minute UTC slices, so every real-world zone offset lands on a bucket edge and a day boundary never splits one.
+    const day = days.get(dayKey(`${r.bucket}:00.000Z`, range.tz));
     if (!day) continue;
-    if (r.type === 'page_view') {
-      day.pageViews += r.n;
-      if (r.unique_visit === 1) day.uniqueVisits += r.n;
-    } else if (r.type === 'optin') day.optIns += r.n;
-    else {
-      day.orders += r.n;
-      day.cents += r.cents;
-    }
+    day.pageViews += r.views;
+    day.uniqueVisits += r.uniques;
+    day.optIns += r.optins;
+    day.orders += r.orders;
+    day.cents += r.cents;
   }
   return [...days.values()].map(({ cents, ...d }) => ({ ...d, gross: round2(cents / 100) }));
 }
 
 export function funnelAnalytics(deps: Deps, ws: string, funnelId: string, q: z.infer<typeof AnalyticsQuery>) {
   requireFunnel(deps.db, ws, funnelId);
+  deps.events.flush();
   const range = resolveRange(deps, q);
-  const params = [ws, funnelId, range.startUtc, range.endUtc];
-  const where = 'workspace_id = ? AND funnel_id = ? AND created_at >= ? AND created_at < ?';
-  const perStep = new Map(deps.db.all<StepAgg>(`SELECT step_id, ${AGG} FROM events WHERE ${where} GROUP BY step_id`, ...params).map((r) => [r.step_id, r]));
-  const totals = deps.db.get<Omit<StepAgg, 'step_id'>>(`SELECT ${AGG} FROM events WHERE ${where}`, ...params)!;
-  // Funnel-level uniques are distinct visitors, so someone who sees three steps is one visitor.
-  const visitors = deps.db.get<{ n: number }>(`SELECT COUNT(DISTINCT visitor_id) AS n FROM events WHERE ${where} AND type = 'page_view'`, ...params)!.n;
+  const [from, to] = bounds(range);
+  const perStep = new Map(
+    deps.db.all<StepAgg>(`SELECT step_id, ${AGG} FROM event_rollups WHERE funnel_id = ? AND workspace_id = ? AND bucket >= ? AND bucket < ? GROUP BY step_id`, funnelId, ws, from, to).map((r) => [r.step_id, r]),
+  );
+  const totals = deps.db.get<Omit<StepAgg, 'step_id'>>(`SELECT ${AGG} FROM event_rollups WHERE funnel_id = ? AND workspace_id = ? AND bucket >= ? AND bucket < ?`, funnelId, ws, from, to)!;
+  // Funnel-level uniques are distinct visitors, so someone who sees three steps is one visitor. This is the one query that needs raw events.
+  const visitors = deps.db.get<{ n: number }>(
+    `SELECT COUNT(DISTINCT visitor_id) AS n FROM events WHERE funnel_id = ? AND created_at >= ? AND created_at < ? AND type = 'page_view'`, funnelId, range.startUtc, range.endUtc,
+  )!.n;
   const steps = listSteps(deps.db, ws, funnelId).map((s) => {
     const a = perStep.get(s.id);
     return { stepId: s.id, name: s.name, path: s.base_path, position: s.position, ...computeMetrics({ views: a?.views ?? 0, uniques: a?.uniques ?? 0, optins: a?.optins ?? 0, orders: a?.orders ?? 0, cents: a?.cents ?? 0 }) };
@@ -107,9 +109,11 @@ export function funnelAnalytics(deps: Deps, ws: string, funnelId: string, q: z.i
 export function stepAnalytics(deps: Deps, ws: string, funnelId: string, stepId: string, q: z.infer<typeof AnalyticsQuery>) {
   requireFunnel(deps.db, ws, funnelId);
   const step = requireStep(deps.db, ws, funnelId, stepId);
+  deps.events.flush();
   const range = resolveRange(deps, q);
+  const [from, to] = bounds(range);
   const a = deps.db.get<Omit<StepAgg, 'step_id'>>(
-    `SELECT ${AGG} FROM events WHERE workspace_id = ? AND funnel_id = ? AND step_id = ? AND created_at >= ? AND created_at < ?`, ws, funnelId, stepId, range.startUtc, range.endUtc,
+    `SELECT ${AGG} FROM event_rollups WHERE funnel_id = ? AND workspace_id = ? AND step_id = ? AND bucket >= ? AND bucket < ?`, funnelId, ws, stepId, from, to,
   )!;
   return {
     range: { from: range.from, to: range.to, tz: range.tz },

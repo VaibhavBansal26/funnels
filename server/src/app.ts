@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { compress } from 'hono/compress';
 import { cors } from 'hono/cors';
+import { createMetrics } from './metrics.js';
 import { aiRoutes } from './routes/ai.js';
 import { authRoutes } from './routes/auth.js';
 import { domainRoutes } from './routes/domains.js';
@@ -9,6 +11,7 @@ import { funnelRoutes } from './routes/funnels.js';
 import { leadRoutes, orderRoutes } from './routes/leads.js';
 import { notificationRoutes, streamRoutes } from './routes/notifications.js';
 import { publicRoutes } from './routes/public.js';
+import { edgeRoutes } from './routes/edge.js';
 import { hostRouting, messagePage, previewRoutes, staticRoutes } from './routes/serve.js';
 import { tagRoutes } from './routes/tags.js';
 import { adminTemplateRoutes, blockRoutes, templateRoutes } from './routes/templates.js';
@@ -18,6 +21,7 @@ import { AppError } from './errors.js';
 
 export function createApp(deps: Deps): Hono {
   const app = new Hono();
+  const metrics = createMetrics(deps);
 
   app.use('*', async (c, next) => {
     const started = Date.now();
@@ -25,9 +29,27 @@ export function createApp(deps: Deps): Hono {
     c.header('x-request-id', id);
     c.header('x-content-type-options', 'nosniff');
     c.header('referrer-policy', 'strict-origin-when-cross-origin');
-    await next();
+    // A handler that outlives REQUEST_TIMEOUT_MS gets a 504 (synchronous work cannot be interrupted, but the client is released).
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), deps.config.REQUEST_TIMEOUT_MS); timer.unref(); });
+    const done = await Promise.race([next().then(() => 'done' as const), timeout]);
+    clearTimeout(timer);
+    if (done === 'timeout') c.res = c.json({ error: { code: 'REQUEST_TIMEOUT', message: 'The request took too long' } }, 504);
     const path = new URL(c.req.url).pathname;
-    if (path !== '/healthz' && path !== '/readyz') deps.log.info('request', { id, method: c.req.method, path, status: c.res.status, ms: Date.now() - started });
+    if (path !== '/healthz' && path !== '/readyz' && path !== '/metrics') {
+      metrics.observe(c.req.method, c.req.routePath ?? 'unmatched', c.res.status, (Date.now() - started) / 1000);
+      deps.log.info('request', { id, method: c.req.method, path, status: c.res.status, ms: Date.now() - started });
+    }
+  });
+
+  // gzip/deflate for pages and JSON; never for the SSE stream.
+  const gzip = compress();
+  app.use('*', (c, next) => (new URL(c.req.url).pathname === '/api/events/stream' ? next() : gzip(c, next)));
+
+  app.get('/metrics', async (c) => {
+    const token = deps.config.METRICS_TOKEN;
+    if (token && c.req.header('authorization') !== `Bearer ${token}`) return c.json({ error: { code: 'UNAUTHORIZED', message: 'Metrics token required' } }, 401);
+    return c.body(await metrics.registry.metrics(), 200, { 'content-type': metrics.registry.contentType });
   });
 
   // Customer domains: serve published funnels by Host header before anything else can claim the path.
@@ -36,9 +58,10 @@ export function createApp(deps: Deps): Hono {
   app.get('/healthz', (c) => c.json({ status: 'ok' }));
   app.get('/readyz', (c) => {
     deps.db.get('SELECT 1');
-    return c.json({ status: 'ready', migrations: deps.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations')!.n });
+    return c.json({ status: 'ready', eventBuffer: deps.events.depth, migrations: deps.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations')!.n });
   });
 
+  app.route('/', edgeRoutes(deps));
   app.route('/', publicRoutes(deps));
   app.route('/', previewRoutes(deps));
 

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { MiddlewareHandler } from 'hono';
 import { AppError } from '../errors.js';
 
@@ -47,8 +48,18 @@ export function enforce(limiter: RateLimiter, key: string, limit: Limit): void {
   }
 }
 
-export function clientIp(c: { req: { header(n: string): string | undefined }; env?: unknown }, trustProxy: boolean): string {
-  if (trustProxy) {
+/**
+ * Client address. CF-Connecting-IP is believed only when the request proves it came through our Cloudflare
+ * worker/zone by carrying the shared origin secret header; otherwise X-Forwarded-For is used when TRUST_PROXY is on.
+ */
+export function clientIp(c: { req: { header(n: string): string | undefined }; env?: unknown }, cfg: { TRUST_PROXY: boolean; CF_ORIGIN_SECRET?: string }): string {
+  const secret = cfg.CF_ORIGIN_SECRET;
+  const given = c.req.header('x-cf-origin-secret');
+  if (secret && given && given.length === secret.length && timingSafeEqual(Buffer.from(given), Buffer.from(secret))) {
+    const cf = c.req.header('cf-connecting-ip');
+    if (cf) return cf.trim();
+  }
+  if (cfg.TRUST_PROXY) {
     const fwd = c.req.header('x-forwarded-for');
     if (fwd) return fwd.split(',')[0]!.trim();
   }

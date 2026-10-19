@@ -43,7 +43,7 @@ describe('config', () => {
 describe('sqlite layer', () => {
   it('applies migrations once and enforces foreign keys', () => {
     const db = new Db(':memory:');
-    expect(migrate(db)).toEqual(['001_init.sql']);
+    expect(migrate(db)).toEqual(['001_init.sql', '002_perf_edge.sql']);
     expect(migrate(db)).toEqual([]);
     expect(() => db.run(`INSERT INTO users (id, workspace_id, email, name, password_hash, role, created_at) VALUES ('u', 'missing', 'a@b.c', 'n', 'h', 'owner', 'now')`)).toThrow(/FOREIGN KEY/);
     expect(() => db.run(`INSERT INTO workspaces (id, name, created_at) VALUES ('w', 'n', 'now')`)).not.toThrow();

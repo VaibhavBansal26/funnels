@@ -18,6 +18,7 @@ const server = serve({ fetch: createApp(deps).fetch, port: config.PORT, hostname
 function shutdown(signal: string) {
   deps.log.info('shutting down', { signal });
   worker.stop();
+  deps.events.close(); // flush buffered analytics events before exit
   server.close(() => {
     deps.db.close();
     process.exit(0);
