@@ -1,0 +1,17 @@
+{
+  "name": "funnels",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone funnels app: block-based page builder, domains, public serving, analytics, leads, webhooks and AI assistance.",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "install:all": "npm ci --prefix server && npm ci --prefix web",
+    "dev": "npm run dev --prefix server & npm run dev --prefix web & wait",
+    "build": "npm run build --prefix server && npm run build --prefix web",
+    "start": "node server/dist/index.js",
+    "test": "npm test --prefix server && npm test --prefix web",
+    "typecheck": "npm run typecheck --prefix server && npm run typecheck --prefix web",
+    "seed": "npm run seed --prefix server",
+    "package": "npm run build && tar -czf funnels.tgz server/dist server/package.json server/package-lock.json web/dist"
+  }
+}

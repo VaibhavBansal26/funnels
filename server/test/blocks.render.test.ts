@@ -60,6 +60,16 @@ describe('renderPage basics', () => {
     expect(html).toContain('aria-live="polite"');
   });
 
+  it('tags block roots with data-bid in builder mode only', () => {
+    const b = createBuilder('q');
+    const blocks = [b.section([b.heading('Hi'), b.columns([[b.paragraph('a')], [b.paragraph('b')]])]), b.divider(), { id: 'bad', type: 'nope' }];
+    const builder = render(blocks, { mode: 'builder' });
+    for (const id of ['q2', 'q4', 'q1']) expect(builder).toContain(`data-bid="${id}"`);
+    expect(builder).toMatch(/<hr data-bid="q\d+"/);
+    expect(builder).not.toMatch(/data-bid="bad"/); // comments are left alone
+    expect(render(blocks)).not.toContain('data-bid');
+  });
+
   it('includes responsive css', () => {
     expect(render([])).toContain('@media(max-width:640px)');
   });

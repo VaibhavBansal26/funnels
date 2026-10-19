@@ -165,7 +165,14 @@ function renderChildren(blocks: unknown, st: State, depth: number): string {
 
 const wrap = (type: string, inner: string, extra = ''): string => `<div class="fn-b fn-b-${type}${extra}">${inner}</div>`;
 
+/** In builder mode every block's root element carries data-bid so the editor can map canvas clicks back to blocks. */
 function renderBlock(b: L, st: State, depth: number): string {
+  const html = renderBlockHtml(b, st, depth);
+  const id = safeId(b.id);
+  return st.ctx.mode === 'builder' && id ? html.replace(/^<([a-zA-Z][a-zA-Z0-9]*)/, `<$1 data-bid="${id}"`) : html;
+}
+
+function renderBlockHtml(b: L, st: State, depth: number): string {
   const ctx = st.ctx;
   switch (b.type) {
     case 'section': {
