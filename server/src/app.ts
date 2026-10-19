@@ -4,6 +4,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { compress } from 'hono/compress';
 import { cors } from 'hono/cors';
 import { createMetrics } from './metrics.js';
+import { rateLimitMiddleware } from './ratelimit/http.js';
 import { aiRoutes } from './routes/ai.js';
 import { authRoutes } from './routes/auth.js';
 import { domainRoutes } from './routes/domains.js';
@@ -54,6 +55,7 @@ export function createApp(deps: Deps): Hono {
 
   // Customer domains: serve published funnels by Host header before anything else can claim the path.
   app.use('*', hostRouting(deps));
+  app.use('*', rateLimitMiddleware(deps));
 
   app.get('/healthz', (c) => c.json({ status: 'ok' }));
   app.get('/readyz', async (c) => {
@@ -95,7 +97,7 @@ export function createApp(deps: Deps): Hono {
 
   app.onError((err, c) => {
     if (err instanceof AppError) {
-      return c.json({ error: { code: err.code, message: err.message, ...(err.details !== undefined ? { details: err.details } : {}) } }, err.status as 400, err.headers);
+      return c.json({ error: { code: err.code, message: err.message, ...err.extra, ...(err.details !== undefined ? { details: err.details } : {}) } }, err.status as 400, err.headers);
     }
     deps.log.error('unhandled error', { path: new URL(c.req.url).pathname, error: err instanceof Error ? err.stack ?? err.message : String(err) });
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Something went wrong' } }, 500);

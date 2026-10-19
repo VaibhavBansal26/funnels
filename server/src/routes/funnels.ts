@@ -7,10 +7,7 @@ import * as analytics from '../services/analytics.js';
 import * as funnels from '../services/funnels.js';
 import * as pages from '../services/pages.js';
 import * as steps from '../services/steps.js';
-import { z } from 'zod';
 import { bodyOf, queryOf } from './util.js';
-
-const SaveInput = z.object({ doc: z.unknown(), version: z.number().int().optional(), backup: z.boolean().optional() });
 
 export function funnelRoutes(deps: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
@@ -61,7 +58,7 @@ export function funnelRoutes(deps: Deps): Hono<AppEnv> {
 
   r.get('/:id/steps/:sid/page', async (c) => c.json(await pages.getPage(deps, ws(c), c.req.param('id'), c.req.param('sid'))));
   r.put('/:id/steps/:sid/page', async (c) => {
-    const b = await bodyOf(c, SaveInput);
+    const b = await bodyOf(c, pages.SaveInput);
     return c.json(await pages.savePage(deps, authOf(c), c.req.param('id'), c.req.param('sid'), b.doc, { expectedVersion: b.version, backup: b.backup }));
   });
   r.get('/:id/steps/:sid/backups', async (c) => c.json({ data: await pages.listBackups(deps, ws(c), c.req.param('id'), c.req.param('sid')) }));

@@ -8,6 +8,8 @@ import { isUniqueViolation } from '../db/index.js';
 import { inTx } from '../db/scope.js';
 import { badRequest, conflict, forbidden, notFound, unauthorized } from '../errors.js';
 import { newId } from '../util/ids.js';
+import { denyError } from '../ratelimit/response.js';
+import { hashId } from '../ratelimit/subject.js';
 import { regenerateWorkspace } from './pages.js';
 
 const email = z.string().trim().toLowerCase().email().max(254);
@@ -57,11 +59,24 @@ export async function register(deps: Deps, input: z.infer<typeof RegisterInput>)
 // Verified against when the email is unknown, so response time does not reveal which emails exist.
 let dummyHash: Promise<string> | null = null;
 
-export async function login(deps: Deps, input: z.infer<typeof LoginInput>) {
+/**
+ * Failed logins are counted per account (hashed email) and per IP with their own sliding-window policies: once either budget is spent,
+ * further attempts are refused (429) before any password work is done, so a lockout also stops credential guessing and scrypt abuse.
+ * Successful logins are not counted. The lockout is keyed by the email whether or not it exists, so it reveals nothing about accounts.
+ */
+export async function login(deps: Deps, input: z.infer<typeof LoginInput>, ip = 'unknown') {
+  const who = { ip, scope: hashId(input.email) };
+  for (const id of ['auth.failures.account', 'auth.failures.ip']) {
+    const d = await deps.limiter.check(id, who, { mode: 'check' });
+    if (!d.allowed) throw denyError(d);
+  }
   const u = await deps.db.get<UserRow>('SELECT * FROM users WHERE email = ?', input.email);
   dummyHash ??= hashPassword('not-a-real-password');
   const ok = await verifyPassword(input.password, u?.password_hash ?? (await dummyHash));
-  if (!u || !ok) throw unauthorized('Invalid email or password');
+  if (!u || !ok) {
+    await Promise.all(['auth.failures.account', 'auth.failures.ip'].map((id) => deps.limiter.check(id, who)));
+    throw unauthorized('Invalid email or password');
+  }
   return { token: await signAccessToken(deps.config, u.id, deps.now()), user: publicUser(u), workspace: await workspaceOf(deps, u.workspace_id) };
 }
 

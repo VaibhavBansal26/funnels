@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import { parseDocument, renderPage, type PageDocument, type RenderContext, LIMITS } from '../blocks/index.js';
 import type { Auth } from '../auth/context.js';
 import type { Deps } from '../deps.js';
@@ -10,6 +11,8 @@ import { newId } from '../util/ids.js';
 import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 
 export const MAX_BACKUPS = 10;
+
+export const SaveInput = z.object({ doc: z.unknown(), version: z.number().int().optional(), backup: z.boolean().optional() });
 
 export const checksumOf = (html: string): string => createHash('sha256').update(html).digest('hex').slice(0, 32);
 

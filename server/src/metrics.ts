@@ -17,6 +17,22 @@ export function createMetrics(deps: Deps) {
       for (const s of ['queued', 'running', 'done', 'dead']) this.set({ status: s }, rows.find((r) => r.status === s)?.n ?? 0);
     },
   });
+  // Rate limiter: bounded labels only (policy ids and a handful of outcomes), never keys.
+  const decisions = new Counter({ name: 'funnels_ratelimit_decisions_total', help: 'Rate limit decisions by policy and outcome', labelNames: ['policy', 'outcome'], registers: [registry] });
+  const storeLatency = new Histogram({ name: 'funnels_ratelimit_store_seconds', help: 'Rate limit store call latency (Redis)', labelNames: ['ok'], buckets: [0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05], registers: [registry] });
+  const leases = new Counter({ name: 'funnels_ratelimit_lease_total', help: 'Local token lease tier: hit (served locally), refill (leased a batch from the store), direct (exact store call)', labelNames: ['policy', 'result'], registers: [registry] });
+  const breaker = new Gauge({ name: 'funnels_ratelimit_breaker_state', help: 'Rate limit store circuit breaker: 0 closed, 1 half-open, 2 open', registers: [registry] });
+  new Gauge({
+    name: 'funnels_ratelimit_penalty_box', help: 'Subjects currently in the penalty box (in-memory store only; with Redis see decisions{outcome="blocked"})', registers: [registry],
+    collect() { this.set((deps.limiter.store as { blockedCount?: () => number }).blockedCount?.() ?? 0); },
+  });
+  Object.assign(deps.limiter.hooks, {
+    decision: (policy: string, outcome: string) => decisions.inc({ policy, outcome }),
+    lease: (policy: string, result: string) => leases.inc({ policy, result }),
+    store: (seconds: number, ok: boolean) => storeLatency.observe({ ok: String(ok) }, seconds),
+    breaker: (s: string) => breaker.set(s === 'closed' ? 0 : s === 'half_open' ? 1 : 2),
+    logLimited: (i: { policyId: string; outcome: string; sample: number }) => deps.log.warn('rate limited', { policy: i.policyId, outcome: i.outcome, sampled_one_in: i.sample }),
+  });
   return {
     registry,
     observe(method: string, route: string, status: number, seconds: number) {

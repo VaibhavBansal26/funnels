@@ -3,16 +3,13 @@ import { authenticate, authOf, requireRole, type AppEnv } from '../auth/context.
 import { signStreamTicket } from '../auth/tokens.js';
 import type { Deps } from '../deps.js';
 import * as accounts from '../services/accounts.js';
-import { clientIp, rateLimit } from '../util/ratelimit.js';
+import { clientIp } from '../ratelimit/ip.js';
 import { bodyOf } from './util.js';
 
 export function authRoutes(deps: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
-  const perMinute = deps.config.AUTH_ATTEMPTS_PER_MINUTE;
-  const limit = rateLimit(deps.limiter, 'auth', { capacity: perMinute, perMinute }, (c) => clientIp(c, deps.config));
-
-  r.post('/auth/register', limit, async (c) => c.json(await accounts.register(deps, await bodyOf(c, accounts.RegisterInput)), 201));
-  r.post('/auth/login', limit, async (c) => c.json(await accounts.login(deps, await bodyOf(c, accounts.LoginInput))));
+  r.post('/auth/register', async (c) => c.json(await accounts.register(deps, await bodyOf(c, accounts.RegisterInput)), 201));
+  r.post('/auth/login', async (c) => c.json(await accounts.login(deps, await bodyOf(c, accounts.LoginInput), clientIp(c, deps.config))));
 
   const auth = authenticate(deps);
   const owner = requireRole('owner');

@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { authenticate, authOf, type AppEnv } from '../auth/context.js';
 import type { Deps } from '../deps.js';
+import { principalFor } from '../ratelimit/http.js';
+import { denyError } from '../ratelimit/response.js';
 import * as notifications from '../services/notifications.js';
 
 export function notificationRoutes(deps: Deps): Hono<AppEnv> {
@@ -23,8 +25,10 @@ export function notificationRoutes(deps: Deps): Hono<AppEnv> {
 export function streamRoutes(deps: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
   r.use('*', authenticate(deps, { allowTicket: true }));
-  r.get('/stream', (c) => {
+  r.get('/stream', async (c) => {
     const ws = authOf(c).workspaceId;
+    const slot = await deps.limiter.acquire('api.stream', principalFor(c, deps, authOf(c)));
+    if (!slot.decision.allowed) throw denyError(slot.decision);
     return streamSSE(c, async (stream) => {
       await stream.writeSSE({ event: 'ready', data: JSON.stringify({ ok: true }) });
       const off = deps.bus.subscribe(ws, (e) => void stream.writeSSE({ event: e.type, data: JSON.stringify(e.data) }).catch(() => undefined));
@@ -33,6 +37,7 @@ export function streamRoutes(deps: Deps): Hono<AppEnv> {
       await new Promise<void>((resolve) => stream.onAbort(resolve));
       clearInterval(heartbeat);
       off();
+      await slot.release();
     });
   });
   return r;

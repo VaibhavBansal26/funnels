@@ -6,6 +6,8 @@ import { setCookie } from 'hono/cookie';
 import { verifyPreviewToken } from '../auth/tokens.js';
 import { esc } from '../blocks/index.js';
 import type { Deps } from '../deps.js';
+import { clientIp } from '../ratelimit/ip.js';
+import { denyError } from '../ratelimit/response.js';
 import { sanitizeUtms } from '../services/publicblocks.js';
 import { listSteps } from '../repos/funnels.js';
 import type { DomainRow, FunnelRow, PageRow, StepRow } from '../repos/types.js';
@@ -97,6 +99,8 @@ export function hostRouting(deps: Deps): MiddlewareHandler {
     const url = new URL(c.req.url);
     if (PASSTHROUGH.test(url.pathname)) return next();
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD') return messagePage(405, 'Method not allowed', 'This page only accepts GET requests.');
+    const rl = await deps.limiter.evaluate(['ip.global', 'public.page'], { ip: clientIp(c, deps.config) });
+    if (rl.denied) throw denyError(rl.denied);
     const r = await resolveLive(deps, host, url.pathname, url.search);
     switch (r.kind) {
       case 'redirect':

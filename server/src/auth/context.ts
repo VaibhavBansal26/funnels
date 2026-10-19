@@ -44,7 +44,10 @@ export function authenticate(deps: Deps, opts: { allowTicket?: boolean } = {}): 
       if (ticket) userId = await verifyStreamTicket(deps.config, ticket, deps.now());
     }
     if (!userId) throw unauthorized();
-    c.set('auth', await loadAuth(deps, userId));
+    const auth = await loadAuth(deps, userId);
+    c.set('auth', auth);
+    // Per-user and per-workspace limits need to know who is calling, so they run here, right after authentication.
+    await (c.get('rl' as never) as { afterAuth?: (a: Auth) => Promise<void> } | undefined)?.afterAuth?.(auth);
     await next();
   };
 }

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CloudflareDomainProvider, mapCloudflareStatus, type DomainProvider } from '../src/edge/domainProvider.js';
 import { CloudflareApiPurger, type CloudflarePurger } from '../src/edge/purger.js';
 import { NonceCache, signEdge, verifyEdge } from '../src/edge/signing.js';
-import { clientIp } from '../src/util/ratelimit.js';
+import { clientIp } from '../src/ratelimit/ip.js';
 import { csvStream } from '../src/util/csv.js';
 import { resolveRange } from '../src/services/analytics.js';
 import { activeDomain, formTarget, makeFunnel, makeHarness, seedEvents, type Harness } from './helpers.js';
@@ -228,7 +228,9 @@ describe('trusting CF-Connecting-IP', () => {
     expect(clientIp(req({ 'cf-connecting-ip': '203.0.113.5' }), cfg)).toBe('10.0.0.9');
     expect(clientIp(req({ 'cf-connecting-ip': '203.0.113.5', 'x-cf-origin-secret': 'wrong-secret-wrong!' }), cfg)).toBe('10.0.0.9');
     expect(clientIp(req({ 'cf-connecting-ip': '203.0.113.5', 'x-cf-origin-secret': 'origin-secret-origin' }), { TRUST_PROXY: false })).toBe('10.0.0.9');
-    expect(clientIp(req({ 'x-forwarded-for': '1.1.1.1, 2.2.2.2' }), { TRUST_PROXY: true })).toBe('1.1.1.1');
+    // The client controls the left of X-Forwarded-For; the entry added by our own proxy is the one `TRUSTED_PROXY_HOPS` from the right.
+    expect(clientIp(req({ 'x-forwarded-for': '6.6.6.6, 1.1.1.1' }), { TRUST_PROXY: true })).toBe('1.1.1.1');
+    expect(clientIp(req({ 'x-forwarded-for': '6.6.6.6, 1.1.1.1, 2.2.2.2' }), { TRUST_PROXY: true, TRUSTED_PROXY_HOPS: 2 })).toBe('1.1.1.1');
     expect(clientIp(req({ 'x-forwarded-for': '1.1.1.1' }), { TRUST_PROXY: false })).toBe('10.0.0.9');
   });
   it('a spoofed header cannot dodge the per-IP rate limit', async () => {

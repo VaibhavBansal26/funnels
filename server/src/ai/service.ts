@@ -2,7 +2,7 @@ import { z, type ZodType } from 'zod';
 import type { Auth } from '../auth/context.js';
 import type { Deps } from '../deps.js';
 import { AppError } from '../errors.js';
-import { enforce } from '../util/ratelimit.js';
+import { denyError } from '../ratelimit/response.js';
 import { slugPath } from '../services/paths.js';
 import { createFunnelFromSteps } from '../services/funnels.js';
 import { AnalyticsQuery, funnelAnalytics } from '../services/analytics.js';
@@ -30,7 +30,8 @@ const today = (deps: Deps) => deps.now().toISOString().slice(0, 10);
 
 /** Per-workspace per-minute rate limit plus a daily cap (AI_DAILY_CAP, 0 disables AI). The request is counted before the call. */
 async function guard(deps: Deps, ws: string): Promise<void> {
-  enforce(deps.limiter, `ai:${ws}`, { capacity: deps.config.AI_RATE_LIMIT_PER_MINUTE, perMinute: deps.config.AI_RATE_LIMIT_PER_MINUTE });
+  const d = await deps.limiter.check('ai.minute', { ip: 'workspace', workspaceId: ws });
+  if (!d.allowed) throw denyError(d);
   const cap = deps.config.AI_DAILY_CAP;
   // One atomic conditional upsert: the cap check and the increment cannot be split by a concurrent request.
   const day = today(deps);

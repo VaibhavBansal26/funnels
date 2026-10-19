@@ -17,7 +17,7 @@ import { verificationJob } from './services/domains.js';
 import { seedTemplates } from './templates/seed.js';
 import { EventBus } from './util/bus.js';
 import { PageCache } from './util/pagecache.js';
-import { RateLimiter } from './util/ratelimit.js';
+import { createLimiter } from './ratelimit/index.js';
 
 export function createAi(config: Config): AiProvider {
   return config.ANTHROPIC_API_KEY ? new AnthropicProvider({ apiKey: config.ANTHROPIC_API_KEY, model: config.ANTHROPIC_MODEL }) : new HeuristicProvider();
@@ -52,7 +52,7 @@ export async function createDeps(config: Config, overrides: Partial<Deps> = {}):
     http: new NodeHttpClient(),
     lookup: systemLookup,
     jobs: new JobQueue(db, () => now().getTime()),
-    limiter: new RateLimiter(() => now().getTime()),
+    limiter: overrides.limiter ?? (await createLimiter(config, { db, log, now: () => now().getTime() })),
     bus: new EventBus(),
     pageCache: new PageCache(),
     events: new EventBuffer(db, log, { flushMs: config.EVENT_BUFFER_MS, maxQueue: config.EVENT_BUFFER_MAX }),

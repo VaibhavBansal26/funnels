@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 import { createLogger } from '../src/logger.js';
-import { RateLimiter } from '../src/util/ratelimit.js';
 import { PageCache } from '../src/util/pagecache.js';
 import { EventBus } from '../src/util/bus.js';
 import { DEMO_EMAIL, DEMO_PASSWORD, seedDemo } from '../src/seed.js';
@@ -36,30 +35,6 @@ describe('config', () => {
     expect(c.ENABLE_WORKER).toBe(false);
     expect(c.AI_DAILY_CAP).toBe(0);
     for (const bad of [{ PORT: 'abc' }, { PORT: '70000' }, { NODE_ENV: 'staging' }, { WEBHOOK_MAX_ATTEMPTS: '0' }, { LOG_LEVEL: 'loud' }]) expect(() => loadConfig(bad)).toThrow(/Invalid environment/);
-  });
-});
-
-describe('rate limiter', () => {
-  it('is a token bucket with refill and per-key isolation', () => {
-    let now = 0;
-    const l = new RateLimiter(() => now);
-    const lim = { capacity: 3, perMinute: 60 };
-    expect([1, 2, 3].map(() => l.take('k', lim).ok)).toEqual([true, true, true]);
-    const denied = l.take('k', lim);
-    expect(denied).toEqual({ ok: false, retryAfterSeconds: 1 });
-    expect(l.take('other', lim).ok).toBe(true);
-    now += 1000;
-    expect(l.take('k', lim).ok).toBe(true);
-    expect(l.take('k', lim).ok).toBe(false);
-    now += 60_000;
-    expect([1, 2, 3, 4].map(() => l.take('k', lim).ok)).toEqual([true, true, true, false]); // never exceeds capacity
-  });
-  it('reports a sensible Retry-After for slow refill rates', () => {
-    let now = 0;
-    const l = new RateLimiter(() => now);
-    const lim = { capacity: 1, perMinute: 6 };
-    l.take('k', lim);
-    expect(l.take('k', lim)).toEqual({ ok: false, retryAfterSeconds: 10 });
   });
 });
 

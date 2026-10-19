@@ -6,7 +6,7 @@ import type { DnsResolver } from './dns/resolver.js';
 import type { PaymentProvider } from './payments/provider.js';
 import type { HostLookup, HttpClient } from './net/ssrf.js';
 import type { JobQueue } from './jobs/queue.js';
-import type { RateLimiter } from './util/ratelimit.js';
+import type { RateLimiter } from './ratelimit/limiter.js';
 import type { EventBus } from './util/bus.js';
 import type { PageCache } from './util/pagecache.js';
 import type { EventBuffer } from './services/eventbuffer.js';

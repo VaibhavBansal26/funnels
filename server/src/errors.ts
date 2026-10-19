@@ -7,6 +7,8 @@ export class AppError extends Error {
     message: string,
     public details?: unknown,
     public headers?: Record<string, string>,
+    /** Extra fields merged into the error object of the JSON body (e.g. `retry_after_s`). */
+    public extra?: Record<string, unknown>,
   ) {
     super(message);
   }
