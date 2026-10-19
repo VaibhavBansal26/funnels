@@ -6,9 +6,9 @@ Machine: Apple M1 (8 cores), 8 GB RAM, macOS, Node v24.11.1, everything on loopb
 
 | Change | Where |
 |---|---|
-| Analytics read from 15-minute rollups (trigger-maintained) instead of scanning `events` | `002_perf_edge.sql`, `services/analytics.ts` |
+| Analytics read from 15-minute rollups instead of scanning `events`; maintained by the application once per batch (was: a SQLite trigger per row until migration 004) | `services/rollups.ts`, `services/analytics.ts` |
 | Write-behind buffer for `POST /api/public/events` (batched transactions, bounded queue, flush on timer/overflow/shutdown/read) | `services/eventbuffer.ts` |
-| Prepared-statement cache (bounded, by SQL text) | `db/db.ts` |
+| Prepared-statement cache (bounded, by SQL text; named server-side statements on PostgreSQL) | `db/sqlite.ts`, `db/pg.ts` |
 | Keyset-paged streaming CSV exports (1000 rows per page, no 50,000-row cap) | `util/csv.ts` |
 | gzip/deflate for pages and JSON (not SSE) | `app.ts` |
 | Rendered-page LRU keyed by step, invalidated on writes; `ETag` = content checksum, 304 | `util/pagecache.ts`, `routes/serve.ts` |
@@ -46,7 +46,7 @@ Reading the numbers honestly:
 * Builder save contention: one 200, every other request 409 with `VERSION_CONFLICT` and `currentVersion`; no 5xx, no lost update. Conflict policy: optimistic concurrency on the step `version`; the client reloads and re-applies.
 * Rate-limit correctness under load is asserted exactly by tests (60 parallel requests against a 20/min limit give exactly 20 x 202 and 40 x 429).
 * The scenario "page cache hit vs miss" is not separate: the origin LRU is hot after the first request. Edge cache hit rates depend on Cloudflare and were not measured.
-* Not run: Redis/Postgres variants, k6, multi-node.
+* Not run: Redis variants, k6, multi-node.
 
 ## Worker threads: measured, not adopted
 
@@ -63,12 +63,65 @@ The input limits (400 blocks, 50 KB HTML, 1.5 MB document) keep every CPU-bound 
 
 The buffer trades a bounded window (default 250 ms, 5,000 rows) of crash exposure for fewer commits. `SIGTERM` flushes; a hard kill can lose the unflushed window. Readers that need exact numbers call `flush()` first. Duplicate opt-in ids and first-view uniqueness are decided against both stored and still-queued rows.
 
-## Single-node ceiling and what scaling would take
+## Single-node ceiling and what scaling takes
 
-SQLite WAL with one writer, in-memory rate limiter, SSE bus and page cache: run one replica (see `deploy/k8s`). Moving to several nodes needs a shared database (the services call the synchronous `node:sqlite` API directly, so this is a rewrite of the data layer, not a driver swap), a shared limiter, and cache-invalidation fan-out. That work (PostgreSQL, Redis, BullMQ) was **not** done.
+SQLite (WAL, one writer) keeps the single-replica limit. With `DATABASE_URL` the data layer is multi-connection safe (see ARCHITECTURE.md, Data layer), but the in-memory limiter, page cache, SSE bus and the event buffer's uniqueness sets are still per process. Redis/BullMQ work is separate and not done.
 
-## Update: visitor_days (funnel-level distinct visitors)
+## Regression investigation: ingestion 4,244 req/s then 914 req/s
 
-Migration `003_visitor_days.sql` keeps one row per (funnel, UTC day, visitor). `distinctVisitors` unions whole UTC days from that table with raw-event slices for the partial days at either edge (zone offsets), so the result is exact (tested against a raw scan for UTC, New York, Kolkata and Auckland ranges). Measured on the 1M-event benchmark: 109.0 ms with `visitor_days` against 139.7 ms for the raw scan, a modest gain because the synthetic data has about 189k visitor-days (few repeat visitors per day). The table pays off when visitors return many times per day, not for one-off traffic.
+Claim under test: migration `003_visitor_days.sql` (a second per-row trigger) cut ingestion from about 4,244 to about 914 req/s. The two earlier figures were not comparable (9k vs 42k events in the table, a shared machine), so both were re-measured here.
 
-A re-run of the load scenarios after this change measured 914 req/s for ingestion (p99 233 ms) and 912 req/s for the mixed admin scenario. These are NOT comparable with the earlier table: the second trigger adds an insert per first-view-per-day, the runs had different data volumes (9k vs 42k events), and the machine was shared with the benchmark. The earlier ingestion figure (4,244 req/s) was measured before the trigger existed, so the trigger plausibly costs real throughput; this was not isolated.
+Machine for everything below: Apple M1, 8 cores, 8 GB, macOS, Node v24.11.1, 2026-10-19. **The machine was not quiet.** Load average was 8 to 28 throughout (Spotlight indexing and other agents' processes; I could not stop them), so absolute numbers and any single run are unreliable. What is reported are medians of interleaved repeats, which share the same drift, plus a no-HTTP benchmark that removes most of it.
+
+**1. HTTP, fixed 30,000 requests (identical data volume), 64 concurrent unique visitors, built server, `bench/ingest.mjs`, 5 interleaved rounds, median:**
+
+| variant | req/s | server CPU ms per 1k requests |
+|---|---|---|
+| before: both triggers (commit 4bfea23) | 2,953 | 380 |
+| before, both triggers removed (no rollups at all) | 3,134 | 387 |
+| after: batch + app-level rollups (this change) | 3,209 | 356 |
+
+Per-round req/s ranged 1,656 to 3,516 (before) and 574 to 4,280 (no triggers): the spread between rounds is larger than the difference between variants, so **HTTP-level differences of under about 10% are not resolvable on this machine**. A first 3-round attempt was worse (788 to 2,447 req/s) for the same reason.
+
+**2. Write path only, no HTTP, `bench/ingest-db.mjs` (50,000 events in batches of 500, 5 interleaved repeats, median / min):**
+
+| strategy | wall ms per 1k rows | CPU ms per 1k rows |
+|---|---|---|
+| per-row insert + both triggers (before) | 43.7 / 38.9 | 39.4 / 36.7 |
+| per-row insert + rollup trigger only | 27.6 / 24.6 | 24.9 / 23.2 |
+| per-row insert, no triggers (lower bound, no rollups) | 9.2 / 8.4 | 8.6 / 8.0 |
+| batch insert + app-level rollups (after) | 13.1 / 11.8 | 12.6 / 11.0 |
+
+**Finding.** The triggers are expensive for what they do (the `visitor_days` trigger alone added about 16 ms per 1k rows, +58% over the rollup trigger; the rollup trigger added about 18 ms, 3x the bare insert), but in absolute terms they cost about 0.035 ms per event against about 0.38 ms of server CPU per request: roughly 10% of an ingestion request. **They do not explain a 4.6x throughput drop.** The 914 req/s run coincided with a loaded machine, a 4x larger table (the first-view lookup uses an index whose depth grows) and a benchmark running at the same time; that is the most likely cause, and it cannot be proven after the fact.
+
+**Resolution.**
+* Rollup maintenance moved from a per-row trigger to the batch flush: one multi-row insert plus one upsert per (funnel, bucket, step) per batch, in the same transaction. Write cost 43.7 to 13.1 ms per 1k rows (3.3x less) and only 1.4x the no-rollup lower bound. Exactness is tested against a raw `GROUP BY` per local day for UTC, New York, Kolkata and Auckland (`phase2.test.ts`), and `analytics.test.ts` covers DST and edge days.
+* `visitor_days` removed (migration 004). It saved about 30 ms on the 1M-event distinct count (109 vs 140 ms in the quiet run) for +58% write cost and about 190k extra rows per million events, and it did not pay for itself. Funnel-level distinct visitors are a raw `COUNT(DISTINCT visitor_id)` again.
+
+## Final benchmark suite (after this change)
+
+`node bench/analytics.mjs 1000000` (1M events, one funnel, 4 steps, 30-day range; machine loaded, so about 1.6x slower than the earlier quiet run; the rollup-vs-scan ratio is what matters):
+
+| Query | Raw scan | Rollups |
+|---|---|---|
+| per-step totals | 269.7 ms | 4.2 ms |
+| daily series input | 315.3 ms | 3.6 ms |
+| `COUNT(DISTINCT visitor)` | 220.2 ms | not applicable (needs raw events) |
+
+Results identical (`results identical: true`). 1M events inserted in 8.7 s in one transaction with no triggers, then rolled up with one `GROUP BY` (34,560 rollup rows).
+
+`node loadtest/run.mjs 10` against the built server on SQLite, three runs (before = commit 4bfea23, one run, same session):
+
+| scenario | before (1 run) | after run 1 | run 2 | run 3 | median after |
+|---|---|---|---|---|---|
+| public page, origin hit, 64 conn (req/s) | n/a | 9,516 | n/a | n/a | 9,516 (1 run) |
+| page_view ingestion, 64 conc | 2,904 | 1,055 | 1,666 | 2,401 | 1,666 |
+| mixed admin, 32 conn | 597 | 603 | 450 | 400 | 450 |
+| builder save, 16 conn on one base version (409 count in brackets) | 4,022 | 3,351 (33,501) | 4,685 (46,839) | 5,567 (61,237) | 4,685 |
+| opt-in submissions, 32 conc | 1,405 | 1,878 | 1,930 | 2,275 | 1,930 |
+
+Reading this honestly: the three "after" runs of the same code differ by 2x for ingestion, so the loaded machine decides the result; I cannot claim that after is faster or slower than before at HTTP level. Builder saves still yield exactly one 200 per run (everything else 409, no 5xx), and event integrity held in every run (analytics page views equal raw rows after the shutdown flush). The first run of the earlier table in this file (4,244 req/s ingestion, 351 mixed) was measured on a quieter machine and should not be compared with these.
+
+Write path per engine (`bench/ingest-engines.mjs`, 50,000 events in batches of 500, median of 3): SQLite 10.3 ms per 1k rows (97k rows/s), PGlite 47.3 (21k rows/s), PostgreSQL 18.4 over loopback 31.0 (32k rows/s). The PostgreSQL figure is a `postgres` binary from the `embedded-postgres` npm package running x86_64 under Rosetta on this ARM Mac, so it understates a native server; it is shown to prove the path works on a real server, not as a capacity number. HTTP load tests cannot run against PGlite (no TCP) and were not run against PostgreSQL: Docker is down here and the server used for verification was a development binary.
+
+Not run: the HTTP suite against PostgreSQL, k6, multi-node, a native or containerised `postgres:17`.

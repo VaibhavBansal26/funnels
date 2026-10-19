@@ -11,7 +11,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 const N = Number(process.argv[2] ?? 1_000_000);
 const db = new DatabaseSync(join(mkdtempSync(join(tmpdir(), 'funnels-bench-')), 'b.db'));
 db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = OFF; PRAGMA foreign_keys = ON');
-const mdir = fileURLToPath(new URL('../server/src/db/migrations/', import.meta.url));
+const mdir = fileURLToPath(new URL('../server/src/db/migrations/sqlite/', import.meta.url));
 for (const f of readdirSync(mdir).sort()) db.exec(readFileSync(join(mdir, f), 'utf8'));
 db.exec(`INSERT INTO workspaces VALUES ('w','w',0,'now'); INSERT INTO funnels (id, workspace_id, name, base_path, created_at, updated_at) VALUES ('f','w','f','/f','now','now')`);
 for (let i = 0; i < 4; i++) db.exec(`INSERT INTO steps (id, workspace_id, funnel_id, name, base_path, path_key, position, version, created_at, updated_at) VALUES ('s${i}','w','f','s','/s${i}','/s${i}',${i},1,'now','now')`);
@@ -25,6 +25,9 @@ for (let i = 0; i < N; i++) {
 }
 db.exec('COMMIT');
 const insertMs = performance.now() - t;
+db.exec(`INSERT INTO event_rollups (workspace_id, funnel_id, step_id, bucket, page_views, unique_views, optins, orders, cents)
+  SELECT workspace_id, funnel_id, step_id, substr(created_at, 1, 14) || printf('%02d', (CAST(substr(created_at, 15, 2) AS INTEGER) / 15) * 15) AS b,
+  SUM(type = 'page_view'), SUM(type = 'page_view' AND unique_visit = 1), SUM(type = 'optin'), SUM(type = 'order'), SUM(CASE WHEN type = 'order' THEN amount_cents ELSE 0 END) FROM events GROUP BY funnel_id, step_id, b`);
 const time = (label, fn, n = 5) => { fn(); const ts = []; for (let i = 0; i < n; i++) { const a = performance.now(); fn(); ts.push(performance.now() - a); } ts.sort((x, y) => x - y); return `${label}: median ${ts[Math.floor(n / 2)].toFixed(1)} ms`; };
 const from = '2026-02-01T00:00:00.000Z', to = '2026-03-01T00:00:00.000Z';
 const raw = () => db.prepare(`SELECT step_id, SUM(type='page_view'), SUM(type='page_view' AND unique_visit=1), SUM(type='optin'), SUM(type='order'), SUM(CASE WHEN type='order' THEN amount_cents ELSE 0 END) FROM events WHERE workspace_id='w' AND funnel_id='f' AND created_at >= ? AND created_at < ? GROUP BY step_id`).all(from, to);
@@ -32,15 +35,12 @@ const roll = () => db.prepare(`SELECT step_id, SUM(page_views), SUM(unique_views
 const rawSeries = () => db.prepare(`SELECT substr(created_at,1,16) m, type, unique_visit, COUNT(*) FROM events WHERE funnel_id='f' AND created_at >= ? AND created_at < ? GROUP BY m, type, unique_visit`).all(from, to);
 const rollSeries = () => db.prepare(`SELECT bucket, SUM(page_views), SUM(unique_views), SUM(optins), SUM(orders), SUM(cents) FROM event_rollups WHERE funnel_id='f' AND bucket >= ? AND bucket < ? GROUP BY bucket`).all(from.slice(0, 16), to.slice(0, 16));
 const distinct = () => db.prepare(`SELECT COUNT(DISTINCT visitor_id) FROM events WHERE funnel_id='f' AND created_at >= ? AND created_at < ? AND type='page_view'`).get(from, to);
-console.log(`${N.toLocaleString()} events inserted in ${(insertMs / 1000).toFixed(1)} s (with the rollup trigger active); rollup rows: ${db.prepare('SELECT COUNT(*) n FROM event_rollups').get().n}`);
+console.log(`${N.toLocaleString()} events inserted in ${(insertMs / 1000).toFixed(1)} s (rollups built afterwards with one GROUP BY; the application maintains them per batch, see bench/ingest-db.mjs); rollup rows: ${db.prepare('SELECT COUNT(*) n FROM event_rollups').get().n}`);
 console.log(time('per-step totals, raw events scan   ', raw));
 console.log(time('per-step totals, rollups           ', roll));
 console.log(time('daily series input, raw events scan', rawSeries));
 console.log(time('daily series input, rollups        ', rollSeries));
-const vd = () => db.prepare(`SELECT COUNT(*) n FROM (SELECT DISTINCT visitor_id FROM visitor_days WHERE funnel_id='f' AND day >= '2026-02-01' AND day < '2026-03-01')`).get();
 console.log(time('COUNT(DISTINCT visitor), raw events      ', distinct, 3));
-console.log(time('COUNT(DISTINCT visitor), visitor_days    ', vd, 3));
-console.log(`distinct visitors identical: ${JSON.stringify(distinct()) === JSON.stringify(vd()).replace('"n"', '"COUNT(DISTINCT visitor_id)"')} (${Object.values(vd())[0]} visitor_days-based)`);
 const a = JSON.stringify(raw().map((r) => Object.values(r).map(Number)));
 const b = JSON.stringify(roll().map((r) => Object.values(r).map(Number)));
 console.log(`results identical: ${a === b}`);
