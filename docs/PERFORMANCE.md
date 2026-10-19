@@ -66,3 +66,9 @@ The buffer trades a bounded window (default 250 ms, 5,000 rows) of crash exposur
 ## Single-node ceiling and what scaling would take
 
 SQLite WAL with one writer, in-memory rate limiter, SSE bus and page cache: run one replica (see `deploy/k8s`). Moving to several nodes needs a shared database (the services call the synchronous `node:sqlite` API directly, so this is a rewrite of the data layer, not a driver swap), a shared limiter, and cache-invalidation fan-out. That work (PostgreSQL, Redis, BullMQ) was **not** done.
+
+## Update: visitor_days (funnel-level distinct visitors)
+
+Migration `003_visitor_days.sql` keeps one row per (funnel, UTC day, visitor). `distinctVisitors` unions whole UTC days from that table with raw-event slices for the partial days at either edge (zone offsets), so the result is exact (tested against a raw scan for UTC, New York, Kolkata and Auckland ranges). Measured on the 1M-event benchmark: 109.0 ms with `visitor_days` against 139.7 ms for the raw scan, a modest gain because the synthetic data has about 189k visitor-days (few repeat visitors per day). The table pays off when visitors return many times per day, not for one-off traffic.
+
+A re-run of the load scenarios after this change measured 914 req/s for ingestion (p99 233 ms) and 912 req/s for the mixed admin scenario. These are NOT comparable with the earlier table: the second trigger adds an insert per first-view-per-day, the runs had different data volumes (9k vs 42k events), and the machine was shared with the benchmark. The earlier ingestion figure (4,244 req/s) was measured before the trigger existed, so the trigger plausibly costs real throughput; this was not isolated.

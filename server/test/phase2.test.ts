@@ -525,3 +525,36 @@ describe('concurrency: no lost updates or duplicate rows', () => {
     expect(h.deps.db.get('SELECT COUNT(*) AS n FROM events')).toEqual({ n: 500 });
   });
 });
+
+describe('exact funnel-level distinct visitors from visitor_days', () => {
+  it('matches a raw scan for UTC and offset zones, with partial edge days', async () => {
+    const { distinctVisitors, resolveRange } = await import('../src/services/analytics.js');
+    const h = makeHarness();
+    const u = await h.register();
+    const f = await makeFunnel(h, u.token);
+    let n = 0;
+    const times = ['2026-03-08T23:30:00.000Z', '2026-03-09T00:00:00.000Z', '2026-03-09T09:00:00.000Z', '2026-03-10T03:30:00.000Z', '2026-03-10T18:30:00.000Z', '2026-03-11T05:00:00.000Z', '2026-03-12T00:00:00.000Z'];
+    for (const [i, at] of times.entries()) for (const v of [`a${i % 3}`, `b${i % 2}`, `c${i}`]) h.deps.db.run('INSERT INTO events (id, workspace_id, funnel_id, step_id, type, visitor_id, unique_visit, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)', `e${++n}`, u.wsId, f.id, f.steps[0].id, 'page_view', v, at);
+    for (const q of [{ from: '2026-03-09', to: '2026-03-10' }, { from: '2026-03-09', to: '2026-03-10', tz: 'America/New_York' }, { from: '2026-03-09', to: '2026-03-11', tz: 'Asia/Kolkata' }, { from: '2026-03-10', to: '2026-03-10' }, { from: '2026-03-01', to: '2026-03-31', tz: 'Pacific/Auckland' }]) {
+      const r = resolveRange(h.deps, q);
+      const raw = h.deps.db.get<{ n: number }>(`SELECT COUNT(DISTINCT visitor_id) AS n FROM events WHERE funnel_id = ? AND type = 'page_view' AND created_at >= ? AND created_at < ?`, f.id, r.startUtc, r.endUtc)!.n;
+      expect([JSON.stringify(q), distinctVisitors(h.deps, f.id, r)]).toEqual([JSON.stringify(q), raw]);
+    }
+  });
+});
+
+describe('purge on path rename', () => {
+  it('purges both the old and the new public URL', async () => {
+    const calls: string[][] = [];
+    const h = makeHarness({ deps: { purger: { purgeUrls: async (u: string[]) => void calls.push(u) } } });
+    const u = await h.register();
+    const dom = await activeDomain(h, u.token, 'rename.example.com');
+    const f = await makeFunnel(h, u.token, { name: 'R', base_path: '/old' });
+    await h.call('PATCH', `/api/funnels/${f.id}`, { token: u.token, body: { domain_id: dom, status: 'live' } });
+    await h.worker.tick();
+    calls.length = 0;
+    await h.call('PATCH', `/api/funnels/${f.id}/steps/${f.steps[0].id}`, { token: u.token, body: { base_path: '/new' } });
+    await h.worker.tick();
+    expect(calls.flat()).toEqual(expect.arrayContaining(['https://rename.example.com/old', 'https://rename.example.com/new']));
+  });
+});

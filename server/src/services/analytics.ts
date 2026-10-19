@@ -81,6 +81,26 @@ function series(deps: Deps, ws: string, funnelId: string, range: Range, stepId?:
   return [...days.values()].map(({ cents, ...d }) => ({ ...d, gross: round2(cents / 100) }));
 }
 
+/**
+ * Exact distinct visitors for [start, end): whole UTC days come from `visitor_days` (one row per visitor per day),
+ * the partial days at either edge (at most 24 h each, from time-zone offsets) come from raw events; the two sets are unioned.
+ */
+export function distinctVisitors(deps: Deps, funnelId: string, range: Range): number {
+  const day = (iso: string) => iso.slice(0, 10);
+  const startDay = range.startUtc.endsWith('T00:00:00.000Z') ? day(range.startUtc) : addDays(day(range.startUtc), 1);
+  const endDay = day(range.endUtc); // exclusive: days before it end inside the range
+  const slices: [string, string][] = [];
+  let fullFrom = startDay;
+  if (startDay > day(range.startUtc)) slices.push([range.startUtc, `${startDay}T00:00:00.000Z`]);
+  if (!range.endUtc.endsWith('T00:00:00.000Z')) slices.push([`${endDay}T00:00:00.000Z`, range.endUtc]);
+  if (fullFrom >= endDay) return deps.db.get<{ n: number }>(`SELECT COUNT(DISTINCT visitor_id) AS n FROM events WHERE funnel_id = ? AND type = 'page_view' AND created_at >= ? AND created_at < ?`, funnelId, range.startUtc, range.endUtc)!.n;
+  const raw = slices.map(() => `SELECT visitor_id FROM events WHERE funnel_id = ? AND type = 'page_view' AND created_at >= ? AND created_at < ?`);
+  return deps.db.get<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM (SELECT DISTINCT visitor_id FROM visitor_days WHERE funnel_id = ? AND day >= ? AND day < ? ${raw.map((r) => `UNION ${r}`).join(' ')})`,
+    funnelId, fullFrom, endDay, ...slices.flatMap(([a, b]) => [funnelId, a, b]),
+  )!.n;
+}
+
 export function funnelAnalytics(deps: Deps, ws: string, funnelId: string, q: z.infer<typeof AnalyticsQuery>) {
   requireFunnel(deps.db, ws, funnelId);
   deps.events.flush();
@@ -91,9 +111,7 @@ export function funnelAnalytics(deps: Deps, ws: string, funnelId: string, q: z.i
   );
   const totals = deps.db.get<Omit<StepAgg, 'step_id'>>(`SELECT ${AGG} FROM event_rollups WHERE funnel_id = ? AND workspace_id = ? AND bucket >= ? AND bucket < ?`, funnelId, ws, from, to)!;
   // Funnel-level uniques are distinct visitors, so someone who sees three steps is one visitor. This is the one query that needs raw events.
-  const visitors = deps.db.get<{ n: number }>(
-    `SELECT COUNT(DISTINCT visitor_id) AS n FROM events WHERE funnel_id = ? AND created_at >= ? AND created_at < ? AND type = 'page_view'`, funnelId, range.startUtc, range.endUtc,
-  )!.n;
+  const visitors = distinctVisitors(deps, funnelId, range);
   const steps = listSteps(deps.db, ws, funnelId).map((s) => {
     const a = perStep.get(s.id);
     return { stepId: s.id, name: s.name, path: s.base_path, position: s.position, ...computeMetrics({ views: a?.views ?? 0, uniques: a?.uniques ?? 0, optins: a?.optins ?? 0, orders: a?.orders ?? 0, cents: a?.cents ?? 0 }) };

@@ -11,6 +11,7 @@ import { copyName, copyPath, isValidPath, pathKey, slugPath, suggestPaths } from
 import { domainPathIndex, funnelPathKeys } from './pathconflicts.js';
 import { insertPage, regenerateFunnel, scriptsAllowedFor, validateDoc } from './pages.js';
 import { updateScoped } from '../repos/sql.js';
+import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 
 export function serializeStep(s: StepRow, extras: { isHome?: boolean; is404?: boolean } = {}) {
   return {
@@ -111,6 +112,7 @@ export function updateStep(deps: Deps, auth: Auth, funnelId: string, stepId: str
   return deps.db.tx(() => {
     const funnel = requireFunnel(deps.db, ws, funnelId);
     const step = requireStep(deps.db, ws, funnelId, stepId);
+    const urlsBefore = liveUrlsForFunnel(deps, funnelId); // a renamed path must be purged at the CDN under its OLD url too
     const fields: Record<string, string | number | null> = {};
     if (patch.name !== undefined) fields.name = patch.name;
     if (patch.base_path !== undefined && pathKey(patch.base_path) !== step.path_key) {
@@ -129,6 +131,7 @@ export function updateStep(deps: Deps, auth: Auth, funnelId: string, stepId: str
     updateScoped(deps.db, 'steps', ws, stepId, fields);
     deps.db.run('UPDATE funnels SET updated_at = ? WHERE id = ?', iso(deps), funnelId);
     regenerateFunnel(deps, ws, funnelId);
+    schedulePurge(deps, urlsBefore);
     return serializeStep(requireStep(deps.db, ws, funnelId, stepId));
   });
 }

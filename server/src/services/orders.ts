@@ -131,17 +131,23 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
   }
 
   try {
-    persist();
+    persistOrders(deps, { ws, funnel, step, created, email, name, visitorId: input.visitorId, utms: input.utms });
   } catch (e) {
     // A concurrent request with the same submission id won the race; the provider call was idempotent too.
     if (/UNIQUE/i.test((e as Error).message) && idemBase) return { ok: true, recorded: false, duplicate: true, orders: [], declined: [] };
     throw e;
   }
   return { ok: true, recorded: true, orderId: created[0]?.id, orders: created.map(serializeLine), declined };
+}
 
-  function persist() {
-   deps.db.tx(() => {
-    const lead = upsertLead(deps, ws, { email, name, funnelId: funnel.id, countSubmission: false });
+/** Writes orders, their `order` events, the buyer lead, notifications and webhook deliveries in one transaction. */
+function persistOrders(
+  deps: Deps,
+  p: { ws: string; funnel: { id: string; name: string }; step: { id: string; name: string }; created: OrderRow[]; email: string; name: string | null; visitorId?: string; utms?: unknown },
+): void {
+  const { ws, funnel, step, created } = p;
+  deps.db.tx(() => {
+    const lead = upsertLead(deps, ws, { email: p.email, name: p.name, funnelId: funnel.id, countSubmission: false });
     for (const o of created) {
       o.lead_id = lead.id;
       deps.db.run(
@@ -152,7 +158,7 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
       deps.db.run(
         `INSERT INTO events (id, workspace_id, funnel_id, step_id, type, visitor_id, unique_visit, lead_id, order_id, external_id, amount_cents, currency, utm_json, created_at)
          VALUES (?, ?, ?, ?, 'order', ?, 0, ?, ?, ?, ?, ?, ?, ?)`,
-        newId('evt'), ws, funnel.id, step.id, input.visitorId ?? null, lead.id, o.id, `order:${o.id}`, o.amount_cents, o.currency, JSON.stringify(sanitizeUtms(input.utms)), o.created_at,
+        newId('evt'), ws, funnel.id, step.id, p.visitorId ?? null, lead.id, o.id, `order:${o.id}`, o.amount_cents, o.currency, JSON.stringify(sanitizeUtms(p.utms)), o.created_at,
       );
       notify(deps, ws, { type: 'new_sale', title: 'New sale', body: `${o.email} bought ${o.product_name}`, data: { orderId: o.id, funnelId: funnel.id, amountCents: o.amount_cents, currency: o.currency } });
       fireWebhookEvent(deps, ws, 'funnel.purchase', {
@@ -161,8 +167,7 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
         order: { id: o.id, productName: o.product_name, amount: o.amount_cents / 100, currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1, email: o.email, name: o.name },
       });
     }
-   });
-  }
+  });
 }
 
 export const OrderQuery = z.object({
