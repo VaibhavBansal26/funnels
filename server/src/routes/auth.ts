@@ -14,21 +14,20 @@ export function authRoutes(deps: Deps): Hono<AppEnv> {
   r.post('/auth/register', limit, async (c) => c.json(await accounts.register(deps, await bodyOf(c, accounts.RegisterInput)), 201));
   r.post('/auth/login', limit, async (c) => c.json(await accounts.login(deps, await bodyOf(c, accounts.LoginInput))));
 
-  const authed = new Hono<AppEnv>();
-  authed.use('*', authenticate(deps));
-  authed.get('/auth/me', (c) => c.json(accounts.me(deps, authOf(c))));
-  authed.post('/events/ticket', async (c) => c.json({ ticket: await signStreamTicket(deps.config, authOf(c).userId, deps.now()), expiresInSeconds: 60 }));
+  const auth = authenticate(deps);
+  const owner = requireRole('owner');
+  r.get('/auth/me', auth, (c) => c.json(accounts.me(deps, authOf(c))));
+  r.post('/events/ticket', auth, async (c) => c.json({ ticket: await signStreamTicket(deps.config, authOf(c).userId, deps.now()), expiresInSeconds: 60 }));
 
-  authed.get('/workspace', (c) => c.json(accounts.workspaceOf(deps, authOf(c).workspaceId)));
-  authed.patch('/workspace', requireRole('owner'), async (c) => c.json(accounts.updateWorkspace(deps, authOf(c), await bodyOf(c, accounts.WorkspacePatch))));
+  r.get('/workspace', auth, (c) => c.json(accounts.workspaceOf(deps, authOf(c).workspaceId)));
+  r.patch('/workspace', auth, owner, async (c) => c.json(accounts.updateWorkspace(deps, authOf(c), await bodyOf(c, accounts.WorkspacePatch))));
 
-  authed.get('/members', (c) => c.json(accounts.listMembers(deps, authOf(c).workspaceId)));
-  authed.post('/members', requireRole('owner'), async (c) => c.json(await accounts.createMember(deps, authOf(c), await bodyOf(c, accounts.MemberInput)), 201));
-  authed.patch('/members/:id', requireRole('owner'), async (c) => c.json(accounts.changeRole(deps, authOf(c), c.req.param('id'), (await bodyOf(c, accounts.MemberPatch)).role)));
-  authed.delete('/members/:id', requireRole('owner'), (c) => {
+  r.get('/members', auth, (c) => c.json(accounts.listMembers(deps, authOf(c).workspaceId)));
+  r.post('/members', auth, owner, async (c) => c.json(await accounts.createMember(deps, authOf(c), await bodyOf(c, accounts.MemberInput)), 201));
+  r.patch('/members/:id', auth, owner, async (c) => c.json(accounts.changeRole(deps, authOf(c), c.req.param('id'), (await bodyOf(c, accounts.MemberPatch)).role)));
+  r.delete('/members/:id', auth, owner, (c) => {
     accounts.removeMember(deps, authOf(c), c.req.param('id'));
     return c.body(null, 204);
   });
-  r.route('/', authed);
   return r;
 }

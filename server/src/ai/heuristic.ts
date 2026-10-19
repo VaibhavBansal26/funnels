@@ -46,7 +46,7 @@ export function heuristicRewrite(i: RewriteInput): string {
       break;
     case 'friendly':
       out = /^(hey|hi|hello)\b/i.test(out) ? out : `Hey there, ${out.charAt(0).toLowerCase()}${out.slice(1)}`;
-      out = out.replace(/\.$/, '!');
+      out = /[.!?]$/.test(out) ? out.replace(/\.$/, '!') : `${out}!`;
       break;
     case 'persuasive':
       out = /(today|now)[.!]?$/i.test(out) ? out : `${out.replace(/[.!]*$/, '.')} Start today.`;

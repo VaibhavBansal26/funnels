@@ -75,7 +75,7 @@ export function makeHarness(opts: { env?: Record<string, string>; ai?: AiProvide
   const lookupTable = new Map<string, string[]>([['hooks.example.com', ['93.184.216.34']]]);
   const config = loadConfig({
     NODE_ENV: 'test', DATABASE_PATH: ':memory:', JWT_SECRET: 'test-secret-test-secret-test-secret-123456', TRUST_PROXY: 'true', LOG_LEVEL: 'silent',
-    ENABLE_WORKER: 'false', APP_PUBLIC_CNAME_TARGET: 'sites.funnels.test', APP_PUBLIC_URL: 'https://app.funnels.test', WEB_DIST: '/nonexistent', ...opts.env,
+    ENABLE_WORKER: 'false', ACCESS_TOKEN_TTL_SECONDS: '31536000', APP_PUBLIC_CNAME_TARGET: 'sites.funnels.test', APP_PUBLIC_URL: 'https://app.funnels.test', WEB_DIST: '/nonexistent', ...opts.env,
   });
   const deps = createDeps(config, {
     db: openDb(':memory:'), now: clock.now, log: silentLogger, dns, http, ai: opts.ai ?? new HeuristicProvider(),

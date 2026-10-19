@@ -48,7 +48,7 @@ describe('auth', () => {
   });
 
   it('rejects missing, malformed, tampered, wrong-use and expired tokens', async () => {
-    const h = makeHarness();
+    const h = makeHarness({ env: { ACCESS_TOKEN_TTL_SECONDS: String(12 * 3600) } });
     const u = await h.register();
     expect((await h.call('GET', '/api/funnels')).status).toBe(401);
     expect((await h.call('GET', '/api/funnels', { token: 'garbage' })).status).toBe(401);

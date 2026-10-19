@@ -54,7 +54,11 @@ export class JobQueue {
   claimDue(limit = 10): Job[] {
     const t = this.now();
     return this.db.tx(() => {
-      this.db.run(`UPDATE jobs SET status = 'queued' WHERE status = 'running' AND locked_at < ?`, t - STALE_LOCK_MS);
+      // A crashed worker leaves jobs 'running'. Re-queue them, unless a newer job with the same dedupe key is already waiting.
+      for (const s of this.db.all<{ id: string; dedupe_key: string | null }>(`SELECT id, dedupe_key FROM jobs WHERE status = 'running' AND locked_at < ?`, t - STALE_LOCK_MS)) {
+        const superseded = s.dedupe_key && this.db.get(`SELECT 1 FROM jobs WHERE dedupe_key = ? AND status = 'queued'`, s.dedupe_key);
+        this.db.run(`UPDATE jobs SET status = ?, last_error = ? WHERE id = ?`, superseded ? 'dead' : 'queued', superseded ? 'superseded by a newer job' : 'worker lost', s.id);
+      }
       const rows = this.db.all<JobRow>(`SELECT id, type, payload_json, attempts, max_attempts FROM jobs WHERE status = 'queued' AND run_at <= ? ORDER BY run_at, rowid LIMIT ?`, t, limit);
       for (const r of rows) this.db.run(`UPDATE jobs SET status = 'running', locked_at = ?, attempts = attempts + 1, updated_at = ? WHERE id = ?`, t, new Date(t).toISOString(), r.id);
       return rows.map((r) => ({ id: r.id, type: r.type, payload: JSON.parse(r.payload_json), attempts: r.attempts + 1, maxAttempts: r.max_attempts }));

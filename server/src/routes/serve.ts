@@ -145,6 +145,8 @@ export function staticRoutes(deps: Deps): MiddlewareHandler | null {
     }
     const file = resolve(root, '.' + normalize('/' + decoded));
     const isFile = (file === root || file.startsWith(root + sep)) && existsSync(file) && statSync(file).isFile();
+    // Missing assets are real 404s; only extension-less routes fall back to the SPA shell.
+    if (!isFile && extname(path)) return messagePage(404, 'Not found', 'There is nothing here.');
     const target = isFile ? file : join(root, 'index.html');
     const type = TYPES[extname(target)] ?? 'application/octet-stream';
     const headers: Record<string, string> = { 'content-type': type, 'x-content-type-options': 'nosniff' };
