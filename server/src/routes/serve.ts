@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { setCookie } from 'hono/cookie';
 import { verifyPreviewToken } from '../auth/tokens.js';
@@ -60,10 +60,12 @@ function sendPage(deps: Deps, c: Context, step: StepRow, status = 200): Response
 export function hostRouting(deps: Deps): MiddlewareHandler {
   return async (c, next) => {
     const host = hostOf(c, deps.config.TRUST_PROXY);
-    const domain = host ? deps.db.get<DomainRow>(`SELECT * FROM domains WHERE hostname = ? AND status = 'active'`, host) : undefined;
+    const domain = host ? deps.db.get<DomainRow>('SELECT * FROM domains WHERE hostname = ?', host) : undefined;
     if (!domain) return next();
     const url = new URL(c.req.url);
     if (PASSTHROUGH.test(url.pathname)) return next();
+    // A registered hostname never falls through to the app (which would serve the admin UI on a customer's domain).
+    if (domain.status !== 'active') return messagePage(404, 'Domain not connected', 'This domain has not been connected yet.');
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD') return messagePage(405, 'Method not allowed', 'This page only accepts GET requests.');
 
     const key = pathKey(url.pathname);
@@ -135,8 +137,14 @@ export function staticRoutes(deps: Deps): MiddlewareHandler | null {
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD') return next();
     const path = new URL(c.req.url).pathname;
     if (path.startsWith('/api/') || path.startsWith('/preview/')) return next();
-    const file = join(root, normalize(decodeURIComponent(path)).replace(/^(\.\.[/\\])+/, ''));
-    const isFile = file.startsWith(root) && existsSync(file) && statSync(file).isFile();
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(path);
+    } catch {
+      return messagePage(400, 'Bad request', 'The URL is not valid.');
+    }
+    const file = resolve(root, '.' + normalize('/' + decoded));
+    const isFile = (file === root || file.startsWith(root + sep)) && existsSync(file) && statSync(file).isFile();
     const target = isFile ? file : join(root, 'index.html');
     const type = TYPES[extname(target)] ?? 'application/octet-stream';
     const headers: Record<string, string> = { 'content-type': type, 'x-content-type-options': 'nosniff' };

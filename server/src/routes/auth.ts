@@ -16,7 +16,7 @@ export function authRoutes(deps: Deps): Hono<AppEnv> {
 
   const authed = new Hono<AppEnv>();
   authed.use('*', authenticate(deps));
-  authed.get('/me', (c) => c.json(accounts.me(deps, authOf(c))));
+  authed.get('/auth/me', (c) => c.json(accounts.me(deps, authOf(c))));
   authed.post('/events/ticket', async (c) => c.json({ ticket: await signStreamTicket(deps.config, authOf(c).userId, deps.now()), expiresInSeconds: 60 }));
 
   authed.get('/workspace', (c) => c.json(accounts.workspaceOf(deps, authOf(c).workspaceId)));

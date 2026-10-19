@@ -2,7 +2,10 @@
 export const PATH_RE = /^\/([a-zA-Z0-9-]|%[0-9A-Fa-f]{2})*([^/.]\/?)?$/;
 export const MAX_PATH_LENGTH = 200;
 
-export const isValidPath = (p: unknown): p is string => typeof p === 'string' && p.length <= MAX_PATH_LENGTH && PATH_RE.test(p);
+// The legacy regex lets the final character be anything except "/" and "."; control characters, whitespace and URL delimiters are rejected on top of it.
+const FORBIDDEN_CHARS = /[\s\u0000-\u001f\u007f?#\\]/;
+
+export const isValidPath = (p: unknown): p is string => typeof p === 'string' && p.length <= MAX_PATH_LENGTH && PATH_RE.test(p) && !FORBIDDEN_CHARS.test(p);
 
 /** Comparison key: case-insensitive, trailing slash ignored (except for the root). */
 export function pathKey(p: string): string {

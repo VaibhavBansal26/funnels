@@ -259,7 +259,7 @@ CREATE TABLE jobs (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX idx_jobs_due ON jobs(status, run_at);
-CREATE UNIQUE INDEX idx_jobs_dedupe ON jobs(dedupe_key) WHERE dedupe_key IS NOT NULL AND status IN ('queued', 'running');
+CREATE UNIQUE INDEX idx_jobs_dedupe ON jobs(dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'queued';
 
 CREATE TABLE notifications (
   id TEXT PRIMARY KEY,
