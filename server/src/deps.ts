@@ -9,6 +9,7 @@ import type { JobQueue } from './jobs/queue.js';
 import type { RateLimiter } from './ratelimit/limiter.js';
 import type { EventBus } from './util/bus.js';
 import type { PageCache } from './util/pagecache.js';
+import type { Flights } from './util/flights.js';
 import type { EventBuffer } from './services/eventbuffer.js';
 import type { CloudflarePurger } from './edge/purger.js';
 import type { DomainProvider } from './edge/domainProvider.js';
@@ -28,6 +29,7 @@ export interface Deps {
   limiter: RateLimiter;
   bus: EventBus;
   pageCache: PageCache;
+  flights: Flights;
   events: EventBuffer;
   purger: CloudflarePurger;
   domainProvider: DomainProvider;

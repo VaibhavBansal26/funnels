@@ -27,13 +27,16 @@ const hostOf = (c: Context, trustProxy: boolean): string => {
 // Paths that stay reachable on customer domains because published pages call them.
 const PASSTHROUGH = /^\/(api\/public\/|beacon\.js$|healthz$|readyz$)/;
 
+/** Cache miss path, coalesced: a burst of requests for one page costs one database read per process (one per cluster with Redis). */
 async function pageFor(deps: Deps, step: StepRow): Promise<{ html: string; checksum: string } | null> {
   const cached = deps.pageCache.get(step.id);
   if (cached) return cached;
-  const row = await deps.db.get<PageRow>('SELECT html, checksum FROM step_pages WHERE step_id = ?', step.id);
-  if (!row) return null;
-  deps.pageCache.set(step.id, { html: row.html, checksum: row.checksum });
-  return { html: row.html, checksum: row.checksum };
+  const page = await deps.flights.run('page', `page:${step.id}`, async () => {
+    const row = await deps.db.get<PageRow>('SELECT html, checksum FROM step_pages WHERE step_id = ?', step.id);
+    return row ? { html: row.html, checksum: row.checksum } : null;
+  });
+  if (page) deps.pageCache.set(step.id, page);
+  return page;
 }
 
 function trackingCookies(deps: Deps, c: Context, funnelId: string, stepId: string): void {
@@ -66,7 +69,13 @@ export type Resolution =
   | { kind: 'missing' };
 
 /** Maps (hostname, path, query) to what a visitor should get. Shared by the in-process host router and the signed edge endpoint. */
-export async function resolveLive(deps: Deps, host: string, pathname: string, search: string): Promise<Resolution> {
+export function resolveLive(deps: Deps, host: string, pathname: string, search: string): Promise<Resolution> {
+  // Coalesced per host and path (the query string only matters for the redirect target, which is appended below).
+  return deps.flights.run('resolve', `resolve:${host}${pathname}`, () => resolveUncached(deps, host, pathname), { shareMs: 300 }).then((r) => (r.kind === 'redirect' ? { ...r, location: r.location + search } : r));
+}
+
+async function resolveUncached(deps: Deps, host: string, pathname: string): Promise<Resolution> {
+  const search = '';
   const domain = host ? await deps.db.get<DomainRow>('SELECT * FROM domains WHERE hostname = ?', host) : undefined;
   if (!domain) return { kind: 'none' };
   // A registered hostname never falls through to the app (which would serve the admin UI on a customer's domain).
@@ -95,7 +104,7 @@ export async function resolveLive(deps: Deps, host: string, pathname: string, se
 export function hostRouting(deps: Deps): MiddlewareHandler {
   return async (c, next) => {
     const host = hostOf(c, deps.config.TRUST_PROXY);
-    if (!host || !(await deps.db.get('SELECT 1 FROM domains WHERE hostname = ?', host))) return next();
+    if (!host || !(await deps.flights.run('host', `host:${host}`, async () => !!(await deps.db.get('SELECT 1 FROM domains WHERE hostname = ?', host)), { shareMs: 300 }))) return next();
     const url = new URL(c.req.url);
     if (PASSTHROUGH.test(url.pathname)) return next();
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD') return messagePage(405, 'Method not allowed', 'This page only accepts GET requests.');

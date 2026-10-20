@@ -22,8 +22,12 @@ export class PageCache {
     if (this.map.size > this.max) this.map.delete(this.map.keys().next().value!);
   }
 
+  /** Called after local invalidation, so other layers (the shared single-flight results) can drop their copy too. */
+  onInvalidate?: (stepIds: string[]) => void;
+
   invalidate(stepIds: string[]): void {
     for (const id of stepIds) this.map.delete(id);
+    this.onInvalidate?.(stepIds);
   }
 
   clear(): void {

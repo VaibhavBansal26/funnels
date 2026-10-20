@@ -26,6 +26,8 @@ export function createMetrics(deps: Deps) {
     name: 'funnels_ratelimit_penalty_box', help: 'Subjects currently in the penalty box (in-memory store only; with Redis see decisions{outcome="blocked"})', registers: [registry],
     collect() { this.set((deps.limiter.store as { blockedCount?: () => number }).blockedCount?.() ?? 0); },
   });
+  const flights = new Counter({ name: 'funnels_flights_total', help: 'Request coalescing: leader, local (waited for an in-process computation), shared (took another process\'s result), fallback', labelNames: ['name', 'outcome'], registers: [registry] });
+  deps.flights.hooks.outcome = (name, outcome) => flights.inc({ name, outcome });
   Object.assign(deps.limiter.hooks, {
     decision: (policy: string, outcome: string) => decisions.inc({ policy, outcome }),
     lease: (policy: string, result: string) => leases.inc({ policy, result }),

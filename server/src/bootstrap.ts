@@ -18,7 +18,16 @@ import { verificationJob } from './services/domains.js';
 import { seedTemplates } from './templates/seed.js';
 import { EventBus } from './util/bus.js';
 import { PageCache } from './util/pagecache.js';
+import { Flights } from './util/flights.js';
+import { Redis } from 'ioredis';
 import { createLimiter } from './ratelimit/index.js';
+
+/** A dedicated, fail-fast connection: coalescing must never queue requests behind an unavailable Redis. */
+function flightRedis(url: string): Redis {
+  const r = new Redis(url, { enableOfflineQueue: false, maxRetriesPerRequest: 0, connectTimeout: 1000, lazyConnect: false });
+  r.on('error', () => undefined);
+  return r;
+}
 
 export function createAi(config: Config): AiProvider {
   return config.ANTHROPIC_API_KEY ? new AnthropicProvider({ apiKey: config.ANTHROPIC_API_KEY, model: config.ANTHROPIC_MODEL }) : new HeuristicProvider();
@@ -39,6 +48,9 @@ export function createDomainProvider(config: Config): DomainProvider {
 /** Wires the production dependencies. Every one of them can be replaced through `overrides` (tests do). */
 export async function createDeps(config: Config, overrides: Partial<Deps> = {}): Promise<Deps> {
   const now = overrides.now ?? (() => new Date());
+  const pageCache = overrides.pageCache ?? new PageCache();
+  const flights = overrides.flights ?? new Flights({ redis: config.REDIS_URL && config.RATELIMIT_ENABLED ? flightRedis(config.REDIS_URL) : undefined, prefix: config.REDIS_KEY_PREFIX });
+  pageCache.onInvalidate = (ids) => void flights.invalidate(ids.map((i) => `page:${i}`));
   const log = overrides.log ?? createLogger(config.LOG_LEVEL);
   const db = overrides.db ?? (await openDb({ url: config.DATABASE_URL, sqlitePath: config.DATABASE_PATH, poolMax: config.DATABASE_POOL_MAX, replicaUrls: config.DATABASE_REPLICA_URLS, replica: { maxLagMs: config.REPLICA_MAX_LAG_MS, stickyMs: config.REPLICA_STICKY_MS }, prepare: config.DATABASE_PREPARED_STATEMENTS, log: (m, meta) => log.warn(m, meta) }));
   await seedTemplates(db);
@@ -56,7 +68,8 @@ export async function createDeps(config: Config, overrides: Partial<Deps> = {}):
     jobs: new JobQueue(db, () => now().getTime()),
     limiter: overrides.limiter ?? (await createLimiter(config, { db, log, now: () => now().getTime() })),
     bus: new EventBus(),
-    pageCache: new PageCache(),
+    pageCache,
+    flights,
     events: new EventBuffer(db, log, { flushMs: config.EVENT_BUFFER_MS, maxQueue: config.EVENT_BUFFER_MAX }),
     purger: createPurger(config),
     domainProvider: createDomainProvider(config),
