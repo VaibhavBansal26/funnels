@@ -15,12 +15,21 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+  redis:
+    image: redis:7
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
   app:
     build: .
     ports: ["3000:3000"]
     depends_on:
       postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
     environment:
+      REDIS_URL: redis://redis:6379
       DATABASE_URL: postgres://funnels:${POSTGRES_PASSWORD:-funnels-local-only}@postgres:5432/funnels
       NODE_ENV: production
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ chars) in your shell or .env}

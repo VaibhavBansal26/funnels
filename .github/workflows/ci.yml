@@ -18,6 +18,8 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
       - run: npm ci --prefix server
+      - name: Install redis-server (the limiter suites start their own instances)
+        run: sudo apt-get update && sudo apt-get install -y redis-server && sudo systemctl stop redis-server || true
       - run: npm test --prefix server
         env:
           TEST_DB: ${{ matrix.db }}
@@ -43,6 +45,8 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
       - run: npm ci --prefix server
+      - name: Install redis-server (the limiter suites start their own instances)
+        run: sudo apt-get update && sudo apt-get install -y redis-server && sudo systemctl stop redis-server || true
       - run: npm test --prefix server
         env:
           TEST_DB: pg
@@ -68,7 +72,10 @@ jobs:
             web/package-lock.json
             edge/package-lock.json
       - run: npm run install:all
+      - name: Install redis-server (the limiter suites start their own instances)
+        run: sudo apt-get update && sudo apt-get install -y redis-server && sudo systemctl stop redis-server || true
       - run: npm run typecheck
+      - run: npm run docs:check
       - run: npm test
         env:
           TEST_DB: sqlite # the engine matrix runs in the test-engines and test-postgres jobs
