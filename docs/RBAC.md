@@ -83,7 +83,7 @@ Generated from `server/src/routes/spec.ts`.
 | `members:manage` | `PATCH /api/members/:id`<br>`POST /api/members/:id/reset-2fa`<br>`POST /api/invitations`<br>`POST /api/invitations/:id/resend`<br>`DELETE /api/invitations/:id`<br>`DELETE /api/members/:id` |
 | `members:read` | `GET /api/members`<br>`GET /api/invitations`<br>`GET /api/roles` |
 | `orders:export` | `GET /api/orders/export` |
-| `orders:read` | `GET /api/orders`<br>`GET /api/orders/:id` |
+| `orders:read` | `GET /api/orders`<br>`GET /api/orders/:id`<br>`GET /api/disputes` |
 | `orders:refund` | `POST /api/orders/:id/refund` |
 | `roles:manage` | `POST /api/roles`<br>`PATCH /api/roles/:id`<br>`DELETE /api/roles/:id` |
 | `tags:manage` | `POST /api/tags`<br>`PUT /api/tags/:id`<br>`DELETE /api/tags/:id`<br>`DELETE /api/tags` |

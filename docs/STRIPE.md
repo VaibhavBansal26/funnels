@@ -1,4 +1,4 @@
-# Stripe: Connect checkout, refunds, platform billing and plan limits
+# Stripe: Connect checkout, refunds, disputes, platform billing and plan limits
 
 Status: implemented and tested against an in-process fake of the Stripe API (`server/test/support/fakestripe.ts`). **Not verified against the real Stripe API.** Before enabling in production, run the test-mode checklist at the end of this page.
 
@@ -33,6 +33,34 @@ Charges a PaymentIntent off-session with the customer and payment method saved f
 
 `POST /api/orders/:id/refund` (`orders:refund`, owner and admin by default) with optional `amountCents` and `reason`. The amount is **reserved inside a transaction before Stripe is called** (so concurrent double refunds cannot both go through), the refund is created with an idempotency key, and the reservation is released if Stripe fails (`502 REFUND_FAILED`; Stripe's "already refunded" becomes `409 ALREADY_REFUNDED`). Partial refunds add up; orders carry `status` (`paid`, `partially_refunded`, `refunded`) and `refunded_cents`. Refunds made in the Stripe dashboard arrive as `charge.refunded` and are spread over the orders of that payment, never counting our own refunds twice. Each refund writes the audit log, a notification and a `funnel.refund` webhook.
 
+## Disputes (chargebacks)
+
+The Connect webhook handles `charge.dispute.created`, `.updated`, `.closed`, `.funds_withdrawn` and `.funds_reinstated` (`server/src/services/disputes.ts`, migration 014). Enable these events on the Connect endpoint in the Stripe dashboard.
+
+**What is stored.** One `disputes` row per Stripe dispute id (workspace-scoped, `ON DELETE CASCADE`): Stripe status (`needs_response`, `under_review`, `won`, `lost`, `warning_*`), a derived `outcome` (`open`, `won`, `lost`), reason, amount, currency, `evidence_due_by`, funds withdrawn/reinstated timestamps, livemode, the amount lost. The dispute is linked to the order(s) through the **PaymentIntent** (`orders.provider_ref`); a checkout of an offer plus bumps is one payment, so one dispute covers several orders.
+
+**Order status.** Derived, never stored as a "previous state", so winning always restores exactly what refunds say:
+
+| Order status | When |
+|---|---|
+| `charged_back` | the order lost money to a lost dispute (`orders.disputed_lost_cents > 0`) |
+| `disputed` | a dispute on its payment is open and the order still has value left (amount - refunded - lost) |
+| `paid` / `partially_refunded` / `refunded` | otherwise, from `refunded_cents` |
+
+A **won** (or `warning_closed`) dispute therefore returns the orders to `paid` or `partially_refunded`; a **lost** one makes them `charged_back`.
+
+**Money math.** A lost dispute takes `min(dispute amount, what is left of each order after refunds)` from the payment's orders in creation order and stores it in `orders.disputed_lost_cents`. Refund plus dispute can never take more than the order's amount, in either order: refunding is limited to `amount - refunded - lost` (`409 ORDER_CHARGED_BACK` when nothing is left), and a dashboard refund (`charge.refunded`) arriving after a loss is allocated only to what is left. The loss is applied exactly once per dispute (`loss_applied_at` claim in the same transaction).
+
+**Analytics.** The lost amount is subtracted from the sales rollups (`event_rollups.cents`, and `orders` by 1 when a whole order is gone), booked into the 15-minute bucket in which the loss was recorded (closed periods are not rewritten). Every analytics read uses the rollups, so the funnel analytics API, step analytics, funnel list stats and the Analytics API v1 `gross` and `orders` (funnels, steps, time series) are net of lost disputes; so is the per-lead `order_total` of the leads export. The raw `events` rows (and the NDJSON event export) stay as the facts they are: an `order` event keeps its original amount. **Refunds are not subtracted from gross today** (only lost disputes are); this is unchanged, so a refunded-then-charged-back order loses only the part that was not refunded and nothing is counted twice. Limitation: with `ANALYTICS_READ_STORE=clickhouse` the ClickHouse mirror is fed from events and does not see the dispute correction (unverified, no ClickHouse here).
+
+**Delivery guarantees.** Idempotent by Stripe event id (`stripe_events`) and by state: a replay under another event id changes nothing. Out-of-order tolerant: `closed` before `created` creates the row in its closed state; a terminal outcome (`won`/`lost`) is never reopened by a late `created` or `updated`; an `updated` older than the last applied event (by Stripe's `created`) is ignored; a second `closed` with a different outcome is logged and ignored. A dispute whose payment is not known yet (or arrives before the order exists) is an **orphan**: stored with the workspace of the connected account (`event.account`) and no order, listed with `orphan: true`, and linked when the orders appear (`reconcileDisputes` runs after every order insert), applying a lost outcome then. If even the connected account is unknown the row has no workspace and is invisible to every workspace. A dispute is only linked to orders whose `provider_account` equals the event's account, so another account cannot attach a dispute to these orders by quoting a PaymentIntent id.
+
+**Notifications.** Per dispute change, in the workspace: in-app notification (`type: dispute`: opened, won, lost), outbound webhook `funnel.dispute` (payload `{event: opened|updated|won|lost|funds_withdrawn|funds_reinstated, dispute: {id, status, outcome, reason, amount, currency, evidenceDueBy, lostAmount, fundsWithdrawn}, order}`; `order` is null for an orphan) and an audit entry (`dispute.opened|updated|won|lost|funds_withdrawn|funds_reinstated|reconciled`, actor `stripe`). Replays do not repeat them.
+
+**API and UI.** `GET /api/disputes` (`orders:read`; filters `outcome`, `orderId`; paging) lists the workspace's disputes with a `dashboardUrl` (`https://dashboard.stripe.com/[test/]disputes/dp_...`); `GET /api/orders` and `GET /api/orders/:id` carry a `dispute` object (or null). The Orders tab shows a Disputed or Charged back badge, the evidence due date for open disputes, the deducted amount for lost ones, and a "View in Stripe" link; responding with evidence happens in Stripe, not in Funnels.
+
+Not modelled: submitting evidence, accepting a dispute from Funnels, inquiries that are only `warning_*` are tracked like disputes but no money is taken, disputes on platform subscription charges (platform webhook), multiple currencies per payment. Unverified against the real Stripe API (field names `payment_intent`, `evidence_details.due_by`, `status` taken from Stripe's documented dispute object).
+
 ## Platform billing and plan limits
 
 `POST /api/billing/subscribe {plan}` creates the platform customer once and a subscription Checkout Session; `POST /api/billing/portal` opens the Stripe customer portal. Subscription events (`customer.subscription.created|updated|deleted`, `invoice.paid`, `invoice.payment_failed`, `checkout.session.completed` in subscription mode) set `workspaces.plan`, `plan_status` and `plan_period_end`; the plan comes from the price id (`STRIPE_PRICE_PRO`, `STRIPE_PRICE_BUSINESS`) and an unknown price changes nothing. Past-due keeps the plan while Stripe retries and notifies the owners. Cancellation returns to Free.
@@ -54,8 +82,8 @@ Going over is `402 PLAN_LIMIT_REACHED` with `details {resource, limit, used, pla
 2. Onboard a test Standard account; confirm `GET /api/billing/connect` shows charges enabled.
 3. Buy with `4242 4242 4242 4242`; confirm orders appear once whether the webhook or the return URL wins; confirm the application fee on the connected account's payment.
 4. Run the upsell with `4242...` and with `4000 0025 0000 3155` (authentication) and `4000 0000 0000 9995` (decline).
-5. Refund fully and partially from the dashboard and from the API; confirm single counting.
+5. Refund fully and partially from the dashboard and from the API; confirm single counting. Create a dispute with `4000 0000 0000 0259` (and `4000 0000 0000 1976` for an inquiry), submit winning (`winning_evidence`) and losing (`losing_evidence`) evidence in test mode and confirm the order status, the analytics and the notification each time.
 6. Subscribe to Pro with a test price; confirm plan changes, portal opens, past-due with `4000 0000 0000 0341`, and cancellation.
 7. Confirm fields we read exist as assumed (`payment_intent.latest_charge`, `session.payment_intent`, `subscription.items.data[0].current_period_end`; newer API versions moved some of these).
 
-Known gaps: no tax or invoices on funnel checkouts, no disputes handling, no SCA flow for the upsell beyond failing cleanly, one currency per order, no proration controls (portal decides).
+Known gaps: no tax or invoices on funnel checkouts, disputes are tracked but not answered from Funnels (see above), no SCA flow for the upsell beyond failing cleanly, one currency per order, no proration controls (portal decides).

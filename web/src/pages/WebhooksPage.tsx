@@ -6,7 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/Toasts';
 import { ConfirmDialog, CopyButton, Empty, ErrorBanner, fmtDate, Loading, Modal, StatusBadge, TextField } from '../components/ui';
 
-const EVENTS = [['funnel.optin', 'New opt-in (lead)'], ['funnel.purchase', 'New purchase (order)']] as const;
+const EVENTS = [['funnel.optin', 'New opt-in (lead)'], ['funnel.purchase', 'New purchase (order)'], ['funnel.refund', 'Order refunded'], ['funnel.dispute', 'Payment dispute (chargeback) opened, updated or closed']] as const;
 
 export function validateWebhook(v: { url: string; events: string[] }): Partial<Record<'url' | 'events', string>> {
   const e: Partial<Record<'url' | 'events', string>> = {};

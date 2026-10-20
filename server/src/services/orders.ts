@@ -10,6 +10,7 @@ import { csvStream } from '../util/csv.js';
 import { newId } from '../util/ids.js';
 import { addDays, isDay, startOfDayUtc } from '../util/time.js';
 import { upsertLead } from './leads.js';
+import { disputesByPayment, reconcileDisputes } from './disputes.js';
 import { notify } from './notifications.js';
 import { domainEvent } from '../queue/outbox.js';
 import { insertEvents } from './rollups.js';
@@ -51,12 +52,13 @@ export interface OrderRow {
   created_at: string;
   status?: string;
   refunded_cents?: number;
+  disputed_lost_cents?: number;
   provider_customer?: string | null;
   provider_account?: string | null;
 }
 
 const cents = (price: number) => Math.round(price * 100);
-export const serializeLine = (o: OrderRow) => ({ id: o.id, productName: o.product_name, amountCents: o.amount_cents, currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1, status: o.status ?? 'paid', refundedCents: o.refunded_cents ?? 0 });
+export const serializeLine = (o: OrderRow) => ({ id: o.id, productName: o.product_name, amountCents: o.amount_cents, currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1, status: o.status ?? 'paid', refundedCents: o.refunded_cents ?? 0, disputedLostCents: o.disputed_lost_cents ?? 0 });
 
 export interface CheckoutResult {
   ok: true;
@@ -159,11 +161,18 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
   return { ok: true, recorded: true, orderId: created[0]?.id, orders: created.map(serializeLine), declined };
 }
 
-/** Writes orders, their `order` events (and rollups), the buyer lead, notifications and webhook deliveries in one transaction. */
-export function persistOrders(
-  deps: Deps,
-  p: { ws: string; funnel: { id: string; name: string }; step: { id: string; name: string }; created: OrderRow[]; email: string; name: string | null; visitorId?: string; utms?: unknown },
-): Promise<void> {
+type PersistInput = { ws: string; funnel: { id: string; name: string }; step: { id: string; name: string }; created: OrderRow[]; email: string; name: string | null; visitorId?: string; utms?: unknown };
+
+/**
+ * Writes orders, their `order` events (and rollups), the buyer lead, notifications and webhook deliveries in one transaction. Afterwards, disputes that Stripe
+ * announced for these payments before the orders existed (orphans) are linked to them.
+ */
+export async function persistOrders(deps: Deps, p: PersistInput): Promise<void> {
+  await persistTx(deps, p);
+  await reconcileDisputes(deps, p.created.filter((o) => o.provider === 'stripe').map((o) => o.provider_ref));
+}
+
+function persistTx(deps: Deps, p: PersistInput): Promise<void> {
   const { ws, funnel, step, created } = p;
   deps.db.noteWrite(ws);
   return inTx(deps, async (d) => {
@@ -229,8 +238,9 @@ export async function listOrders(base: Deps, ws: string, q: z.infer<typeof Order
   const { clause, params } = filter(deps, ws, q);
   const total = (await deps.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM orders o WHERE ${clause}`, ...params))!.n;
   const rows = await deps.db.all<Joined>(`${SELECT} WHERE ${clause} ORDER BY o.created_at DESC, o.id DESC LIMIT ? OFFSET ?`, ...params, q.limit, (q.page - 1) * q.limit);
+  const disputes = await disputesByPayment(deps, ws, rows.filter((o) => o.provider === 'stripe').map((o) => o.provider_ref));
   return {
-    data: rows.map((o) => ({ ...serializeLine(o), funnelId: o.funnel_id, funnelName: o.funnel_name, stepName: o.step_name, email: o.email, name: o.name, amount: o.amount_cents / 100, provider: o.provider, providerRef: o.provider_ref, createdAt: o.created_at })),
+    data: rows.map((o) => ({ ...serializeLine(o), funnelId: o.funnel_id, funnelName: o.funnel_name, stepName: o.step_name, email: o.email, name: o.name, amount: o.amount_cents / 100, provider: o.provider, providerRef: o.provider_ref, createdAt: o.created_at, dispute: (o.provider === 'stripe' ? disputes.get(o.provider_ref) : undefined) ?? null })),
     pagination: { page: q.page, limit: q.limit, total, totalPages: Math.max(1, Math.ceil(total / q.limit)) },
   };
 }
@@ -255,5 +265,6 @@ export function ordersCsvStream(base: Deps, ws: string, q: z.infer<typeof OrderQ
 export async function getOrder(deps: Deps, ws: string, id: string) {
   const o = await deps.db.get<Joined>(`${SELECT} WHERE o.workspace_id = ? AND o.id = ?`, ws, id);
   if (!o) throw notFound('Order');
-  return { ...serializeLine(o), funnelId: o.funnel_id, email: o.email, name: o.name, provider: o.provider, createdAt: o.created_at };
+  const dispute = o.provider === 'stripe' ? (await disputesByPayment(deps, ws, [o.provider_ref])).get(o.provider_ref) : undefined;
+  return { ...serializeLine(o), funnelId: o.funnel_id, email: o.email, name: o.name, provider: o.provider, createdAt: o.created_at, dispute: dispute ?? null };
 }

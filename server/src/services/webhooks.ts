@@ -6,7 +6,7 @@ import { PermanentJobError, type Job } from '../jobs/queue.js';
 import { assertPublicUrl, SsrfError } from '../net/ssrf.js';
 import { newId } from '../util/ids.js';
 
-export const WEBHOOK_EVENTS = ['funnel.optin', 'funnel.purchase', 'funnel.refund', 'analytics.daily_rollup_ready'] as const;
+export const WEBHOOK_EVENTS = ['funnel.optin', 'funnel.purchase', 'funnel.refund', 'funnel.dispute', 'analytics.daily_rollup_ready'] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number] | 'funnel.test';
 
 export const WebhookInput = z.object({

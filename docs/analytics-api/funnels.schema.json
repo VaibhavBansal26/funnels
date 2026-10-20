@@ -56,7 +56,7 @@
           },
           "gross": {
             "type": "number",
-            "description": "Order revenue in major currency units"
+            "description": "Order revenue in major currency units. Refunds are not subtracted; amounts lost to lost Stripe disputes (chargebacks) are"
           },
           "currency": {
             "description": "The single currency of the funnel orders in the range; null when there are none or they are mixed",

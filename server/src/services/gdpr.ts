@@ -68,6 +68,7 @@ const TABLES: Table[] = [
   { name: 'step_pages', sql: 'SELECT p.step_id AS id, p.doc_json FROM step_pages p JOIN steps s ON s.id = p.step_id WHERE s.workspace_id = ?', keyOf: 'p.step_id' },
   { name: 'leads', sql: 'SELECT * FROM leads WHERE workspace_id = ?' },
   { name: 'orders', sql: 'SELECT id, funnel_id, email, name, product_name, amount_cents, currency, is_bump, is_upsell, status, refunded_cents, provider, provider_ref, created_at FROM orders WHERE workspace_id = ?' },
+  { name: 'disputes', sql: 'SELECT id, order_id, stripe_dispute_id, amount_cents, currency, reason, status, outcome, evidence_due_by, lost_cents, created_at, closed_at FROM disputes WHERE workspace_id = ?' },
   { name: 'refunds', sql: 'SELECT id, order_id, amount_cents, currency, reason, created_by, created_at FROM refunds WHERE workspace_id = ?' },
   { name: 'webhooks', sql: 'SELECT id, url, events_json, active, created_at FROM webhooks WHERE workspace_id = ?' },
   { name: 'audit_log', sql: 'SELECT id, actor_id, action, target, detail_json, ip, created_at FROM audit_log WHERE workspace_id = ?' },

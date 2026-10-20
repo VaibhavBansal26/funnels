@@ -39,7 +39,10 @@ export interface VerifyResult { domain: Domain; checks: { cname: { ok: boolean; 
 export interface DomainRoute { stepId: string; stepName: string; funnelId: string; funnelName: string; path: string }
 
 export interface Lead { id: string; email: string; name: string | null; phone: string | null; data: Record<string, string>; firstFunnelName: string | null; submissions: number; createdAt: string; updatedAt: string }
-export interface Order { id: string; productName: string; amount: number; amountCents: number; currency: string; isBump: boolean; isUpsell: boolean; funnelName: string | null; stepName: string | null; email: string; name: string | null; createdAt: string; status: 'paid' | 'partially_refunded' | 'refunded'; refundedCents: number; provider: string }
+export interface Order { id: string; productName: string; amount: number; amountCents: number; currency: string; isBump: boolean; isUpsell: boolean; funnelName: string | null; stepName: string | null; email: string; name: string | null; createdAt: string; status: OrderStatus; refundedCents: number; disputedLostCents: number; provider: string; dispute?: OrderDispute | null }
+export type OrderStatus = 'paid' | 'partially_refunded' | 'refunded' | 'disputed' | 'charged_back'
+/** A Stripe dispute (chargeback) on the order's payment; `dashboardUrl` opens it in Stripe. */
+export interface OrderDispute { id: string; stripeDisputeId: string; status: string; outcome: 'open' | 'won' | 'lost'; reason: string | null; amountCents: number; currency: string; evidenceDueBy: string | null; lostCents: number; dashboardUrl: string }
 
 export interface BillingOverview {
   plan: string; planName: string; status: string; periodEnd: string | null; enforced: boolean;

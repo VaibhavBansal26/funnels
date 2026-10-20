@@ -5588,7 +5588,7 @@
                   },
                   "events": {
                     "minItems": 1,
-                    "maxItems": 4,
+                    "maxItems": 5,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -5596,6 +5596,7 @@
                         "funnel.optin",
                         "funnel.purchase",
                         "funnel.refund",
+                        "funnel.dispute",
                         "analytics.daily_rollup_ready"
                       ]
                     }
@@ -5674,7 +5675,7 @@
                   },
                   "events": {
                     "minItems": 1,
-                    "maxItems": 4,
+                    "maxItems": 5,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -5682,6 +5683,7 @@
                         "funnel.optin",
                         "funnel.purchase",
                         "funnel.refund",
+                        "funnel.dispute",
                         "analytics.daily_rollup_ready"
                       ]
                     }
@@ -9882,7 +9884,7 @@
         "tags": [
           "billing"
         ],
-        "summary": "Stripe Connect webhook: checkout, refunds and account changes of connected accounts",
+        "summary": "Stripe Connect webhook: checkout, refunds, disputes and account changes of connected accounts",
         "description": "Signed with STRIPE_CONNECT_WEBHOOK_SECRET.",
         "operationId": "post_api_stripe_connect_webhook",
         "parameters": [],
@@ -10259,6 +10261,90 @@
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/disputes": {
+      "get": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Stripe disputes (chargebacks) of the workspace: status, outcome, evidence due date, amount lost, Stripe dashboard link; orphans (payment not known yet) included",
+        "operationId": "get_api_disputes",
+        "parameters": [
+          {
+            "name": "outcome",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "won",
+                "lost"
+              ]
+            }
+          },
+          {
+            "name": "orderId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "orders:read",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
           "api.workspace"
         ]
       }

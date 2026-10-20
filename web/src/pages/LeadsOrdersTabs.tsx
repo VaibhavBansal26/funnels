@@ -87,18 +87,34 @@ export function OrdersTab({ funnelId }: { funnelId: string }) {
   );
 }
 
+/** Payment status of an order: paid, refunded, and, for a Stripe dispute, a badge with the evidence deadline and a link to the dispute in Stripe. */
+export function OrderStatusBadges({ order }: { order: Pick<Order, 'status' | 'refundedCents' | 'currency' | 'dispute'> }) {
+  const d = order.dispute;
+  return (
+    <>
+      {order.status === 'charged_back' ? <span className="badge danger">Charged back</span> : order.status === 'disputed' ? <span className="badge warn">Disputed</span> : order.status === 'refunded' ? <span className="badge">Refunded</span> : order.status === 'partially_refunded' ? <span className="badge warn">Refunded {fmtMoney(order.refundedCents / 100, order.currency)}</span> : <span className="badge ok">Paid</span>}
+      {d ? (
+        <div className="small muted" data-testid="dispute-info">
+          {d.outcome === 'open' ? <>Dispute open{d.evidenceDueBy ? <>, evidence due <time dateTime={d.evidenceDueBy}>{fmtDate(d.evidenceDueBy)}</time></> : null}</> : d.outcome === 'won' ? 'Dispute won' : `Dispute lost (${fmtMoney(d.lostCents / 100, d.currency)} deducted)`}
+          {' '}<a href={d.dashboardUrl} target="_blank" rel="noopener noreferrer">View in Stripe</a>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function RefundCell({ order }: { order: Order }) {
   const { can } = useAuth();
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
-  const left = order.amountCents - order.refundedCents;
+  const left = order.amountCents - order.refundedCents - order.disputedLostCents;
   const refund = useMutate(() => api.post(`/api/orders/${order.id}/refund`, amount.trim() ? { amountCents: Math.round(Number(amount) * 100) } : {}), [['orders']]);
   const cents = amount.trim() ? Math.round(Number(amount) * 100) : left;
   const invalid = !Number.isFinite(cents) || cents <= 0 || cents > left;
   return (
     <>
-      {order.status === 'refunded' ? <span className="badge">Refunded</span> : order.status === 'partially_refunded' ? <span className="badge warn">Refunded {fmtMoney(order.refundedCents / 100, order.currency)}</span> : <span className="badge ok">Paid</span>}
-      {order.status !== 'refunded' && can('orders:refund') ? <> <button type="button" className="btn small" onClick={() => setOpen(true)}>Refund</button></> : null}
+      <OrderStatusBadges order={order} />
+      {left > 0 && can('orders:refund') ? <> <button type="button" className="btn small" onClick={() => setOpen(true)}>Refund</button></> : null}
       {open ? (
         <Modal title="Refund order" onClose={() => setOpen(false)}
           footer={<><button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button><button type="button" className="btn danger" disabled={refund.isPending || invalid} onClick={() => refund.mutate(undefined, { onSuccess: () => setOpen(false) })}>Refund {fmtMoney(invalid ? 0 : cents / 100, order.currency)}</button></>}>

@@ -144,6 +144,19 @@ export async function insertEvents(tx: Db, rows: EventInsert[], opts: { decideUn
 }
 
 /**
+ * Adds a signed correction to the sales columns of the 15-minute rollup bucket of `at` (a lost dispute takes revenue back: negative cents, and -1 order when the
+ * whole order is gone). Corrections are booked when they happen, not into the bucket of the original order, so closed periods stay as they were reported.
+ * The raw `events` stay untouched (they are facts); only rollups, which every analytics read uses, change. Must run on a transaction handle.
+ */
+export async function adjustRollup(tx: Db, a: { workspace_id: string; funnel_id: string; step_id: string; at: string; orders: number; cents: number }): Promise<void> {
+  const set = ['orders', 'cents'].map((c) => `${c} = event_rollups.${c} + excluded.${c}`).join(', ');
+  await tx.run(
+    `INSERT INTO event_rollups (workspace_id, funnel_id, step_id, bucket, page_views, unique_views, optins, orders, cents) VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?)${tx.dialect.upsert(['funnel_id', 'bucket', 'step_id'], set)}`,
+    a.workspace_id, a.funnel_id, a.step_id, bucketOf(a.at), a.orders, a.cents,
+  );
+}
+
+/**
  * Adds the page-view visitors of a batch to the per-funnel, per-UTC-day HyperLogLog sketches. Rows are created empty first (`DO NOTHING`), then
  * locked in key order and rewritten, so concurrent batches serialise on a sketch instead of overwriting each other's additions.
  */

@@ -4,6 +4,7 @@ import { verifyStripeSignature } from '../payments/stripe.js';
 import { audit } from './audit.js';
 import { applyAccount, applySubscription } from './billing.js';
 import { notify } from './notifications.js';
+import { applyDisputeEvent, DISPUTE_EVENTS } from './disputes.js';
 import { finalizeSession, syncChargeRefunds } from './stripepay.js';
 
 /**
@@ -60,6 +61,13 @@ async function connectEvent(deps: Deps, ev: StripeEvent): Promise<boolean> {
     case 'charge.refunded':
     case 'charge.refund.updated':
       await syncChargeRefunds(deps, { payment_intent: o.payment_intent ?? null, refunds: o.refunds });
+      return true;
+    case 'charge.dispute.created':
+    case 'charge.dispute.updated':
+    case 'charge.dispute.closed':
+    case 'charge.dispute.funds_withdrawn':
+    case 'charge.dispute.funds_reinstated':
+      await applyDisputeEvent(deps, ev as StripeEvent & { created?: number; livemode?: boolean });
       return true;
     case 'account.updated':
       await applyAccount(deps, String(o.id), o);

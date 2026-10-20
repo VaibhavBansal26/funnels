@@ -21,7 +21,7 @@ export const FunnelRow = z.looseObject({
   optins: z.number().int().min(0),
   optin_rate: rate.describe('optins / unique_visits (0 when there are no unique visits)'),
   orders: z.number().int().min(0),
-  gross: z.number().describe('Order revenue in major currency units'),
+  gross: z.number().describe('Order revenue in major currency units. Refunds are not subtracted; amounts lost to lost Stripe disputes (chargebacks) are'),
   currency: z.string().nullable().describe('The single currency of the funnel orders in the range; null when there are none or they are mixed'),
   earnings_per_view: z.number().min(0).describe('gross / visits'),
   created_at: ts,

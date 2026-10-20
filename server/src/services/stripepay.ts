@@ -12,6 +12,7 @@ import { StripeApiError, type StripeClient } from '../payments/stripe.js';
 import type { Plan } from '../ratelimit/types.js';
 import { newId } from '../util/ids.js';
 import { audit } from './audit.js';
+import { hasOpenDispute, orderStatus } from './disputes.js';
 import { notify } from './notifications.js';
 import { persistOrders, serializeLine, type CheckoutResult, type OrderRow } from './orders.js';
 import { fireWebhookEvent } from './webhooks.js';
@@ -222,8 +223,6 @@ export const RefundInput = z.object({
   reason: z.enum(['requested_by_customer', 'duplicate', 'fraudulent']).optional(),
 });
 
-const statusFor = (amount: number, refunded: number) => (refunded <= 0 ? 'paid' : refunded >= amount ? 'refunded' : 'partially_refunded');
-
 /**
  * Refunds an order, in full or in part. The refundable amount is reserved with one conditional UPDATE BEFORE Stripe is called, so two clicks (or two admins)
  * can never refund more than was paid; if Stripe refuses, the reservation is released.
@@ -231,11 +230,12 @@ const statusFor = (amount: number, refunded: number) => (refunded <= 0 ? 'paid' 
 export async function refundOrder(deps: Deps, auth: Auth, orderId: string, input: z.infer<typeof RefundInput>, ip?: string) {
   const o = await deps.db.get<OrderRow>('SELECT * FROM orders WHERE workspace_id = ? AND id = ?', auth.workspaceId, orderId);
   if (!o) throw notFound('Order');
-  const remaining = o.amount_cents - (o.refunded_cents ?? 0);
-  if (remaining <= 0) throw conflict('ALREADY_REFUNDED', 'This order is already fully refunded');
+  const lost = o.disputed_lost_cents ?? 0; // taken back by a lost dispute: not ours to refund any more
+  const remaining = o.amount_cents - (o.refunded_cents ?? 0) - lost;
+  if (remaining <= 0) throw lost > 0 ? conflict('ORDER_CHARGED_BACK', 'This order was charged back (a dispute was lost), so there is nothing left to refund') : conflict('ALREADY_REFUNDED', 'This order is already fully refunded');
   const amount = input.amountCents ?? remaining;
   if (amount > remaining) throw badRequest('INVALID_AMOUNT', `At most ${(remaining / 100).toFixed(2)} ${o.currency} can still be refunded`);
-  const reserved = await deps.db.run('UPDATE orders SET refunded_cents = refunded_cents + ? WHERE id = ? AND refunded_cents + ? <= amount_cents', amount, o.id, amount);
+  const reserved = await deps.db.run('UPDATE orders SET refunded_cents = refunded_cents + ? WHERE id = ? AND refunded_cents + disputed_lost_cents + ? <= amount_cents', amount, o.id, amount);
   if (reserved.changes !== 1) throw conflict('REFUND_IN_PROGRESS', 'The order was refunded meanwhile; reload and check the remaining amount');
   const release = () => deps.db.run('UPDATE orders SET refunded_cents = refunded_cents - ? WHERE id = ?', amount, o.id);
   const id = newId('rfd');
@@ -254,12 +254,12 @@ export async function refundOrder(deps: Deps, auth: Auth, orderId: string, input
   const refunded = (o.refunded_cents ?? 0) + amount;
   await inTx(deps, async (d) => {
     await d.db.run('INSERT INTO refunds (id, workspace_id, order_id, amount_cents, currency, provider, provider_ref, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', id, o.workspace_id, o.id, amount, o.currency, o.provider, providerRef, input.reason ?? null, auth.userId, at);
-    await d.db.run('UPDATE orders SET status = ? WHERE id = ?', statusFor(o.amount_cents, refunded), o.id);
+    await d.db.run('UPDATE orders SET status = ? WHERE id = ?', orderStatus(o, await hasOpenDispute(d, o), refunded), o.id);
     await audit(d, { workspaceId: o.workspace_id, actorId: auth.userId, action: 'order.refunded', target: o.id, ip, detail: { refundId: id, amountCents: amount, currency: o.currency, provider: o.provider } });
     await notify(d, o.workspace_id, { type: 'refund', title: 'Order refunded', body: `${(amount / 100).toFixed(2)} ${o.currency} refunded to ${o.email}`, data: { orderId: o.id, refundId: id } });
     await fireWebhookEvent(d, o.workspace_id, 'funnel.refund', { order: { id: o.id, productName: o.product_name, amount: o.amount_cents / 100, currency: o.currency, email: o.email }, refund: { id, amount: amount / 100, currency: o.currency, remaining: (o.amount_cents - refunded) / 100 } });
   });
-  return { refund: { id, orderId: o.id, amountCents: amount, currency: o.currency, createdAt: at }, order: { ...serializeLine({ ...o, refunded_cents: refunded, status: statusFor(o.amount_cents, refunded) }) } };
+  return { refund: { id, orderId: o.id, amountCents: amount, currency: o.currency, createdAt: at }, order: { ...serializeLine({ ...o, refunded_cents: refunded, status: orderStatus(o, await hasOpenDispute(deps, o), refunded) }) } };
 }
 
 /**
@@ -277,13 +277,13 @@ export async function syncChargeRefunds(deps: Deps, charge: { payment_intent: st
     const orders = await deps.db.all<OrderRow>("SELECT * FROM orders WHERE provider = 'stripe' AND provider_ref = ? ORDER BY created_at, id", charge.payment_intent);
     for (const o of orders) {
       if (left <= 0) break;
-      const take = Math.min(left, o.amount_cents - (o.refunded_cents ?? 0));
+      const take = Math.min(left, o.amount_cents - (o.refunded_cents ?? 0) - (o.disputed_lost_cents ?? 0));
       if (take <= 0) continue;
       left -= take;
       const refunded = (o.refunded_cents ?? 0) + take;
       await inTx(deps, async (d) => {
         await d.db.run('INSERT INTO refunds (id, workspace_id, order_id, amount_cents, currency, provider, provider_ref, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', newId('rfd'), o.workspace_id, o.id, take, o.currency, 'stripe', `${r.id}:${o.id}`, r.reason ?? null, null, d.now().toISOString());
-        await d.db.run('UPDATE orders SET refunded_cents = ?, status = ? WHERE id = ?', refunded, statusFor(o.amount_cents, refunded), o.id);
+        await d.db.run('UPDATE orders SET refunded_cents = ?, status = ? WHERE id = ?', refunded, orderStatus(o, await hasOpenDispute(d, o), refunded), o.id);
         await audit(d, { workspaceId: o.workspace_id, actorId: 'stripe', action: 'order.refunded', target: o.id, detail: { source: 'stripe', amountCents: take, refund: r.id } });
         await fireWebhookEvent(d, o.workspace_id, 'funnel.refund', { order: { id: o.id, productName: o.product_name, amount: o.amount_cents / 100, currency: o.currency, email: o.email }, refund: { id: r.id, amount: take / 100, currency: o.currency, remaining: (o.amount_cents - refunded) / 100 } });
       });

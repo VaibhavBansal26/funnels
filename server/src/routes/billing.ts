@@ -4,8 +4,9 @@ import type { Deps } from '../deps.js';
 import { clientIp } from '../ratelimit/ip.js';
 import * as billing from '../services/billing.js';
 import { finalizeSession, RefundInput, refundOrder } from '../services/stripepay.js';
+import * as disputes from '../services/disputes.js';
 import { receiveStripeWebhook } from '../services/stripewebhooks.js';
-import { bodyOf } from './util.js';
+import { bodyOf, queryOf } from './util.js';
 
 /** Billing and Stripe: workspace routes (permissions in routes/spec.ts) and the two webhook endpoints plus the visitor's checkout return, which are public. */
 export function billingRoutes(deps: Deps): Hono<AppEnv> {
@@ -33,5 +34,6 @@ export function billingRoutes(deps: Deps): Hono<AppEnv> {
     return c.body(null, 204);
   });
   r.post('/orders/:id/refund', auth, async (c) => c.json(await refundOrder(deps, authOf(c), c.req.param('id'), await bodyOf(c, RefundInput, { optional: true }), ip(c))));
+  r.get('/disputes', auth, async (c) => c.json(await disputes.listDisputes(deps, authOf(c).workspaceId, queryOf(c, disputes.DisputeQuery))));
   return r;
 }

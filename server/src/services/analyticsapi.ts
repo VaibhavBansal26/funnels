@@ -339,7 +339,7 @@ export async function exportLeads(deps: Deps, api: ApiAuth, q: z.infer<typeof Ex
     for (const e of await deps.db.all<{ lead_id: string; step_id: string; type: string; utm_json: string | null; created_at: string }>(`SELECT lead_id, step_id, type, utm_json, created_at FROM events WHERE workspace_id = ? AND lead_id IN (${inList(ids.length)}) ORDER BY created_at, id`, api.workspaceId, ...ids)) {
       if (!events.has(e.lead_id)) events.set(e.lead_id, e); // the earliest event of the lead: how it first arrived
     }
-    for (const o of await deps.db.all<{ lead_id: string; n: number; cents: number; first: string }>(`SELECT lead_id, COUNT(*) AS n, COALESCE(SUM(amount_cents), 0) AS cents, MIN(created_at) AS first FROM orders WHERE workspace_id = ? AND lead_id IN (${inList(ids.length)}) GROUP BY lead_id`, api.workspaceId, ...ids)) {
+    for (const o of await deps.db.all<{ lead_id: string; n: number; cents: number; first: string }>(`SELECT lead_id, COUNT(*) AS n, COALESCE(SUM(amount_cents - disputed_lost_cents), 0) AS cents, MIN(created_at) AS first FROM orders WHERE workspace_id = ? AND lead_id IN (${inList(ids.length)}) GROUP BY lead_id`, api.workspaceId, ...ids)) {
       orders.set(o.lead_id, { n: num(o.n), cents: num(o.cents), first: o.first });
     }
   }
