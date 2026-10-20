@@ -147,6 +147,12 @@ Defaults, before environment overrides and plan multipliers (this table is gener
 * Keep `REDIS_TIMEOUT_MS` under your p99 request budget; lower values fail open (or closed) sooner during Redis slowness.
 * Load tests from one IP need the limits raised (`loadtest/run.mjs` and `bench/ingest.mjs` set them), otherwise you measure the limiter.
 
+## Analytics API: reading the limits
+
+Per API key: `analytics.read` (60 per minute) and `analytics.export` (10 per minute, shared by **all export-scope routes**: events, leads and the JSON `funnel-structure` export all draw on the same 10). Per workspace: `analytics.workspace` counts every analytics call of every key. Reads never reduce a key's export budget (separate buckets). A key whose exports seem to run out early (7 or 8 answers instead of 10) has usually spent tokens on another export-scope route or another request from the same key in that minute; the policy named in the `429` body and in the `RateLimit` header says which limit applied. Covered by `test/ratelimit.analytics.test.ts`.
+
+`Retry-After` and `retry_after_s` are the GCRA answer: seconds until the same request would be allowed (one token: window / quota, 6 s for exports). `RateLimit: ...;t=` and `X-RateLimit-Reset` are seconds until the bucket is full again (60 s after ten rapid requests). Both are correct and `Retry-After <= reset` always holds: wait `Retry-After` to send one more request, `t` to have the whole quota back. The analytics policies have no penalty box (a second immediate `429` stays at the same `Retry-After`); escalating blocks exist for the auth, reset and public form policies marked with a penalty in the table.
+
 ## Not done
 
 Socket.IO limits (the app has no sockets; SSE is capped by `api.stream`), per-API-key limits (the policy model supports `apiKey`; no API keys exist yet), event-loop-lag load shedding, Redis Cluster verification (keys and scripts are written for it; only a single Redis was available here), Redis Sentinel/failover testing.

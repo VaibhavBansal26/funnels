@@ -21,7 +21,7 @@ SLO *targets*: public page and event endpoints 99.9% available monthly with p99 
 ## Deploy
 
 1. `npm run build`; image from the `Dockerfile` (or `docker compose up --build`).
-2. Required environment in production: `JWT_SECRET`; for PostgreSQL `DATABASE_URL`; with more than one replica `REDIS_URL`; behind a proxy `TRUST_PROXY=true` and `TRUSTED_PROXY_HOPS`. Full list: [CONFIGURATION.md](CONFIGURATION.md).
+2. Required environment in production: `JWT_SECRET`, and `DATA_ENCRYPTION_KEY` once the analytics API is used; for PostgreSQL `DATABASE_URL`; with more than one replica `REDIS_URL`; behind a proxy `TRUST_PROXY=true` and `TRUSTED_PROXY_HOPS`. Full list: [CONFIGURATION.md](CONFIGURATION.md).
 3. Migrations run at boot, each in its own transaction, under an advisory lock on PostgreSQL, so replicas can start together. The first replica applies them; the others wait and skip.
 4. Roll out one replica, watch `/readyz` and 5xx, then the rest. `SIGTERM` stops the worker, finishes in-flight requests, flushes the event buffer, closes the pool (10 s hard stop). Set the orchestrator grace period above 10 s.
 
@@ -60,7 +60,7 @@ Migrations are forward-only. To roll back the application, deploy the previous i
 
 **Deadlock or lock wait on PostgreSQL.** Deadlocks (`40P01`) are retried three times transparently; a steady stream means a code path takes locks out of order (see ARCHITECTURE.md, lock order). Find it with `pg_stat_activity` and `log_lock_waits`.
 
-**Secret rotation.** `JWT_SECRET`: deploy the new value everywhere at once (all sessions end). `EDGE_SHARED_SECRET` and `CF_ORIGIN_SECRET`: set on the Worker (`wrangler secret put`) and the origin together (a short window of 503/stale responses at the edge). Webhook secrets: `POST /api/webhooks/{id}/rotate-secret`. `DATABASE_URL`/`REDIS_URL` passwords: rotate in the provider, roll the deployment.
+**Secret rotation.** `JWT_SECRET`: deploy the new value everywhere at once (all sessions end; it no longer affects the analytics identity pepper). `DATA_ENCRYPTION_KEY` (encrypts the pepper and TOTP seeds): to rotate, set the new value as `DATA_ENCRYPTION_KEY` and the old one as `DATA_ENCRYPTION_KEY_PREVIOUS`, deploy, and let each workspace's pepper be read once (any analytics export or `GET /api/v1/analytics/identity-pepper` does it; the value is re-encrypted under the new key without changing), then remove the previous key; TOTP seeds are not re-encrypted, so users with 2FA re-enrol. A lost key makes the pepper answer `409 PEPPER_UNREADABLE`: set a new pepper (`PUT /api/v1/analytics/identity-pepper`, ideally the one the other apps already use); exports change when the value changes. Upgrading from a version that stored the pepper in clear: set `DATA_ENCRYPTION_KEY` before deploying (production refuses the pepper without it), each pepper is encrypted on its first read. `EDGE_SHARED_SECRET` and `CF_ORIGIN_SECRET`: set on the Worker (`wrangler secret put`) and the origin together (a short window of 503/stale responses at the edge). Webhook secrets: `POST /api/webhooks/{id}/rotate-secret`. `DATABASE_URL`/`REDIS_URL` passwords: rotate in the provider, roll the deployment.
 
 **Migration failed at boot.** The failing file's transaction rolled back; the process exits. Fix forward (new migration) or restore; other replicas keep running the old version. Never edit an applied migration.
 

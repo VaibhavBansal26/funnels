@@ -3,7 +3,9 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import type { Auth } from '../auth/context.js';
 import type { Deps } from '../deps.js';
-import { badRequest, notFound } from '../errors.js';
+import { AppError, badRequest, notFound } from '../errors.js';
+import { decryptWithDataKey, encryptWithDataKey } from '../auth/dataCrypto.js';
+import { pepperFingerprint, validatePepper } from '../analyticsapi/pepperRules.js';
 import { ratio, round2 } from '../util/time.js';
 import { addDays, dayKey, isValidTimeZone, startOfDayUtc } from '../util/time.js';
 import { audit } from './audit.js';
@@ -247,24 +249,86 @@ export async function funnelTimeseries(deps: Deps, api: ApiAuth, funnelId: strin
 
 // ---- identity pepper and exports ---------------------------------------------------------------------------------------------------------------------
 
-/** The workspace's secret for exported keys, created on first use. Whoever holds it can recompute `contact_key`s from emails, so it is only ever shown to people (never to API keys). */
-export async function identityPepper(deps: Deps, ws: string): Promise<{ pepper: string; rotatedAt: string | null }> {
-  const w = await deps.db.get<{ identity_pepper: string | null; identity_pepper_rotated_at: string | null }>('SELECT identity_pepper, identity_pepper_rotated_at FROM workspaces WHERE id = ?', ws);
-  if (!w) throw notFound('Workspace');
-  if (w.identity_pepper) return { pepper: w.identity_pepper, rotatedAt: w.identity_pepper_rotated_at };
-  const fresh = randomBytes(32).toString('hex');
-  // Two requests racing to create it: the conditional update means exactly one value wins, and both read it back.
-  await deps.db.run('UPDATE workspaces SET identity_pepper = ? WHERE id = ? AND identity_pepper IS NULL', fresh, ws);
-  const again = (await deps.db.get<{ identity_pepper: string }>('SELECT identity_pepper FROM workspaces WHERE id = ?', ws))!;
-  return { pepper: again.identity_pepper, rotatedAt: null };
+export interface PepperInfo {
+  pepper: string;
+  version: number;
+  algorithm: 'HMAC-SHA256';
+  /** First 8 hex characters of SHA-256 over the pepper: compare it between apps without showing the pepper. */
+  fingerprint: string;
+  rotatedAt: string;
 }
 
-export async function rotatePepper(deps: Deps, auth: Auth, ip?: string) {
+interface PepperRow {
+  identity_pepper: string | null;
+  identity_pepper_rotated_at: string | null;
+  identity_pepper_version: number;
+  created_at: string;
+}
+
+const pepperAad = (ws: string) => `pepper:${ws}`;
+const readPepperRow = (deps: Deps, ws: string) =>
+  deps.db.get<PepperRow>('SELECT identity_pepper, identity_pepper_rotated_at, identity_pepper_version, created_at FROM workspaces WHERE id = ?', ws);
+const pepperInfo = (pepper: string, row: PepperRow): PepperInfo => ({
+  pepper, version: Number(row.identity_pepper_version), algorithm: 'HMAC-SHA256', fingerprint: pepperFingerprint(pepper), rotatedAt: row.identity_pepper_rotated_at ?? row.created_at,
+});
+
+/** Creates the workspace's first pepper (random) when it has none, without decrypting anything: two requests may race, the conditional update lets exactly one win. */
+async function ensurePepperRow(deps: Deps, ws: string): Promise<PepperRow> {
+  const have = await readPepperRow(deps, ws);
+  if (!have) throw notFound('Workspace');
+  if (have.identity_pepper) return have;
+  await deps.db.run('UPDATE workspaces SET identity_pepper = ?, identity_pepper_rotated_at = ? WHERE id = ? AND identity_pepper IS NULL', encryptWithDataKey(deps.config, randomBytes(32).toString('hex'), pepperAad(ws)), deps.now().toISOString(), ws);
+  return (await readPepperRow(deps, ws))!;
+}
+
+/**
+ * The workspace's secret for exported keys, created on first use. Stored encrypted under DATA_ENCRYPTION_KEY (auth/dataCrypto.ts); a value that is still in
+ * clear (written by an earlier version) or under a previous data key is re-encrypted under the current key on this read. A pepper that cannot be decrypted is
+ * a 409 `PEPPER_UNREADABLE`, never a 500 with a crypto message; `setPepper` and `rotatePepper` recover from it. Whoever holds the value can recompute
+ * `contact_key`s from e-mail addresses, so it is only shown to people with analytics_identity:manage, or to API keys carrying that scope.
+ */
+export async function identityPepper(deps: Deps, ws: string): Promise<PepperInfo> {
+  const row = await ensurePepperRow(deps, ws);
+  const { plain, needsRewrite } = decryptWithDataKey(deps.config, row.identity_pepper!, pepperAad(ws));
+  if (needsRewrite) {
+    // compare-and-set on the old value: a concurrent set or rotate wins and is never overwritten by this migration
+    await deps.db.run('UPDATE workspaces SET identity_pepper = ? WHERE id = ? AND identity_pepper = ?', encryptWithDataKey(deps.config, plain, pepperAad(ws)), ws, row.identity_pepper);
+  }
+  return pepperInfo(plain, row);
+}
+
+/** Replace the pepper with a new random one. Every contact_key and visitor_key changes; consumers must adopt the new value. */
+export async function rotatePepper(deps: Deps, auth: Auth, ip?: string): Promise<PepperInfo> {
+  await ensurePepperRow(deps, auth.workspaceId);
   const fresh = randomBytes(32).toString('hex');
-  const at = deps.now().toISOString();
-  await deps.db.run('UPDATE workspaces SET identity_pepper = ?, identity_pepper_rotated_at = ? WHERE id = ?', fresh, at, auth.workspaceId);
-  await audit(deps, { workspaceId: auth.workspaceId, actorId: auth.userId, action: 'analytics.pepper_rotated', ip });
-  return { pepper: fresh, rotatedAt: at };
+  await deps.db.run('UPDATE workspaces SET identity_pepper = ?, identity_pepper_rotated_at = ?, identity_pepper_version = identity_pepper_version + 1 WHERE id = ?', encryptWithDataKey(deps.config, fresh, pepperAad(auth.workspaceId)), deps.now().toISOString(), auth.workspaceId);
+  const after = await identityPepper(deps, auth.workspaceId);
+  await audit(deps, { workspaceId: auth.workspaceId, actorId: auth.userId, action: 'analytics.pepper_rotated', ip, detail: { version: after.version, fingerprint: after.fingerprint } });
+  return after;
+}
+
+export const PepperInput = z.object({ pepper: z.string().max(512), confirm: z.string().max(512).optional() });
+
+/**
+ * Import a pepper chosen elsewhere (the other app of the same customer, the intelligence service) so both derive the same contact_key. Validated by
+ * analyticsapi/pepperRules.ts; `confirm`, when sent, must repeat it exactly. Setting the value already stored changes nothing (no version bump); a different
+ * value bumps `version`. The audit entry records the fingerprint, never the pepper.
+ */
+export async function setPepper(deps: Deps, auth: Auth, input: { pepper: unknown; confirm?: unknown }, ip?: string): Promise<PepperInfo> {
+  const pepper = validatePepper(input.pepper);
+  if (input.confirm !== undefined && input.confirm !== pepper) throw badRequest('PEPPER_CONFIRM_MISMATCH', 'The confirmation does not match the pepper');
+  const row = await ensurePepperRow(deps, auth.workspaceId);
+  let same = false;
+  try {
+    same = decryptWithDataKey(deps.config, row.identity_pepper!, pepperAad(auth.workspaceId)).plain === pepper;
+  } catch (e) {
+    if (!(e instanceof AppError) || e.code !== 'PEPPER_UNREADABLE') throw e; // an unreadable stored value is exactly what setting a new one fixes
+  }
+  if (same) return identityPepper(deps, auth.workspaceId);
+  await deps.db.run('UPDATE workspaces SET identity_pepper = ?, identity_pepper_rotated_at = ?, identity_pepper_version = identity_pepper_version + 1 WHERE id = ?', encryptWithDataKey(deps.config, pepper, pepperAad(auth.workspaceId)), deps.now().toISOString(), auth.workspaceId);
+  const after = await identityPepper(deps, auth.workspaceId);
+  await audit(deps, { workspaceId: auth.workspaceId, actorId: auth.userId, action: 'analytics.pepper_set', ip, detail: { version: after.version, fingerprint: after.fingerprint } });
+  return after;
 }
 
 const keyer = (pepper: string) => (kind: 'v' | 'c', value: string) => createHmac('sha256', pepper).update(kind === 'c' ? value.trim().toLowerCase() : `v:${value}`).digest('hex');

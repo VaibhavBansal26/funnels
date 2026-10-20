@@ -16,7 +16,7 @@ const apiOf = (c: Context): keys.ApiAuth => c.get(API as never) as keys.ApiAuth;
 
 /**
  * Analytics API v1 under `/api/v1`: the read and export routes take an API key (`Authorization: Bearer fa_live_...`), key management and the identity pepper
- * take a signed-in person with the permission declared in routes/spec.ts. Each key route names the scope its key must carry.
+ * take a signed-in person with the permission declared in routes/spec.ts (the pepper can also be read with an API key that has `analytics:export` + `analytics_identity:manage`). Each key route names the scope its key must carry.
  */
 export function analyticsApiRoutes(deps: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
@@ -57,7 +57,19 @@ export function analyticsApiRoutes(deps: Deps): Hono<AppEnv> {
     await keys.revokeKey(deps, authOf(c), c.req.param('id'), ip(c));
     return c.body(null, 204);
   });
-  r.get('/analytics/identity-pepper', auth, async (c) => c.json(await api.identityPepper(deps, authOf(c).workspaceId)));
+  // The pepper may be READ by a person (analytics_identity:manage + analytics:export, checked by authenticate() from the route spec) or by an API key carrying
+  // both scopes; changing it (set, rotate) is for people only. The path and the response are the same either way.
+  const pepperReader: MiddlewareHandler = async (c, next) => {
+    const bearer = /^Bearer (.+)$/i.exec(c.req.header('authorization') ?? '')?.[1];
+    if (!bearer || !keys.KEY_FORMAT.test(bearer)) return auth(c, next);
+    const who = await keys.authenticateKey(deps, c, 'analytics:export', ['analytics_identity:manage']);
+    c.set(API as never, who as never);
+    await requireFlag(deps, who.workspaceId, 'analytics_api');
+    await applyKeyLayers(deps, c, who, ['analytics.read', 'analytics.workspace']);
+    await next();
+  };
+  r.get('/analytics/identity-pepper', pepperReader, async (c) => c.json(await api.identityPepper(deps, (c.get(API as never) as keys.ApiAuth | undefined)?.workspaceId ?? authOf(c).workspaceId)));
+  r.put('/analytics/identity-pepper', auth, async (c) => c.json(await api.setPepper(deps, authOf(c), await bodyOf(c, api.PepperInput), ip(c))));
   r.post('/analytics/identity-pepper/rotate', auth, async (c) => c.json(await api.rotatePepper(deps, authOf(c), ip(c))));
   return r;
 }

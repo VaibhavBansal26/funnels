@@ -107,6 +107,14 @@ export const StructureFunnel = z.looseObject({
 });
 export const StructureList = z.looseObject({ data: z.array(StructureFunnel), next_cursor: z.string().nullable() });
 
+export const IdentityPepper = z.looseObject({
+  pepper: z.string().min(32).max(256).describe('The HMAC key, used exactly as given (UTF-8). Generated peppers are 64 hex characters; an imported one may be any acceptable string of 32 to 256 characters'),
+  version: z.number().int().min(1).describe('Starts at 1; every change of value (rotate, or set to a different value) adds 1'),
+  algorithm: z.literal('HMAC-SHA256').describe('contact_key = hex(HMAC-SHA256(pepper, lower(trim(email)))); visitor_key = hex(HMAC-SHA256(pepper, "v:" + visitor_id))'),
+  fingerprint: z.string().regex(/^[0-9a-f]{8}$/).describe('First 8 hex characters of SHA-256 over the pepper (UTF-8): compare it between apps without showing the pepper'),
+  rotatedAt: ts.describe('When the value last changed (rotate or set); the workspace creation time for a pepper never changed since it was first generated before this field existed'),
+});
+
 export const ErrorBody = z.looseObject({
   error: z.looseObject({
     code: z.string(),
@@ -125,6 +133,7 @@ export const DOCUMENTS = {
   'export-event': EventLine,
   'export-lead': LeadLine,
   'funnel-structure': StructureList,
+  'identity-pepper': IdentityPepper,
   error: ErrorBody,
 } as const;
 

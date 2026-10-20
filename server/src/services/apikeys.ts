@@ -15,10 +15,10 @@ import type { Permission } from '../auth/permissions.js';
 
 /**
  * Workspace API keys for the analytics API (docs/ANALYTICS-API.md). Format `fa_live_<random>` or `fa_test_<random>`; only the SHA-256 is stored and the
- * plaintext is shown once, at creation. A key has scopes (`analytics:read`, `analytics:export`), an optional expiry and an optional IP allow-list, can be
+ * plaintext is shown once, at creation. A key has scopes (`analytics:read`, `analytics:export`, and `analytics_identity:manage`, which with `analytics:export` lets it read the identity pepper), an optional expiry and an optional IP allow-list, can be
  * revoked, and records when it was last used. `live` keys see live funnels, `test` keys see test funnels (the same split as everywhere else in the app).
  */
-export const SCOPES = ['analytics:read', 'analytics:export'] as const;
+export const SCOPES = ['analytics:read', 'analytics:export', 'analytics_identity:manage'] as const;
 export type Scope = (typeof SCOPES)[number];
 export const MODES = ['live', 'test'] as const;
 
@@ -68,7 +68,7 @@ const shape = (r: KeyRow) => ({
 });
 
 /** The permission a user needs to create a key with a given scope: a key can never do more than the person who made it. */
-const NEEDS: Record<Scope, Permission> = { 'analytics:read': 'analytics:read', 'analytics:export': 'analytics:export' };
+const NEEDS: Record<Scope, Permission> = { 'analytics:read': 'analytics:read', 'analytics:export': 'analytics:export', 'analytics_identity:manage': 'analytics_identity:manage' };
 
 export async function listKeys(deps: Deps, ws: string) {
   return { data: (await deps.db.all<KeyRow>('SELECT * FROM api_keys WHERE workspace_id = ? ORDER BY created_at DESC, id DESC', ws)).map(shape) };
@@ -120,14 +120,14 @@ export interface ApiAuth {
   scopes: Scope[];
 }
 
-const KEY_FORMAT = /^fa_(live|test)_[A-Za-z0-9_-]{20,64}$/;
+export const KEY_FORMAT = /^fa_(live|test)_[A-Za-z0-9_-]{20,64}$/;
 const TOUCH_MS = 60_000;
 
 /**
  * Authenticates a request by API key and checks the scope the route declares. Unknown, malformed, expired and revoked keys all answer the same 401 (the caller
  * learns nothing about which keys exist); a valid key from a disallowed address or without the scope is a 403 naming the problem.
  */
-export async function authenticateKey(deps: Deps, c: Context, requiredScope: Scope): Promise<ApiAuth> {
+export async function authenticateKey(deps: Deps, c: Context, requiredScope: Scope, alsoScopes: readonly Scope[] = []): Promise<ApiAuth> {
   const bearer = /^Bearer (.+)$/i.exec(c.req.header('authorization') ?? '')?.[1];
   if (!bearer || !KEY_FORMAT.test(bearer)) throw unauthorized('A valid API key is required (Authorization: Bearer fa_live_...)');
   const r = await deps.db.get<KeyRow>('SELECT * FROM api_keys WHERE key_hash = ?', sha(bearer));
@@ -140,7 +140,7 @@ export async function authenticateKey(deps: Deps, c: Context, requiredScope: Sco
   }
   if (await isSuspended(deps, r.workspace_id)) throw new AppError(403, 'WORKSPACE_SUSPENDED', 'This account is suspended');
   const scopes = JSON.parse(r.scopes_json) as Scope[];
-  if (!scopes.includes(requiredScope)) throw forbidden(`This API key lacks the "${requiredScope}" scope`);
+  for (const need of [requiredScope, ...alsoScopes]) if (!scopes.includes(need)) throw forbidden(`This API key lacks the "${need}" scope`);
   if (!r.last_used_at || now.getTime() - Date.parse(r.last_used_at) > TOUCH_MS) await deps.db.run('UPDATE api_keys SET last_used_at = ? WHERE id = ?', now.toISOString(), r.id);
   return { keyId: r.id, workspaceId: r.workspace_id, mode: r.mode, scopes };
 }

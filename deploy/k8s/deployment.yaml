@@ -25,7 +25,7 @@ spec:
             - { name: APP_PUBLIC_URL, value: "https://app.example.com" }
             - { name: APP_PUBLIC_CNAME_TARGET, value: "sites.example.com" }
           envFrom:
-            - secretRef: { name: funnels-secrets }   # JWT_SECRET, EDGE_SHARED_SECRET, CF_ORIGIN_SECRET, CF_API_TOKEN, CF_ZONE_ID, METRICS_TOKEN, ANTHROPIC_API_KEY
+            - secretRef: { name: funnels-secrets }   # JWT_SECRET, DATA_ENCRYPTION_KEY, EDGE_SHARED_SECRET, CF_ORIGIN_SECRET, CF_API_TOKEN, CF_ZONE_ID, METRICS_TOKEN, ANTHROPIC_API_KEY
           readinessProbe: { httpGet: { path: /readyz, port: http }, periodSeconds: 10, timeoutSeconds: 3 }
           livenessProbe: { httpGet: { path: /healthz, port: http }, initialDelaySeconds: 10, periodSeconds: 20 }
           lifecycle:

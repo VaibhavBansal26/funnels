@@ -48,6 +48,7 @@ export const EnvSchema = z.object({
   PASSWORD_RESET_TTL_MINUTES: int(60, 5, 1440),
   TOTP_ISSUER: z.string().min(1).max(60).default('Funnels'),
   DATA_ENCRYPTION_KEY: z.string().min(32, 'DATA_ENCRYPTION_KEY must be at least 32 characters').optional(),
+  DATA_ENCRYPTION_KEY_PREVIOUS: z.string().refine((v) => v.split(',').every((x) => !x.trim() || x.trim().length >= 32), 'every DATA_ENCRYPTION_KEY_PREVIOUS entry must be at least 32 characters').optional(),
   MAIL_TRANSPORT: z.enum(['none', 'console', 'webhook']).default('none'),
   MAIL_FROM: z.string().max(200).default('Funnels <no-reply@localhost>'),
   MAIL_WEBHOOK_URL: z.string().regex(/^https?:\/\//, 'MAIL_WEBHOOK_URL must start with http:// or https://').optional(),

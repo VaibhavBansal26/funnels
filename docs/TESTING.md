@@ -49,6 +49,9 @@ Test helpers (`server/test/helpers.ts`): `makeHarness()` builds an app with a co
 | Tenancy and roles | `tenancy.test.ts`, `auth.test.ts` | 404 for every resource type, no existence leak, role matrix, instant role changes |
 | Public events | `public.test.ts` | unknown/deleted funnel, malformed, oversized (413), bots, duplicate idempotency, rate limit 429 + Retry-After |
 | Forms and orders | `public.test.ts`, `exports.test.ts` | lead dedupe, honeypot, field validation, idempotent checkout, bump/upsell, decline, CSV injection |
+| Analytics API: identity pepper | `pepper.test.ts` | importing a pepper (rules, fingerprint, audit), pepper endpoint auth (person or key scopes), DATA_ENCRYPTION_KEY, encryption of clear peppers, `PEPPER_UNREADABLE` recovery |
+| Analytics API: rate limits | `ratelimit.analytics.test.ts` | separate read/export budgets, shared export bucket, Retry-After vs reset, no penalty box |
+| Script entry points | `entrypoints.test.ts` | `npm run seed` in a child process |
 | Analytics | `analytics.test.ts` | zero visits, rounding, inclusive range edges, time-zone and DST day boundaries, series |
 | Webhooks | `webhooks.test.ts` | signature, backoff schedule, dead letter, SSRF table (v4/v6/mapped/NAT64/decimal/octal), DNS rebinding, redirects not followed |
 | Preview and serving | `serving.test.ts` | token expiry/tamper/cross-funnel/cross-workspace, ETag/304, cookies and UTM sanitising, 301/home/404 rules, host matching |

@@ -69,12 +69,12 @@ export async function applyPrincipalLayers(deps: Deps, c: Context, auth: Auth): 
 }
 
 /** Called after an API key authenticated: the principal and workspace layers for the declared operation, counted against the key and its workspace. */
-export async function applyKeyLayers(deps: Deps, c: Context, who: { keyId: string; workspaceId: string }): Promise<void> {
+export async function applyKeyLayers(deps: Deps, c: Context, who: { keyId: string; workspaceId: string }, policies?: string[]): Promise<void> {
   const rl = rlOf(c);
   if (!rl?.op || rl.op.exempt) return;
   rl.principal.apiKey = who.keyId;
   rl.principal.workspaceId = who.workspaceId;
-  const ids = rl.op.limits.filter((id) => ['principal', 'workspace'].includes(deps.limiter.policy(id).layer));
+  const ids = (policies ?? rl.op.limits).filter((id) => ['principal', 'workspace'].includes(deps.limiter.policy(id).layer));
   const { decisions, denied } = await deps.limiter.evaluate(ids, rl.principal, { cost: rl.op.cost });
   rl.decisions.push(...decisions);
   apply(c, rl);

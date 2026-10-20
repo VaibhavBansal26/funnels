@@ -23,6 +23,7 @@ curl -s https://app.example.com/api/v1/analytics/funnels?from=2026-03-01&to=2026
 * `from`, `to`: a date (`2026-03-01`: the whole local day in `tz`, `to` inclusive) or a datetime **with an offset** (`2026-03-01T00:00:00Z`; `to` exclusive). Default: the last 30 local days, today included. At most 366 days. `tz`: IANA zone, default `UTC`, used only to decide where days, weeks and months start. Aggregates are read from 15-minute buckets, so a datetime range is widened to 15-minute edges; exports use the exact instants.
 * Lists: `?limit=` (up to 1,000, default 100) and `?cursor=` → `{ "data": [...], "next_cursor": string | null }`. Cursors are opaque.
 * Errors: `{ "error": { "code", "message" } }`, plus `details` on validation errors and `retry_after_s`, `policy` on `429`. Objects in responses are open: **ignore fields you do not know** (additive changes only within v1).
+* Extra fields, additive within v1: none beyond the contract here (`phone_key` and `dow_created` exist only in Conversations' room export, where `dow_created` is JavaScript's `getDay()`: Sunday = 0). Funnels' funnel-structure export keys funnels by `id` and steps by `step_id` and carries no step `type`.
 * **Rates are fractions between 0 and 1** (not percentages), rounded to 4 decimals. Money is in major currency units (`47.5`), rounded to 2 decimals.
 
 ## Endpoints
@@ -54,7 +55,23 @@ Exports never contain raw email, phone, name or visitor id. Contacts and visitor
 * `contact_key` = hex `HMAC-SHA256(workspace_pepper, lower(trim(email)))`
 * `visitor_key` = hex `HMAC-SHA256(workspace_pepper, "v:" + visitor_id)`
 
-The **workspace pepper** is a per-workspace secret. A person holding `analytics_identity:manage` **and** `analytics:export` can view and rotate it (Settings, API access, or `GET/POST /api/v1/analytics/identity-pepper[/rotate]`); API keys can never read it. Copy it into the other system and it computes the same `contact_key` for the same email, so two apps owned by one customer can be joined without exchanging any personal data. Rotating it changes every key (consumers must adopt the new pepper and re-key; the action is audited). Free text (form answers, product copy) is never exported; leads carry only the derived fields below.
+The **workspace pepper** is a per-workspace secret. A person holding `analytics_identity:manage` **and** `analytics:export` can view, set and rotate it (Settings, API access shows and rotates it; `GET|PUT /api/v1/analytics/identity-pepper`, `POST .../rotate`); an API key carrying both scopes can **read** it (never change it). Copy it into the other system and it computes the same `contact_key` for the same email, so two apps owned by one customer can be joined without exchanging any personal data: see [Sharing the pepper between apps](#sharing-the-pepper-between-apps). Rotating or setting it changes every key (consumers must adopt the new pepper and re-key; the action is audited). Free text (form answers, product copy) is never exported; leads carry only the derived fields below.
+
+### Sharing the pepper between apps
+
+Every workspace starts with its own random pepper, so two apps of one customer produce different keys for the same e-mail address until both use the same value. `GET /api/v1/analytics/identity-pepper` answers `{ pepper, version, algorithm: "HMAC-SHA256", fingerprint, rotatedAt }` (the same shape in Funnels and Conversations; schema `identity-pepper.schema.json`). To join two apps:
+
+1. Pick one value: `openssl rand -hex 32` (or read the pepper of the other app).
+2. Set it: `curl -X PUT -H "Authorization: Bearer $SESSION_TOKEN" -H "Content-Type: application/json" -d '{"pepper":"<value>","confirm":"<value>"}' .../api/v1/analytics/identity-pepper`. `confirm` is optional; when sent it must repeat the pepper exactly (`400 PEPPER_CONFIRM_MISMATCH`). A person's session is required (an API key can read, not change).
+3. Compare `fingerprint` (first 8 hex characters of SHA-256 over the pepper) in both apps: equal fingerprints mean equal peppers, and the fingerprint reveals nothing usable.
+
+Rules (`400 INVALID_PEPPER` otherwise): 32 to 256 printable ASCII characters without spaces; a hex pepper needs 64 characters and a base64 pepper 43 (32 bytes); at least 12 distinct characters, about 128 bits of entropy by a Shannon estimate, no repeated pattern or sequence. The value is used exactly as typed (nothing is trimmed), so both apps must get the same string. Setting the stored value again changes nothing; a different value adds 1 to `version`, sets `rotatedAt` and writes an `analytics.pepper_set` audit entry holding the fingerprint, never the pepper (rotate writes `analytics.pepper_rotated`).
+
+An API key with `analytics:export` + `analytics_identity:manage` can read the pepper, which lets a leaked integration key recompute contact keys from e-mail addresses: give the scope only to the service that needs it. Such a key counts against `analytics.read` and `analytics.workspace`.
+
+The settings page shows and rotates the pepper but has no form for importing one yet; the API above is the supported way (UI follow-up).
+
+**Stored encrypted.** `workspaces.identity_pepper` holds `enc2.<keyId>.<ciphertext>`: AES-256-GCM under a key derived from `DATA_ENCRYPTION_KEY`, bound to the workspace id (earlier versions stored it in clear). In production `DATA_ENCRYPTION_KEY` is required once the pepper is used: without it the pepper routes and the exports answer `503 DATA_ENCRYPTION_KEY_REQUIRED`; development derives a key from `JWT_SECRET` and warns at start-up. A value in clear is encrypted the first time it is read (the value, `version` and `rotatedAt` do not change); to rotate the data key put the old value in `DATA_ENCRYPTION_KEY_PREVIOUS` ([RUNBOOK.md](RUNBOOK.md)). A pepper that cannot be decrypted is `409 PEPPER_UNREADABLE`, never a `500`; `PUT` or `POST .../rotate` replaces it and recovers.
 
 **Events** (`type`: `page_view`, `optin`, `order`): `id, ts, type, funnel_id, step_id, visitor_key, contact_key, utm_source, utm_medium, utm_campaign, device, country, referrer_host, amount, currency, unique_visit`.
 
@@ -63,7 +80,7 @@ The **workspace pepper** is a per-workspace secret. A person holding `analytics_
 
 **Leads:** `id, created_at, funnel_id, step_id, contact_key, source, utm_source, utm_campaign, converted_to_order, order_total, first_order_at`. `source` is `form` or `checkout` (how the lead first arrived); `step_id` and the UTMs come from the lead's earliest event.
 
-**Paging, resuming and compression.** An export request returns up to `limit` lines (default 5,000, at most 20,000) ordered by `(ts, id)` and, when more exist, the response header `X-Next-Cursor`; pass it as `?cursor=` for the next page. The order is stable and a cursor can be reused after a failure (resumable: no row is skipped or repeated, even when new events arrive). `X-Row-Count` tells how many lines this page has. Send `Accept-Encoding: gzip` for compressed pages (bodies under 1 KB are sent plain).
+**Paging, resuming and compression.** An export request returns up to `limit` lines (default 5,000, **at most 20,000**: above that is `400`; the contract's 1,000 is the minimum every app must accept) ordered by `(ts, id)` and, when more exist, the response header `X-Next-Cursor`; pass it as `?cursor=` for the next page. The order is stable and a cursor can be reused after a failure (resumable: no row is skipped or repeated, even when new events arrive). `X-Row-Count` tells how many lines this page has. Send `Accept-Encoding: gzip` for compressed pages (bodies under 1 KB are sent plain).
 
 ```
 cursor=""

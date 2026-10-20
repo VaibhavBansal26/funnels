@@ -15,7 +15,7 @@ import { CategoryInput, CustomBlockInput, TemplateCreate, TemplatePatch, Templat
 import { WebhookInput, WebhookPatch } from '../services/webhooks.js';
 import { LoginInput, MemberPatch, PasswordChange, RegisterInput, WorkspacePatch } from '../services/accounts.js';
 import { ApiKeyInput, ApiKeyPatch } from '../services/apikeys.js';
-import { ApiListQuery, ApiRangeQuery, ExportQuery, TimeseriesQuery } from '../services/analyticsapi.js';
+import { ApiListQuery, ApiRangeQuery, ExportQuery, PepperInput, TimeseriesQuery } from '../services/analyticsapi.js';
 import { SubscribeInput } from '../services/billing.js';
 import { RefundInput } from '../services/stripepay.js';
 import { DisputeQuery } from '../services/disputes.js';
@@ -261,8 +261,9 @@ export const OPERATIONS: Operation[] = [
   A('POST', '/api/v1/api-keys', 'api_keys:manage', 'api-keys', 'Create an API key; the secret is returned once', { body: ApiKeyInput, status: 201 }),
   A('PATCH', '/api/v1/api-keys/:id', 'api_keys:manage', 'api-keys', 'Rename, set the expiry or the IP allow-list of a key', { body: ApiKeyPatch }),
   A('DELETE', '/api/v1/api-keys/:id', 'api_keys:manage', 'api-keys', 'Revoke a key', { status: 204 }),
-  A('GET', '/api/v1/analytics/identity-pepper', 'analytics_identity:manage', 'api-keys', 'The workspace identity pepper (a secret, shown to people only)', { also: ['analytics:export'] }),
-  A('POST', '/api/v1/analytics/identity-pepper/rotate', 'analytics_identity:manage', 'api-keys', 'Replace the pepper: exported keys change, so consumers must adopt the new one', { also: ['analytics:export'] }),
+  A('GET', '/api/v1/analytics/identity-pepper', 'analytics_identity:manage', 'api-keys', 'The workspace identity pepper and its fingerprint (a secret): a person with analytics_identity:manage + analytics:export, or an API key with both scopes', { also: ['analytics:export'], notes: 'Response {pepper, version, algorithm: "HMAC-SHA256", fingerprint, rotatedAt}. With an API key (Bearer fa_...) the key layers analytics.read and analytics.workspace apply instead of the user layers.' }),
+  A('PUT', '/api/v1/analytics/identity-pepper', 'analytics_identity:manage', 'api-keys', 'Set (import) the pepper so two apps derive the same contact_key: validated, audited, bumps version (people only, never an API key)', { also: ['analytics:export'], body: PepperInput }),
+  A('POST', '/api/v1/analytics/identity-pepper/rotate', 'analytics_identity:manage', 'api-keys', 'Replace the pepper with a new random one: exported keys change, so consumers must adopt the new one (people only)', { also: ['analytics:export'] }),
   // Stripe and billing
   make('POST', '/api/stripe/webhook', 'public', 'billing', 'Stripe platform webhook: subscriptions and invoices (signature over the raw body)', { limits: ['ip.global', 'webhook.inbound'], notes: 'Signed with STRIPE_WEBHOOK_SECRET (Stripe-Signature, timestamped HMAC-SHA-256). Deduplicated by event id; a failure answers 500 so Stripe retries.' }),
   make('POST', '/api/stripe/connect-webhook', 'public', 'billing', 'Stripe Connect webhook: checkout, refunds, disputes and account changes of connected accounts', { limits: ['ip.global', 'webhook.inbound'], notes: 'Signed with STRIPE_CONNECT_WEBHOOK_SECRET.' }),

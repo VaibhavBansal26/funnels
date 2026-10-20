@@ -9574,13 +9574,14 @@
                   },
                   "scopes": {
                     "minItems": 1,
-                    "maxItems": 2,
+                    "maxItems": 3,
                     "type": "array",
                     "items": {
                       "type": "string",
                       "enum": [
                         "analytics:read",
-                        "analytics:export"
+                        "analytics:export",
+                        "analytics_identity:manage"
                       ]
                     }
                   },
@@ -9785,7 +9786,8 @@
         "tags": [
           "api-keys"
         ],
-        "summary": "The workspace identity pepper (a secret, shown to people only)",
+        "summary": "The workspace identity pepper and its fingerprint (a secret): a person with analytics_identity:manage + analytics:export, or an API key with both scopes",
+        "description": "Response {pepper, version, algorithm: \"HMAC-SHA256\", fingerprint, rotatedAt}. With an API key (Bearer fa_...) the key layers analytics.read and analytics.workspace apply instead of the user layers.",
         "operationId": "get_api_v1_analytics_identity_pepper",
         "parameters": [],
         "responses": {
@@ -9820,6 +9822,69 @@
           "api.read",
           "api.workspace"
         ]
+      },
+      "put": {
+        "tags": [
+          "api-keys"
+        ],
+        "summary": "Set (import) the pepper so two apps derive the same contact_key: validated, audited, bumps version (people only, never an API key)",
+        "operationId": "put_api_v1_analytics_identity_pepper",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "pepper": {
+                    "type": "string",
+                    "maxLength": 512
+                  },
+                  "confirm": {
+                    "type": "string",
+                    "maxLength": 512
+                  }
+                },
+                "required": [
+                  "pepper"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-also-permissions": [
+          "analytics:export"
+        ],
+        "x-auth": "user",
+        "x-permission": "analytics_identity:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
       }
     },
     "/api/v1/analytics/identity-pepper/rotate": {
@@ -9827,7 +9892,7 @@
         "tags": [
           "api-keys"
         ],
-        "summary": "Replace the pepper: exported keys change, so consumers must adopt the new one",
+        "summary": "Replace the pepper with a new random one: exported keys change, so consumers must adopt the new one (people only)",
         "operationId": "post_api_v1_analytics_identity_pepper_rotate",
         "parameters": [],
         "responses": {

@@ -422,19 +422,19 @@ describe('rate limits and the identity pepper', () => {
     expect((await get('/funnels', key.key)).status).toBe(200);
   });
 
-  it('the identity pepper is for people with analytics_identity:manage AND analytics:export, never for API keys; rotation changes every exported key and is audited', async () => {
+  it('the identity pepper is for people with analytics_identity:manage AND analytics:export (or a key with both scopes, test/pepper.test.ts); a key without the identity scope is refused; rotation changes every exported key and is audited', async () => {
     const { h, owner, key, mk, get } = await world();
     const admin = await h.member(owner, 'admin'); // has analytics:export but not analytics_identity:manage
     const onlyIdentity = await h.memberWith(owner, ['analytics_identity:manage']); // lacks analytics:export
     const peek = (token: string) => h.call('GET', '/api/v1/analytics/identity-pepper', { token });
-    expect((await peek(key.key)).status).toBe(401);
+    expect((await peek(key.key)).status).toBe(403); // the key has analytics:read and analytics:export but not analytics_identity:manage
     expect((await peek(admin.token)).status).toBe(403);
     const lacksExport = await peek(onlyIdentity.token);
     expect(lacksExport.status).toBe(403);
     expect(lacksExport.json.error.message).toContain('analytics:export');
     const first = (await peek(owner.token)).json as { pepper: string; rotatedAt: string | null };
     expect(first.pepper).toMatch(/^[0-9a-f]{64}$/);
-    expect(first.rotatedAt).toBeNull();
+    expect(first.rotatedAt).toEqual(expect.any(String));
     expect(((await peek(owner.token)).json as { pepper: string }).pepper).toBe(first.pepper); // stable
     const f = await liveFunnel(h, owner.token);
     await seed(h, [{ workspace_id: owner.wsId, funnel_id: f.id, step_id: f.s1, visitor_id: 'stable-visitor', created_at: '2026-03-10T12:00:00.000Z' }]);

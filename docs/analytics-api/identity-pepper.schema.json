@@ -1,0 +1,41 @@
+{
+  "$id": "https://funnels.example/analytics-api/v1/identity-pepper.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "pepper": {
+      "type": "string",
+      "minLength": 32,
+      "maxLength": 256,
+      "description": "The HMAC key, used exactly as given (UTF-8). Generated peppers are 64 hex characters; an imported one may be any acceptable string of 32 to 256 characters"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "description": "Starts at 1; every change of value (rotate, or set to a different value) adds 1"
+    },
+    "algorithm": {
+      "type": "string",
+      "const": "HMAC-SHA256",
+      "description": "contact_key = hex(HMAC-SHA256(pepper, lower(trim(email)))); visitor_key = hex(HMAC-SHA256(pepper, \"v:\" + visitor_id))"
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}$",
+      "description": "First 8 hex characters of SHA-256 over the pepper (UTF-8): compare it between apps without showing the pepper"
+    },
+    "rotatedAt": {
+      "type": "string",
+      "description": "When the value last changed (rotate or set); the workspace creation time for a pepper never changed since it was first generated before this field existed"
+    }
+  },
+  "required": [
+    "pepper",
+    "version",
+    "algorithm",
+    "fingerprint",
+    "rotatedAt"
+  ],
+  "additionalProperties": {}
+}

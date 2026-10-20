@@ -7,6 +7,10 @@ import { startQueues } from './queue/runtime.js';
 const config = loadConfig();
 const deps = await createDeps(config);
 if (config.JWT_SECRET_GENERATED) deps.log.warn('JWT_SECRET is not set: generated an ephemeral secret, sessions will not survive a restart');
+if (!config.DATA_ENCRYPTION_KEY) {
+  if (config.NODE_ENV === 'production') deps.log.warn('DATA_ENCRYPTION_KEY is not set: the analytics identity pepper (and so every analytics export) is refused until it is configured');
+  else deps.log.warn('DATA_ENCRYPTION_KEY is not set: derived a development key from JWT_SECRET (an identity pepper stored now is unreadable if JWT_SECRET changes)');
+}
 if (!config.ANTHROPIC_API_KEY) deps.log.info('ANTHROPIC_API_KEY is not set: AI features use the offline heuristic provider');
 
 const worker = createWorker(deps);

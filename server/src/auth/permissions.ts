@@ -28,7 +28,7 @@ export const PERMISSIONS = {
   'workspace:manage': 'Rename the workspace and change workspace-wide settings',
   'audit:read': 'View the audit log',
   'api_keys:manage': 'Create and revoke API keys',
-  'analytics_identity:manage': 'View and rotate the workspace identity pepper used by analytics exports',
+  'analytics_identity:manage': 'View, set (import) and rotate the workspace identity pepper used by analytics exports',
   'billing:read': 'View the plan, usage and invoices',
   'billing:manage': 'Change the plan, payment method and Stripe connection',
 } as const;
