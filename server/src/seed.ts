@@ -1,3 +1,7 @@
+// Load the route spec first. The auth, rate-limit and route-spec modules import each other, so a script that
+// imports a service before the spec fails with "Cannot access ... before initialization" (src/index.ts gets the
+// right order through app.ts). test/entrypoints.test.ts runs this script to keep it working.
+import './routes/spec.js';
 import { fileURLToPath } from 'node:url';
 import { generateFunnel } from './ai/service.js';
 import { hashPassword } from './auth/password.js';
