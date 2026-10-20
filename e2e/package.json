@@ -1,0 +1,17 @@
+{
+  "name": "funnels-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser smoke tests (Playwright) against the built server serving the built web app.",
+  "scripts": {
+    "test": "playwright test",
+    "install:browsers": "playwright install chromium",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}

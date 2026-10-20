@@ -3,17 +3,12 @@ import { useEffect, useMemo, useRef } from 'react';
 import { DEVICE_WIDTH, type Device } from '../components/PreviewFrame';
 
 const EDITOR_CSS = '<style>[data-bid]{cursor:pointer}[data-bid]:hover{outline:1px dashed rgba(37,99,235,.7);outline-offset:2px}.fn-sel{outline:2px solid #2563eb!important;outline-offset:2px}</style>';
-// Runs inside the sandboxed canvas (scripts allowed, no same-origin access). It only reports clicks/scroll and highlights the selected block.
-const EDITOR_JS = `<script>(function(){var sel=null;function mark(){var a=document.querySelectorAll('[data-bid]');for(var i=0;i<a.length;i++){a[i].classList.toggle('fn-sel',a[i].getAttribute('data-bid')===sel)}}
-document.addEventListener('click',function(e){e.preventDefault();var el=e.target&&e.target.closest?e.target.closest('[data-bid]'):null;parent.postMessage({fnEditor:true,type:'select',id:el?el.getAttribute('data-bid'):null},'*')},true);
-document.addEventListener('submit',function(e){e.preventDefault()},true);
-window.addEventListener('message',function(e){var d=e.data;if(!d||!d.fnEditor)return;if(d.type==='select'){sel=d.id;mark()}if(d.type==='scroll')window.scrollTo(0,d.y)});
-var t=0;window.addEventListener('scroll',function(){clearTimeout(t);t=setTimeout(function(){parent.postMessage({fnEditor:true,type:'scroll',y:window.scrollY},'*')},100)});
-parent.postMessage({fnEditor:true,type:'ready'},'*')})();</script>`;
+// The bridge is loaded by absolute URL from this origin: the canvas is a sandboxed srcdoc iframe (opaque origin) that inherits the app's CSP (script-src 'self').
+const editorJs = () => `<script src="${globalThis.location?.origin ?? ''}/editor-bridge.js"></script>`;
 
 export function buildCanvasHtml(doc: PageDocument, opts: { funnelId: string; stepId: string; stepName: string; steps: { id: string }[] }): string {
   const html = renderPage(doc, { funnelId: opts.funnelId, stepId: opts.stepId, stepName: opts.stepName, steps: opts.steps.map((s) => ({ id: s.id, href: '#' })), mode: 'builder' });
-  return html.replace('</head>', `${EDITOR_CSS}</head>`).replace('</body>', `${EDITOR_JS}</body>`);
+  return html.replace('</head>', `${EDITOR_CSS}</head>`).replace('</body>', `${editorJs()}</body>`);
 }
 
 /** Live preview of the document in a sandboxed iframe. Clicking a block in the canvas selects it in the editor. */

@@ -7,17 +7,19 @@
     "node": ">=22"
   },
   "scripts": {
-    "install:all": "npm ci --prefix server && npm ci --prefix web && npm ci --prefix edge",
+    "install:all": "npm ci --prefix server && npm ci --prefix web && npm ci --prefix edge && npm ci --prefix e2e",
     "dev": "npm run dev --prefix server & npm run dev --prefix web & wait",
     "build": "npm run build --prefix server && npm run build --prefix web",
     "start": "node server/dist/index.js",
     "test": "npm test --prefix server && npm test --prefix web && npm test --prefix edge",
-    "typecheck": "npm run typecheck --prefix server && npm run typecheck --prefix web && npm run typecheck --prefix edge",
+    "typecheck": "npm run typecheck --prefix server && npm run typecheck --prefix web && npm run typecheck --prefix edge && npm run typecheck --prefix e2e",
     "seed": "npm run seed --prefix server",
     "package": "npm run build && tar -czf funnels.tgz server/dist server/package.json server/package-lock.json web/dist",
     "check:size": "npm run check:size --prefix web",
     "docs:config": "npm run docs:config --prefix server",
     "docs:api": "npm run docs:api --prefix server",
-    "docs:check": "npm run docs:check --prefix server"
+    "docs:check": "npm run docs:check --prefix server",
+    "e2e": "npm test --prefix e2e",
+    "e2e:install": "npm run install:browsers --prefix e2e"
   }
 }

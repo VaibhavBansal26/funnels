@@ -64,3 +64,21 @@ Real browsers (drag and drop, the sandboxed canvas script), real DNS, real Anthr
 ## Phase 2 additions
 
 `server/test/phase2.test.ts` covers the edge signing contract (skew, replay, fail-closed), the edge endpoint, purge jobs and the Cloudflare adapters (mocked `fetch`), CF-Connecting-IP trust, the event buffer (batching, overflow, shutdown flush, read-your-writes), batched rollup maintenance (compared with a raw `GROUP BY` per local day in UTC, New York, Kolkata and Auckland), `EXPLAIN` index checks on every engine (PostgreSQL runs them with sequential scans disabled), an N+1 guard, gzip/metrics, 2,600-row streaming CSV, and `Promise.all` concurrency tests: same-version saves (one winner), parallel duplicates/reorders/domain attach, parallel identical submissions and exact rate limiting. `edge/test/edge.test.ts` tests the worker with fake Cache/KV, verifying each signed call with the origin's real verifier. These run in the normal `npm test` (about 480 server tests per backend, 14 edge tests, 51 web tests). Not covered: workerd/miniflare, Redis.
+
+## Browser smoke tests (Playwright)
+
+`e2e/` drives real Chromium against the **built** server serving the **built** web app (`npm run build` first), with an in-memory SQLite database and a fake DNS resolver (`e2e/server.mjs`, so `*.e2e.test` domains can be verified; the browser maps that suffix to 127.0.0.1). Run: `npm run e2e:install` once (downloads Chromium, about 100 MB), then `npm run e2e` (about 35 s). One worker, no retries (a retry would hide flakiness); traces and screenshots are kept for failures (`npx playwright show-trace e2e/test-results/.../trace.zip`). CI job `e2e` runs it and uploads the report on failure.
+
+| Test | What it proves |
+|---|---|
+| register, sign out, sign in | auth screens and session handling |
+| funnel from a template; steps reorder with Alt+Arrow | template gallery, steps tab, keyboard reorder persisted on the server |
+| canvas click selects a block | the builder canvas script is not blocked by the app CSP (regression for a real bug the unit tests could not see) |
+| edit, undo, redo, save, reload | builder state, save, persistence |
+| structure list reorder by keyboard and by drag and drop | both reorder paths in the real DOM |
+| Save keeps the replaced version; History lists, previews and restores it | version history |
+| signed preview and form submit | preview rendering; preview submissions are intentionally not recorded |
+| live funnel on a verified domain, visitor submits the form | domain add and verify, go live, public serving by Host header, form submit, lead in the Leads tab, analytics tab |
+| analytics tab renders | no console or page errors |
+
+Not covered (yet): checkout, the AI assistant UI, webhooks UI, mobile layouts, other browsers (Firefox, WebKit are not installed), accessibility audits beyond role-based selectors.
