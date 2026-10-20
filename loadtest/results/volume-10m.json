@@ -1,0 +1,135 @@
+{
+ "when": "2026-10-20T12:35:52.129Z",
+ "events": 10000000,
+ "insert_s": 0,
+ "insert_rows_per_s": null,
+ "prep_s": 32,
+ "rollup_rows": 172801,
+ "events_total_mb": 2743,
+ "bytes_per_event_incl_indexes": 274,
+ "rollup_mb": 26,
+ "sketch_mb": 1.9,
+ "partitions": [
+  "events_2026_07: 338 MB",
+  "events_2026_08: 932 MB",
+  "events_2026_09: 902 MB",
+  "events_2026_10: 571 MB",
+  "events_2026_11: 0 MB",
+  "events_2026_12: 0 MB",
+  "events_default: 0 MB"
+ ],
+ "results": [
+  {
+   "label": "per-step totals from rollups, 7 days",
+   "median_ms": 1.014,
+   "min_ms": 0.952,
+   "max_ms": 2.222,
+   "relations_scanned": [
+    "event_rollups",
+    "event_rollups_pkey"
+   ]
+  },
+  {
+   "label": "exact COUNT(DISTINCT visitor), 7 days",
+   "median_ms": 52.772,
+   "min_ms": 51.17,
+   "max_ms": 292.164,
+   "relations_scanned": [
+    "events_2026_10",
+    "events_2026_10_funnel_id_created_at_idx"
+   ]
+  },
+  {
+   "label": "sketch merge input, 7 days",
+   "median_ms": 0.007,
+   "min_ms": 0.005,
+   "max_ms": 0.02,
+   "relations_scanned": [
+    "visitor_sketches"
+   ]
+  },
+  {
+   "label": "per-step totals from rollups, 30 days",
+   "median_ms": 3.26,
+   "min_ms": 3.224,
+   "max_ms": 4.1,
+   "relations_scanned": [
+    "event_rollups",
+    "event_rollups_pkey"
+   ]
+  },
+  {
+   "label": "exact COUNT(DISTINCT visitor), 30 days",
+   "median_ms": 302.782,
+   "min_ms": 296.487,
+   "max_ms": 400.902,
+   "relations_scanned": [
+    "events_2026_09",
+    "events_2026_09_funnel_id_created_at_idx",
+    "events_2026_10",
+    "events_2026_10_funnel_id_step_id_type_idx"
+   ]
+  },
+  {
+   "label": "sketch merge input, 30 days",
+   "median_ms": 0.009,
+   "min_ms": 0.009,
+   "max_ms": 0.022,
+   "relations_scanned": [
+    "visitor_sketches"
+   ]
+  },
+  {
+   "label": "per-step totals from rollups, 90 days",
+   "median_ms": 10.021,
+   "min_ms": 9.938,
+   "max_ms": 10.904,
+   "relations_scanned": [
+    "event_rollups",
+    "event_rollups_pkey"
+   ]
+  },
+  {
+   "label": "exact COUNT(DISTINCT visitor), 90 days",
+   "median_ms": 4703.687,
+   "min_ms": 4633.976,
+   "max_ms": 9016.459,
+   "relations_scanned": [
+    "events_2026_07",
+    "events_2026_07_funnel_id_step_id_type_idx",
+    "events_2026_08",
+    "events_2026_08_funnel_id_step_id_type_idx",
+    "events_2026_09",
+    "events_2026_09_funnel_id_step_id_type_idx",
+    "events_2026_10",
+    "events_2026_10_funnel_id_step_id_type_idx"
+   ]
+  },
+  {
+   "label": "sketch merge input, 90 days",
+   "median_ms": 0.028,
+   "min_ms": 0.021,
+   "max_ms": 0.68,
+   "relations_scanned": [
+    "visitor_sketches"
+   ]
+  },
+  {
+   "label": "keyset page of recent events for one funnel (history list)",
+   "median_ms": 0.092,
+   "min_ms": 0.064,
+   "max_ms": 6.605,
+   "relations_scanned": [
+    "events_2026_07",
+    "events_2026_08",
+    "events_2026_09",
+    "events_2026_10",
+    "events_default"
+   ]
+  }
+ ],
+ "pruning_example": [
+  "        ->  Bitmap Heap Scan on events_2026_10 events  (cost=8083.61..41211.61 rows=144212 width=8) (actual time=5.694..34.192 rows=153951.00 loops=1)",
+  "              ->  Bitmap Index Scan on events_2026_10_funnel_id_created_at_idx  (cost=0.00..8047.56 rows=153200 width=0) (actual time=4.746..4.746 rows=155555.00 loops=1)"
+ ]
+}

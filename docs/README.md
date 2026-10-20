@@ -15,6 +15,8 @@ Start with the [README](../README.md) for what this is and how to run it.
 | deploy, roll back, back up, handle an incident | [RUNBOOK.md](RUNBOOK.md) |
 | put Cloudflare in front, set WAF rules | [CLOUDFLARE.md](CLOUDFLARE.md) |
 | see the numbers and how they were measured | [PERFORMANCE.md](PERFORMANCE.md) |
+| size a deployment, understand the queue/outbox design, see measured vs extrapolated | [SCALING.md](SCALING.md) |
+| validate the scale targets in a cloud environment | [CLOUD-LOADTEST.md](CLOUD-LOADTEST.md) |
 | run or write tests | [TESTING.md](TESTING.md), [CONTRIBUTING](../CONTRIBUTING.md) |
 | understand the AI features | [AI.md](AI.md) |
 | review security | [SECURITY.md](SECURITY.md) |
@@ -33,6 +35,8 @@ Start with the [README](../README.md) for what this is and how to run it.
 | [RATE-LIMITING.md](RATE-LIMITING.md) | Limiter design, algorithms, failure modes, every policy (table generated), tuning |
 | [CLOUDFLARE.md](CLOUDFLARE.md) | Worker, signed resolve, cache and purge, edge rate limiting and WAF rules |
 | [PERFORMANCE.md](PERFORMANCE.md) | Benchmarks with machine, date and method; the ingestion regression investigation |
+| [SCALING.md](SCALING.md) | Scale targets, architecture, capacity model with measured constants, sizing tables, bottlenecks, tuning, limits, measured-vs-extrapolated table |
+| [CLOUD-LOADTEST.md](CLOUD-LOADTEST.md) | Reproducible cloud validation: infrastructure, k6 and k6-operator commands, result tables to fill, cost estimate |
 | [TESTING.md](TESTING.md) | Strategy, the database matrix, real PostgreSQL and Redis suites, edge-case catalogue |
 | [RUNBOOK.md](RUNBOOK.md) | Deploy, rollback, backups, migrations, incident playbooks, alerts and SLO targets |
 | [SECURITY.md](SECURITY.md) | Threat model summary, data handled, PII policy, secrets, reporting |

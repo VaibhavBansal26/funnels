@@ -19,7 +19,11 @@ export function migrationFiles(dialect: 'sqlite' | 'postgres'): string[] {
  */
 export async function migrate(db: Db): Promise<string[]> {
   const dir = dirFor(db);
-  await db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
+  // Under the same advisory lock as the migrations: two replicas booting on an empty database race on CREATE TABLE IF NOT EXISTS (duplicate pg_type key).
+  await db.transaction(async (tx) => {
+    if (db.dialect.name === 'postgres') await tx.run('SELECT pg_advisory_xact_lock(?)', MIGRATION_LOCK);
+    await tx.exec('CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
+  });
   const applied: string[] = [];
   for (const file of migrationFiles(db.dialect.name)) {
     const sql = readFileSync(dir + file, 'utf8');

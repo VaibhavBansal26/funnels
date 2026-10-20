@@ -19,6 +19,7 @@ import { seedTemplates } from './templates/seed.js';
 import { EventBus } from './util/bus.js';
 import { PageCache } from './util/pagecache.js';
 import { Flights } from './util/flights.js';
+import { RefCache } from './util/refcache.js';
 import { Redis } from 'ioredis';
 import { createLimiter } from './ratelimit/index.js';
 import { createEventBus, createSecondaryStore } from './queue/runtime.js';
@@ -51,7 +52,11 @@ export async function createDeps(config: Config, overrides: Partial<Deps> = {}):
   const now = overrides.now ?? (() => new Date());
   const pageCache = overrides.pageCache ?? new PageCache();
   const flights = overrides.flights ?? new Flights({ redis: config.REDIS_URL && config.RATELIMIT_ENABLED ? flightRedis(config.REDIS_URL) : undefined, prefix: config.REDIS_KEY_PREFIX });
-  pageCache.onInvalidate = (ids) => void flights.invalidate(ids.map((i) => `page:${i}`));
+  const eventRefs = overrides.eventRefs ?? new RefCache(config.EVENT_REF_CACHE_SECONDS * 1000);
+  pageCache.onInvalidate = (ids) => {
+    eventRefs.clear(); // step deleted, funnel trashed or purged: stop vouching for cached (funnel, step) pairs
+    void flights.invalidate(ids.map((i) => `page:${i}`));
+  };
   const log = overrides.log ?? createLogger(config.LOG_LEVEL);
   const db = overrides.db ?? (await openDb({ url: config.DATABASE_URL, sqlitePath: config.DATABASE_PATH, poolMax: config.DATABASE_POOL_MAX, replicaUrls: config.DATABASE_REPLICA_URLS, replica: { maxLagMs: config.REPLICA_MAX_LAG_MS, stickyMs: config.REPLICA_STICKY_MS }, prepare: config.DATABASE_PREPARED_STATEMENTS, log: (m, meta) => log.warn(m, meta) }));
   await seedTemplates(db);
@@ -73,6 +78,7 @@ export async function createDeps(config: Config, overrides: Partial<Deps> = {}):
     bus: new EventBus(),
     pageCache,
     flights,
+    eventRefs,
     eventBus,
     secondaryStore,
     events: new EventBuffer(db, log, { flushMs: config.EVENT_BUFFER_MS, maxQueue: config.EVENT_BUFFER_MAX, queue: config.INGEST_QUEUE ? { bus: eventBus, maxLag: config.INGEST_MAX_LAG } : undefined, mirror: !!secondaryStore }),

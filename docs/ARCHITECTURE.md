@@ -182,7 +182,7 @@ One container with a volume (SQLite) or any number of containers on a PostgreSQL
 
 ## Scaling and limits
 
-With SQLite (WAL, single writer) run one replica. With `DATABASE_URL` the data layer is ready for several replicas: transactions, row locks, migrations and job claiming (`FOR UPDATE SKIP LOCKED`) are multi-connection safe. What is still per-process: the rate limiter, the page cache (invalidation is not fanned out), the SSE bus and the event buffer's "seen" sets (first-view uniqueness is decided against the database and the local queue, so two replicas can both count a visitor's first view). Moving those to Redis is separate work. Analytics read rollups; funnel-level distinct visitors scan raw events (see PERFORMANCE.md).
+With SQLite (WAL, single writer) run one replica. With `DATABASE_URL` the data layer is ready for several replicas: transactions, row locks, migrations and job claiming (`FOR UPDATE SKIP LOCKED`) are multi-connection safe. What is still per-process: the rate limiter, the page cache (invalidation is not fanned out), the SSE bus and the event buffer's "seen" sets (first-view uniqueness is decided against the database and the local queue, so two replicas can both count a visitor's first view). The ingest queue, outbox and event bus move event ingestion off the request path (ADR 0015); capacity model and measurements in [SCALING.md](SCALING.md). Analytics read rollups; funnel-level distinct visitors scan raw events (see PERFORMANCE.md).
 
 ## Edge and performance layer
 

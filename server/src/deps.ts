@@ -10,6 +10,7 @@ import type { RateLimiter } from './ratelimit/limiter.js';
 import type { EventBus } from './util/bus.js';
 import type { PageCache } from './util/pagecache.js';
 import type { Flights } from './util/flights.js';
+import type { RefCache } from './util/refcache.js';
 import type { EventBuffer } from './services/eventbuffer.js';
 import type { EventBus as DurableEventBus } from './queue/eventbus.js';
 import type { EventStore } from './store/eventstore.js';
@@ -32,6 +33,8 @@ export interface Deps {
   bus: EventBus;
   pageCache: PageCache;
   flights: Flights;
+  /** Positive cache for the public events endpoint (see util/refcache.ts). */
+  eventRefs: RefCache;
   events: EventBuffer;
   /** Durable bus (Redis Streams, or in-process memory): ingest queue, outbox relay, secondary store feed. `bus` above is the in-process SSE bus. */
   eventBus: DurableEventBus;

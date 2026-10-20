@@ -40,9 +40,16 @@ export async function recordPublicEvent(deps: Deps, input: z.infer<typeof Public
   if (isBot(userAgent)) return { ok: true, recorded: false, reason: 'bot' };
   if (input.preview) return { ok: true, recorded: false, reason: 'preview' };
   // The workspace is always derived from the funnel; unknown, trashed or mismatched ids are silently ignored.
-  const funnel = await deps.db.get<{ id: string; workspace_id: string }>('SELECT id, workspace_id FROM funnels WHERE id = ? AND deleted_at IS NULL', input.funnelId);
-  const step = funnel ? await deps.db.get<{ id: string }>('SELECT id FROM steps WHERE id = ? AND funnel_id = ?', input.stepId, input.funnelId) : undefined;
-  if (!funnel || !step) return { ok: true, recorded: false, reason: 'unknown_funnel' };
+  let workspaceId = deps.eventRefs.get(input.funnelId, input.stepId);
+  if (!workspaceId) {
+    const funnel = await deps.db.get<{ id: string; workspace_id: string }>('SELECT id, workspace_id FROM funnels WHERE id = ? AND deleted_at IS NULL', input.funnelId);
+    const step = funnel ? await deps.db.get<{ id: string }>('SELECT id FROM steps WHERE id = ? AND funnel_id = ?', input.stepId, input.funnelId) : undefined;
+    if (!funnel || !step) return { ok: true, recorded: false, reason: 'unknown_funnel' };
+    workspaceId = funnel.workspace_id;
+    deps.eventRefs.set(input.funnelId, input.stepId, workspaceId);
+  }
+  const funnel = { id: input.funnelId, workspace_id: workspaceId };
+  const step = { id: input.stepId };
 
   const nowMs = deps.now().getTime();
   const at = new Date(opts.at !== undefined && opts.at <= nowMs && opts.at > nowMs - 48 * 3_600_000 ? opts.at : nowMs).toISOString();

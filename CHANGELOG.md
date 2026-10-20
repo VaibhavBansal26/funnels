@@ -5,6 +5,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 ## [Unreleased]
 
 ### Added
+- `docs/SCALING.md`, `docs/CLOUD-LOADTEST.md`, capacity playbooks in the runbook; `loadtest/scale.mjs` (N nodes + Redis + PostgreSQL with loss/duplicate verification and node kill), `loadtest/k6/*` and `deploy/k6/testrun.yaml`, `deploy/k8s-scale/` overlay, `bench/volume.mjs`.
 - Durable `EventBus` (Redis Streams with partition leases, consumer groups, retry with jitter, dead letters, batch handlers, lag; in-memory implementation; Kafka and NATS stubs) with one contract suite, including a SIGKILL test.
 - Ingest queue (`INGEST_QUEUE=true`): the events endpoint publishes and a consumer group writes batches idempotently; `503 INGEST_BACKPRESSURE` above `INGEST_MAX_LAG`.
 - Transactional outbox (`outbox_events`, migration 008) with a relay that is safe on every replica, `once()` consumer markers, optional `lead.created`/`order.created` domain events (`OUTBOX_DOMAIN_EVENTS`).
@@ -22,6 +23,8 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - Benchmarks: `bench/ingest.mjs`, `ingest-db.mjs`, `ingest-engines.mjs`, `ratelimit.mjs`.
 
 ### Changed
+- Fixed: two replicas booting together on an empty PostgreSQL database could crash with a duplicate key on `schema_migrations` (the table was created before the migration lock was taken).
+- The public events endpoint caches "this funnel and step exist" for `EVENT_REF_CACHE_SECONDS` (default 5) instead of two database reads per beacon.
 - Fixed: the same event id twice in one batch was counted twice in the rollups (the row was inserted once); it is now counted once.
 - PostgreSQL: `events` is partitioned by month; opt-in/order idempotency keys moved to `event_dedupe` (30-day window) and first views to `visitor_steps`; a maintenance job creates partitions ahead and prunes keys (migration 006). First-view uniqueness is now exact across replicas.
 - The data layer is asynchronous (`Db` interface, `inTx` transactions with post-commit side effects); ids are time-sortable; keyset cursors use `(created_at, id)` instead of `rowid`.

@@ -1,0 +1,21 @@
+# Scale-out overlay on the base in ../: stateless app replicas on PostgreSQL + Redis (managed services, not in this repo), ingest queue on, no SQLite volume.
+#   kubectl kustomize deploy/k8s-scale | kubectl apply -f -
+# Sizing and the measured constants behind the numbers: docs/SCALING.md. Validation run: docs/CLOUD-LOADTEST.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: funnels
+resources:
+  - ../k8s
+  - hpa.yaml
+patches:
+  - path: deployment-patch.yaml
+  - target: { kind: PersistentVolumeClaim, name: funnels-data }
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata: { name: funnels-data }
+images:
+  - name: funnels
+    newName: registry.example.com/funnels
+    newTag: latest

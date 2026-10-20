@@ -1,0 +1,41 @@
+{
+  "when": "2026-10-20T12:08:02.504Z",
+  "nodes": 2,
+  "queue": true,
+  "tenants": 8,
+  "conc": 64,
+  "seconds": 20,
+  "kill": {
+    "killedNode": 2,
+    "atSecond": 8.088
+  },
+  "accepted_2xx": 14415,
+  "non2xx": 0,
+  "connection_errors": 24329,
+  "accepted_per_s": 698,
+  "p50_ms": 44,
+  "p99_ms": 367,
+  "rows_in_db": 14447,
+  "distinct_visitors": 14447,
+  "rollup_page_views": 14447,
+  "lost": 0,
+  "rows_beyond_acked": 32,
+  "duplicated": 0,
+  "rollup_mismatch": 0,
+  "drain_s_after_load": 0.1,
+  "db_write_per_s_overall": 697,
+  "server_cpu_ms_per_1k_accepted": [
+    1421,
+    null
+  ],
+  "rss_mb": [
+    196
+  ],
+  "ingest_queue_lag_end": 44,
+  "load_average_at_start": [
+    41.1,
+    32.1,
+    26.2
+  ],
+  "machine": "Apple M1, 8 cores (load generator, servers, Redis and PostgreSQL share them)"
+}

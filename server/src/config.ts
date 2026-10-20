@@ -75,6 +75,7 @@ export const EnvSchema = z.object({
   MAINTENANCE_INTERVAL_HOURS: int(6, 1, 168),
   EVENT_BUFFER_MS: int(250, 0),
   EVENT_BUFFER_MAX: int(5000, 1),
+  EVENT_REF_CACHE_SECONDS: int(5, 0, 600),
   EVENT_BUS: z.enum(['auto', 'memory', 'redis']).default('auto'),
   EVENT_BUS_PARTITIONS: int(16, 1, 256),
   INGEST_QUEUE: bool(false),

@@ -1,0 +1,17 @@
+# OPTIONAL and NOT in kustomization.yaml: needs KEDA and a Prometheus that scrapes /metrics. A Deployment must have one autoscaler: if you use this,
+# delete hpa.yaml from the kustomization and add a cpu trigger below (KEDA then owns the HPA).
+# Scale on the ingest backlog: one more replica per 200,000 queued events (each replica's consumer drains about the rate measured in docs/SCALING.md).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: funnels-ingest-lag }
+spec:
+  scaleTargetRef: { name: funnels }
+  minReplicaCount: 4
+  maxReplicaCount: 24
+  cooldownPeriod: 300
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring:9090
+        query: max(funnels_ingest_queue_lag)
+        threshold: "200000"

@@ -1,0 +1,20 @@
+# k6-operator TestRun: runs loadtest/k6/events.js from several pods against the edge (or the origin for a no-edge baseline).
+#   kubectl create configmap k6-events --from-file=events.js=loadtest/k6/events.js -n k6
+#   kubectl apply -f deploy/k6/testrun.yaml
+# Each pod generates TARGET_RPS / parallelism. Fill the result tables in docs/CLOUD-LOADTEST.md from the end-of-test summary and Prometheus.
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata: { name: funnels-events, namespace: k6 }
+spec:
+  parallelism: 8
+  script: { configMap: { name: k6-events, file: events.js } }
+  arguments: --out experimental-prometheus-rw
+  runner:
+    env:
+      - { name: BASE_URL, value: "https://app.example.com" }
+      - { name: TARGET_RPS, value: "20000" }      # total across pods, see docs/CLOUD-LOADTEST.md step 4
+      - { name: PEAK_RPS, value: "100000" }
+      - { name: FUNNELS, value: "fn_xxx:stp_xxx,fn_yyy:stp_yyy" }   # funnelId:stepId pairs created by the seed step
+      - { name: DURATION, value: "10m" }
+      - { name: K6_PROMETHEUS_RW_SERVER_URL, value: "http://prometheus.monitoring:9090/api/v1/write" }
+    resources: { requests: { cpu: "2", memory: 1Gi } }

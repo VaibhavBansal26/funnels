@@ -66,4 +66,26 @@ Migrations are forward-only. To roll back the application, deploy the previous i
 
 ## Capacity
 
-The measured per-node numbers and their limits are in [PERFORMANCE.md](PERFORMANCE.md); there is no multi-node or cloud measurement yet.
+Numbers, formulas and sizing tables: [SCALING.md](SCALING.md) (each figure labelled measured or extrapolated). Per-node microbenchmarks: [PERFORMANCE.md](PERFORMANCE.md). Cloud validation procedure: [CLOUD-LOADTEST.md](CLOUD-LOADTEST.md).
+
+Extra signals when the scale features are on: `funnels_ingest_queue_lag` (alert: above 100,000 for 5 min, or rising for 10), `funnels_ingest_shed_total` (any increase means users' beacons got 503), `funnels_outbox_unpublished` and `funnels_outbox_oldest_age_seconds` (alert: oldest above 60 s), Redis memory and `XLEN`/lag of `ingest.events`, PostgreSQL replication lag, partitions ahead (`SELECT max(relname) FROM pg_class WHERE relname LIKE 'events_2%'`, alert when fewer than 2 months ahead).
+
+### Capacity incident playbooks
+
+**Ingest backlog growing (`funnels_ingest_queue_lag`).** Consumers cannot keep up with arrivals. Check in order: (1) are consumers running (`ENABLE_WORKER=true` on enough pods; `kubectl top`); (2) PostgreSQL write latency and WAL (the consumer is one transaction per batch of up to 500 events per partition); (3) lock waits on `visitor_sketches` or `event_rollups` hot rows (`pg_stat_activity` waiting on `transactionid`): one very hot funnel-day serialises batches of that funnel by design (rows are locked in key order, no deadlock, but throughput for that funnel is bounded by one transaction at a time); (4) dead letters (`redis-cli XLEN funnels:bus:dlq:ingest.events:ingest`), a poison event is dead-lettered alone and the rest continue. Fix by scaling the app (more consumers split the 16 partitions; beyond 16 consumers raise `EVENT_BUS_PARTITIONS` after draining), then the database. The queue absorbs; nothing is lost while Redis has memory: watch `used_memory` against `maxmemory` (about 500 bytes per queued event), because the stream cap (`MAXLEN ~ 1,000,000` per partition) would drop the oldest entries.
+
+**Beacons answered 503 `INGEST_BACKPRESSURE`.** Lag is above `INGEST_MAX_LAG`. This is the designed overload response (the Worker queue retries, browsers' beacons are best-effort); fix the backlog as above. Raising `INGEST_MAX_LAG` only moves the problem into Redis memory.
+
+**Redis down or failing over while the ingest queue is on.** Event requests answer 5xx (publish fails) until Redis returns; the Worker queue (when enabled) retries those batches, so with the edge queue nothing is lost; without it, browsers lose the beacons sent in the gap. After a failover with asynchronous replication, up to about a second of acknowledged events can be missing: compare `rows_in_db` against the edge's accepted count if you need the number. Consumers resume by themselves; unacknowledged entries are redelivered and deduplicated by event id.
+
+**Outbox not draining (`funnels_outbox_oldest_age_seconds` rising).** The relay cannot publish (Redis down) or no pod runs `ENABLE_WORKER`. Rows stay in `outbox_events` and are published in order when it recovers; nothing to repair. A very large backlog is drained 10,000 rows per relay pass (every `OUTBOX_POLL_MS`).
+
+**Hot room / hot funnel.** One funnel at a very high rate maps to one ingest partition (ordering key = funnel id) and one `visitor_sketches` row per day: its throughput is bounded by one consumer and one serialised transaction, while other funnels are unaffected. Symptoms: lag concentrated in one partition (`XINFO GROUPS` lag per `ingest.events:{p}` stream). Mitigation: set the workspace's plan tier lower (`PUT /api/admin/workspaces/{id}/rate-tier`), block abusive IPs (`/api/admin/rate-limits/blocks`); the per-IP and per-funnel limits shed at the edge before the queue.
+
+**Replica lag.** Analytics and history reads fall back to the primary when a replica is more than `REPLICA_MAX_LAG_MS` behind (`db.read()`), so users see correct but slower data and the primary gets more reads. Fix the replica (IO, long queries, vacuum); a lagging replica is out of rotation automatically.
+
+**Partition exhaustion.** Inserts into a month without a partition land in `events_default` and a later `CREATE` for that month fails. Check the maintenance job ran (`jobs` table, type `maintenance.run`); run `SELECT` from the list above; create the month by hand with `CREATE TABLE events_YYYY_MM PARTITION OF events FOR VALUES FROM ('YYYY-MM-01T00:00:00.000Z') TO ('YYYY-MM+1-01T00:00:00.000Z')`. If rows are already in `events_default` for that month, move them first (`WITH moved AS (DELETE FROM events_default WHERE created_at >= ... RETURNING *) INSERT INTO events SELECT * FROM moved` after creating the partition detached, then attach).
+
+**ClickHouse mirror behind.** The `clickhouse` consumer group retries with backoff and dead-letters after 8 attempts per batch; the primary is unaffected. Fix ClickHouse, then replay the dead letters or run `scripts/backfill-clickhouse.ts --from <day>` (idempotent).
+
+**Reconnect storms.** Not applicable to Funnels (no long-lived connections other than the SSE stream, which clients retry with backoff).

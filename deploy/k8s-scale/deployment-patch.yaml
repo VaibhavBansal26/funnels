@@ -1,0 +1,31 @@
+# Turns the single-replica SQLite deployment into a stateless, zone-spread one. Secrets expected in `funnels-secrets` (in addition to the base ones):
+# DATABASE_URL (PgBouncer, transaction pooling), DATABASE_REPLICA_URLS, REDIS_URL, and optionally CLICKHOUSE_URL / CLICKHOUSE_PASSWORD.
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: funnels }
+spec:
+  replicas: 4
+  strategy: { type: RollingUpdate, rollingUpdate: { maxSurge: 25%, maxUnavailable: 0 } }
+  template:
+    spec:
+      terminationGracePeriodSeconds: 45      # preStop 5 s + SIGTERM flush; the consumer finishes its in-flight batch (unacked entries are redelivered anyway)
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: funnels } } }
+        - { maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: funnels } } }
+      containers:
+        - name: app
+          env:
+            - { name: NODE_ENV, value: production }
+            - { name: TRUST_PROXY, value: "true" }
+            - { name: APP_PUBLIC_URL, value: "https://app.example.com" }
+            - { name: APP_PUBLIC_CNAME_TARGET, value: "sites.example.com" }
+            - { name: DATABASE_POOL_MAX, value: "10" }             # replicas x pool must stay below PgBouncer's server pool (docs/SCALING.md, pool sizing)
+            - { name: DATABASE_PREPARED_STATEMENTS, value: "false" } # PgBouncer transaction mode
+            - { name: EVENT_BUS, value: redis }
+            - { name: EVENT_BUS_PARTITIONS, value: "16" }
+            - { name: INGEST_QUEUE, value: "true" }
+            - { name: INGEST_MAX_LAG, value: "2000000" }
+            - { name: EVENT_REF_CACHE_SECONDS, value: "5" }
+          resources: { requests: { cpu: "1", memory: 512Mi }, limits: { memory: 1Gi } }
+          volumeMounts: []
+      volumes: []
