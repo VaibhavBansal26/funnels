@@ -22,7 +22,7 @@ async function fresh(kind) {
     const u = new URL(process.env.BENCH_PG_URL); u.pathname = `/${name}`;
     d = await openDb({ url: u.toString(), poolMax: 4 });
   }
-  await d.exec(`INSERT INTO workspaces VALUES ('w','w',0,'now'); INSERT INTO funnels (id, workspace_id, name, base_path, created_at, updated_at) VALUES ('f','w','f','/f','now','now');`);
+  await d.exec(`INSERT INTO workspaces (id, name, created_at) VALUES ('w','w','now'); INSERT INTO funnels (id, workspace_id, name, base_path, created_at, updated_at) VALUES ('f','w','f','/f','now','now');`);
   for (let i = 0; i < 4; i++) await d.run(`INSERT INTO steps (id, workspace_id, funnel_id, name, base_path, path_key, position, version, created_at, updated_at) VALUES (?, 'w','f','s',?,?,?,1,'now','now')`, `s${i}`, `/s${i}`, `/s${i}`, i);
   return d;
 }
@@ -30,7 +30,7 @@ const kinds = ['sqlite', 'pglite', ...(process.env.BENCH_PG_URL ? ['postgres'] :
 const res = Object.fromEntries(kinds.map((k) => [k, []]));
 for (let r = 0; r < REPEATS; r++) for (const k of kinds) {
   const d = await fresh(k); let n = 0; const t = performance.now();
-  for (let b = 0; b < BATCHES; b++) await d.transaction((tx) => insertEvents(tx, Array.from({ length: PER }, () => row(n++, b))));
+  for (let b = 0; b < BATCHES; b++) await d.transaction((tx) => insertEvents(tx, Array.from({ length: PER }, () => row(n++, b)), { decideUnique: true }));
   res[k].push(performance.now() - t);
   const c = await d.get('SELECT COUNT(*) n FROM events'); const s = await d.get('SELECT SUM(page_views) n FROM event_rollups');
   if (c.n !== PER * BATCHES || s.n !== PER * BATCHES) throw new Error(`${k}: events ${c.n}, rollup ${s.n}`);

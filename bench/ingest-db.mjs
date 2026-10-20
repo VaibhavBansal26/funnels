@@ -20,7 +20,7 @@ const { migrate } = await import(pathToFileURL(join(root, 'server/dist/db/migrat
 const { insertEvents } = await import(pathToFileURL(join(root, 'server/dist/services/rollups.js')));
 const mig = (f) => readFileSync(join(root, 'server/src/db/migrations/sqlite', f), 'utf8');
 
-const seed = (exec) => exec(`INSERT INTO workspaces VALUES ('w','w',0,'now'); INSERT INTO funnels (id, workspace_id, name, base_path, created_at, updated_at) VALUES ('f','w','f','/f','now','now');
+const seed = (exec) => exec(`INSERT INTO workspaces (id, name, created_at) VALUES ('w','w','now'); INSERT INTO funnels (id, workspace_id, name, base_path, created_at, updated_at) VALUES ('f','w','f','/f','now','now');
   ${[0, 1, 2, 3].map((i) => `INSERT INTO steps (id, workspace_id, funnel_id, name, base_path, path_key, position, version, created_at, updated_at) VALUES ('s${i}','w','f','s','/s${i}','/s${i}',${i},1,'now','now');`).join('')}`);
 const t0 = Date.parse('2026-03-10T12:00:00Z');
 const row = (n, b) => ({ id: `e${n}`, workspace_id: 'w', funnel_id: 'f', step_id: `s${n % 4}`, type: 'page_view', visitor_id: `v${n}`, unique_visit: 1, lead_id: null, order_id: null, external_id: null, amount_cents: 0, currency: null, utm_json: '{}', url: null, created_at: new Date(t0 + b * 250).toISOString() });
@@ -52,7 +52,7 @@ async function current() {
   return {
     async run() {
       let n = 0;
-      for (let b = 0; b < BATCHES; b++) await db.transaction((tx) => insertEvents(tx, Array.from({ length: PER }, () => row(n++, b))));
+      for (let b = 0; b < BATCHES; b++) await db.transaction((tx) => insertEvents(tx, Array.from({ length: PER }, () => row(n++, b)), { decideUnique: true }));
     },
     check: async () => ({ events: (await db.get('SELECT COUNT(*) n FROM events')).n, rollupViews: (await db.get('SELECT COALESCE(SUM(page_views),0) n FROM event_rollups')).n }),
   };

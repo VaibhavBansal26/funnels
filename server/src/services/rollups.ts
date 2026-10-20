@@ -57,15 +57,63 @@ export function aggregate(rows: EventInsert[]): Delta[] {
   return [...map.values()].sort((a, b) => (a.funnel_id + a.bucket + a.step_id < b.funnel_id + b.bucket + b.step_id ? -1 : 1));
 }
 
+const keyOf = (r: Pick<EventInsert, 'funnel_id' | 'step_id' | 'visitor_id'>) => `${r.funnel_id}\u0000${r.step_id}\u0000${r.visitor_id}`;
+
 /**
- * The single write path for `events`: inserts the rows (duplicates by the dedupe index are skipped) and, in the
- * same transaction, adds the inserted rows to `event_rollups` with one upsert per bucket. Must run on a transaction
- * handle so the two writes commit together. Returns the ids that were actually inserted.
+ * The single write path for `events`. In one transaction, for a batch:
+ *  1. external ids (opt-in `externalId`, `order:<id>`) are claimed in `event_dedupe` (`ON CONFLICT DO NOTHING RETURNING`); a row whose id was
+ *     already claimed, in this batch or earlier, is dropped. This is the idempotency boundary, and it works across partitions and processes;
+ *  2. with `decideUnique`, the first page view of a (funnel, step, visitor) is claimed in `visitor_steps` the same way, and only that row gets
+ *     `unique_visit = 1` (so two replicas cannot both count a first view, which the old in-memory check could not promise);
+ *  3. the rows are inserted and the inserted ones are added to `event_rollups`, one upsert per bucket.
+ * Keys are claimed in sorted order so concurrent batches cannot deadlock on each other's uncommitted keys. Must run on a transaction handle.
+ * Returns the ids that were inserted.
  */
-export async function insertEvents(tx: Db, rows: EventInsert[]): Promise<Set<string>> {
+export async function insertEvents(tx: Db, rows: EventInsert[], opts: { decideUnique?: boolean } = {}): Promise<Set<string>> {
+  let work = rows;
+
+  const withExternal = work.filter((r) => r.external_id);
+  if (withExternal.length) {
+    const claimed = new Set<string>();
+    const sorted = [...new Map(withExternal.map((r) => [`${r.funnel_id}\u0000${r.type}\u0000${r.external_id}`, r])).values()].sort((a, b) => (`${a.funnel_id}${a.type}${a.external_id}` < `${b.funnel_id}${b.type}${b.external_id}` ? -1 : 1));
+    for (let i = 0; i < sorted.length; i += CHUNK) {
+      const chunk = sorted.slice(i, i + CHUNK);
+      const got = await tx.all<{ funnel_id: string; type: string; external_id: string }>(
+        `INSERT INTO event_dedupe (funnel_id, type, external_id, created_at) VALUES ${chunk.map(() => '(?, ?, ?, ?)').join(', ')}${tx.dialect.onConflictDoNothing()}${tx.dialect.returning('funnel_id, type, external_id')}`,
+        ...chunk.flatMap((r) => [r.funnel_id, r.type, r.external_id!, r.created_at]),
+      );
+      for (const g of got) claimed.add(`${g.funnel_id}\u0000${g.type}\u0000${g.external_id}`);
+    }
+    work = work.filter((r) => {
+      if (!r.external_id) return true;
+      const k = `${r.funnel_id}\u0000${r.type}\u0000${r.external_id}`;
+      return claimed.delete(k); // the first row of a claimed key wins; a later row with the same key is a duplicate
+    });
+  }
+
+  if (opts.decideUnique) {
+    const first = new Map<string, EventInsert>();
+    for (const r of work) if (r.type === 'page_view' && r.visitor_id && !first.has(keyOf(r))) first.set(keyOf(r), r);
+    const fresh = new Set<string>();
+    const sorted = [...first.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
+    for (let i = 0; i < sorted.length; i += CHUNK) {
+      const chunk = sorted.slice(i, i + CHUNK);
+      const got = await tx.all<{ funnel_id: string; step_id: string; visitor_id: string }>(
+        `INSERT INTO visitor_steps (funnel_id, step_id, visitor_id, first_seen) VALUES ${chunk.map(() => '(?, ?, ?, ?)').join(', ')}${tx.dialect.onConflictDoNothing()}${tx.dialect.returning('funnel_id, step_id, visitor_id')}`,
+        ...chunk.flatMap(([, r]) => [r.funnel_id, r.step_id, r.visitor_id!, r.created_at]),
+      );
+      for (const g of got) fresh.add(keyOf(g));
+    }
+    work = work.map((r) => {
+      if (r.type !== 'page_view' || !r.visitor_id) return r;
+      const isFirst = first.get(keyOf(r)) === r && fresh.has(keyOf(r));
+      return { ...r, unique_visit: isFirst ? 1 : 0 };
+    });
+  }
+
   const inserted = new Set<string>();
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK);
+  for (let i = 0; i < work.length; i += CHUNK) {
+    const chunk = work.slice(i, i + CHUNK);
     const one = `(${COLUMNS.map(() => '?').join(', ')})`;
     const got = await tx.all<{ id: string }>(
       `INSERT INTO events (${COLUMNS.join(', ')}) VALUES ${chunk.map(() => one).join(', ')}${tx.dialect.onConflictDoNothing()}${tx.dialect.returning('id')}`,
@@ -73,7 +121,7 @@ export async function insertEvents(tx: Db, rows: EventInsert[]): Promise<Set<str
     );
     for (const g of got) inserted.add(g.id);
   }
-  const deltas = aggregate(rows.filter((r) => inserted.has(r.id)));
+  const deltas = aggregate(work.filter((r) => inserted.has(r.id)));
   for (let i = 0; i < deltas.length; i += CHUNK) {
     const chunk = deltas.slice(i, i + CHUNK);
     const set = ['page_views', 'unique_views', 'optins', 'orders', 'cents'].map((c) => `${c} = event_rollups.${c} + excluded.${c}`).join(', ');

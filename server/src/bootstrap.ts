@@ -12,6 +12,7 @@ import { CloudflareDomainProvider, ManualDomainProvider, type DomainProvider } f
 import { CloudflareApiPurger, NoopPurger, purgeJob, type CloudflarePurger } from './edge/purger.js';
 import { EventBuffer } from './services/eventbuffer.js';
 import { MockProvider } from './payments/provider.js';
+import { ensureEventPartitions, maintenanceJob, scheduleMaintenance } from './services/maintenance.js';
 import { deliverWebhook } from './services/webhooks.js';
 import { verificationJob } from './services/domains.js';
 import { seedTemplates } from './templates/seed.js';
@@ -41,7 +42,8 @@ export async function createDeps(config: Config, overrides: Partial<Deps> = {}):
   const log = overrides.log ?? createLogger(config.LOG_LEVEL);
   const db = overrides.db ?? (await openDb({ url: config.DATABASE_URL, sqlitePath: config.DATABASE_PATH, poolMax: config.DATABASE_POOL_MAX, log: (m, meta) => log.warn(m, meta) }));
   await seedTemplates(db);
-  return {
+  await ensureEventPartitions(db, now(), config.PARTITION_MONTHS_AHEAD); // PostgreSQL: partitions exist before the first insert
+  const deps: Deps = {
     config,
     db,
     log,
@@ -60,6 +62,9 @@ export async function createDeps(config: Config, overrides: Partial<Deps> = {}):
     domainProvider: createDomainProvider(config),
     ...overrides,
   };
+  // First run is one interval away: boot never waits for it, and exactly one pending job exists however many replicas start.
+  if (config.ENABLE_WORKER) await scheduleMaintenance(deps, config.MAINTENANCE_INTERVAL_HOURS * 3_600_000);
+  return deps;
 }
 
 export function createWorker(deps: Deps): JobWorker {
@@ -67,6 +72,7 @@ export function createWorker(deps: Deps): JobWorker {
     'webhook.deliver': (payload, job) => deliverWebhook(deps, payload, job),
     'domain.verify': (payload) => verificationJob(deps, payload),
     'edge.purge': (payload) => purgeJob(deps, payload),
+    'maintenance.run': () => maintenanceJob(deps),
   };
   return new JobWorker(deps.jobs, handlers, deps.log);
 }

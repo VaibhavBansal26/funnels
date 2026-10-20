@@ -39,7 +39,8 @@ export async function introspect(db: Db): Promise<Record<string, TableInfo>> {
       out[name] = { columns: cols.map((c) => ({ name: c.name, type: family(c.type), notNull: c.notnull === 1 || c.pk > 0 })), indexes };
     }
   } else {
-    const tables = await db.all<{ table_name: string }>(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name`);
+    const tables = await db.all<{ table_name: string }>(`SELECT table_name FROM information_schema.tables t WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+       AND NOT EXISTS (SELECT 1 FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid WHERE c.relname = t.table_name) ORDER BY table_name`);
     for (const { table_name: name } of tables) {
       const cols = await db.all<{ column_name: string; data_type: string; is_nullable: string }>(
         `SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ? ORDER BY ordinal_position`, name,

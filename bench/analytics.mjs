@@ -13,7 +13,7 @@ const db = new DatabaseSync(join(mkdtempSync(join(tmpdir(), 'funnels-bench-')), 
 db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = OFF; PRAGMA foreign_keys = ON');
 const mdir = fileURLToPath(new URL('../server/src/db/migrations/sqlite/', import.meta.url));
 for (const f of readdirSync(mdir).sort()) db.exec(readFileSync(join(mdir, f), 'utf8'));
-db.exec(`INSERT INTO workspaces VALUES ('w','w',0,'now'); INSERT INTO funnels (id, workspace_id, name, base_path, created_at, updated_at) VALUES ('f','w','f','/f','now','now')`);
+db.exec(`INSERT INTO workspaces (id, name, created_at) VALUES ('w','w','now'); INSERT INTO funnels (id, workspace_id, name, base_path, created_at, updated_at) VALUES ('f','w','f','/f','now','now')`);
 for (let i = 0; i < 4; i++) db.exec(`INSERT INTO steps (id, workspace_id, funnel_id, name, base_path, path_key, position, version, created_at, updated_at) VALUES ('s${i}','w','f','s','/s${i}','/s${i}',${i},1,'now','now')`);
 const ins = db.prepare(`INSERT INTO events (id, workspace_id, funnel_id, step_id, type, visitor_id, unique_visit, amount_cents, created_at) VALUES (?, 'w', 'f', ?, ?, ?, ?, ?, ?)`);
 let t = performance.now();

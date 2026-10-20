@@ -48,16 +48,13 @@ export async function recordPublicEvent(deps: Deps, input: z.infer<typeof Public
   });
   if (input.type === 'page_view') {
     if (!input.visitorId) return { ok: true, recorded: false, reason: 'no_visitor' };
-    // "Unique" is decided by the server from history (stored and still-queued rows), not by the client's claim.
-    // The queue is consulted after the database read and nothing awaits before `add`, so two concurrent first views cannot both be unique.
-    const stored = await deps.db.get('SELECT 1 FROM events WHERE funnel_id = ? AND step_id = ? AND type = ? AND visitor_id = ? LIMIT 1', funnel.id, step.id, 'page_view', input.visitorId);
-    const seen = stored !== undefined || deps.events.hasQueuedView(funnel.id, step.id, input.visitorId);
-    await deps.events.add(row('page_view', seen ? 0 : 1, null));
+    // "Unique" is decided by the server when the batch is written (visitor_steps), never by the client's claim.
+    await deps.events.add(row('page_view', 0, null));
     return { ok: true, recorded: true };
   }
   const external = input.externalId ? `ext:${input.externalId}` : null;
   if (external) {
-    const stored = await deps.db.get('SELECT 1 FROM events WHERE funnel_id = ? AND type = ? AND external_id = ?', funnel.id, 'optin', external);
+    const stored = await deps.db.get('SELECT 1 FROM event_dedupe WHERE funnel_id = ? AND type = ? AND external_id = ?', funnel.id, 'optin', external);
     if (stored !== undefined || deps.events.hasQueuedExternal(funnel.id, external)) return { ok: true, recorded: false, reason: 'duplicate' };
   }
   await deps.events.add(row('optin', 0, external));

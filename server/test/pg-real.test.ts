@@ -2,6 +2,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/index.js';
 import { migrate } from '../src/db/index.js';
 import { JobQueue } from '../src/jobs/queue.js';
+import { silentLogger } from '../src/logger.js';
+import { EventBuffer } from '../src/services/eventbuffer.js';
 import { activeDomain, formTarget, makeFunnel, makeHarness, type Harness } from './helpers.js';
 import { createPg, wipe } from './support/backend.js';
 
@@ -121,6 +123,19 @@ describe.skipIf(!enabled)('concurrency on a real PostgreSQL pool', () => {
     expect(a.summary.pageViews.unique).toBe(100);
     expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM events')).toEqual({ n: 800 });
     expect(await h.deps.db.get('SELECT SUM(page_views) AS n, SUM(unique_views) AS u FROM event_rollups')).toEqual({ n: 800, u: expect.any(Number) });
+  });
+
+  it('first views stay exact when several buffers (replicas) flush the same visitors at the same moment', async () => {
+    const h = await harness();
+    const u = await h.register();
+    const f = await makeFunnel(h, u.token);
+    const buffers = Array.from({ length: 6 }, () => new EventBuffer(db, silentLogger, { flushMs: 60_000, maxQueue: 100_000 }));
+    const row = (v: string, i: number) => ({ id: `e${i}_${v}_${Math.random()}`, workspace_id: u.wsId, funnel_id: f.id, step_id: f.steps[0].id, type: 'page_view' as const, visitor_id: v, unique_visit: 0, lead_id: null, order_id: null, external_id: null, amount_cents: 0, currency: null, utm_json: null, url: null, created_at: '2026-03-10T12:00:00.000Z' });
+    for (const [i, b] of buffers.entries()) for (let v = 0; v < 150; v++) await b.add(row(`v${(v * 7 + i * 13) % 200}`, i)); // overlapping visitor sets, shuffled differently per buffer
+    await Promise.all(buffers.map((b) => b.flush()));
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n, SUM(unique_visit) AS u FROM events')).toEqual({ n: 900, u: 200 });
+    expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM visitor_steps')).toEqual({ n: 200 });
+    expect(await h.deps.db.get('SELECT SUM(page_views) AS p, SUM(unique_views) AS u FROM event_rollups')).toEqual({ p: 900, u: 200 });
   });
 
   it('the AI daily cap is enforced atomically across parallel requests', async () => {

@@ -42,6 +42,9 @@ Generated from the zod schema in `server/src/config.ts` and the descriptions in 
 | `AUTH_ATTEMPTS_PER_MINUTE` | `10` | no | `10` | Policy `auth.attempts`: register and login requests per IP per minute. |
 | `WEBHOOK_MAX_ATTEMPTS` | `6` | no | `6` | Delivery attempts before a webhook delivery is dead-lettered (30 s x 2^n backoff). |
 | `DOMAIN_VERIFY_TIMEOUT_HOURS` | `72` | no | `72` | Hours a pending domain keeps being re-checked before it is marked failed. |
+| `EVENT_DEDUPE_DAYS` | `30` | no | `30` | How long opt-in and order idempotency keys are remembered (`event_dedupe`); a retry with the same key after this window is a new event. |
+| `PARTITION_MONTHS_AHEAD` | `3` | no | `3` | PostgreSQL: monthly partitions of `events` created ahead of time by the maintenance job. |
+| `MAINTENANCE_INTERVAL_HOURS` | `6` | no | `6` | Interval of the maintenance job (partition creation, idempotency key pruning). |
 | `EVENT_BUFFER_MS` | `250` | no | `250` | Write-behind flush interval for analytics events (0 = write-through). A hard kill can lose this window. |
 | `EVENT_BUFFER_MAX` | `5000` | no | `5000` | Rows that force an early flush (backpressure for the caller). |
 | `REQUEST_TIMEOUT_MS` | `30000` | no | `30000` | A handler running longer gets a 504 (the client is released; synchronous work cannot be interrupted). |

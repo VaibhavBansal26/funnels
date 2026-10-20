@@ -34,7 +34,8 @@ describe.skipIf(BACKEND !== 'sqlite')('SQLite and PostgreSQL schemas are equival
     const { sqlite, pg } = await load();
     for (const table of Object.keys(sqlite)) {
       const explicit = (t: TableInfo) => t.indexes.filter((i) => i.explicit).map((i) => `${i.name}(${i.columns.join(',')})${i.unique ? ' unique' : ''}`).sort();
-      const implicit = (t: TableInfo) => t.indexes.filter((i) => !i.explicit).map((i) => `(${i.columns.join(',')})`).sort();
+      // A partitioned PostgreSQL table must include the partition key (created_at) in its primary key; `events` is the only such table.
+      const implicit = (t: TableInfo) => t.indexes.filter((i) => !i.explicit).map((i) => `(${i.columns.filter((c) => !(table === 'events' && c === 'created_at')).join(',')})`).sort();
       expect(explicit(pg[table]!), `${table} explicit indexes`).toEqual(explicit(sqlite[table]!));
       expect(implicit(pg[table]!), `${table} implicit unique indexes`).toEqual(implicit(sqlite[table]!));
     }

@@ -57,3 +57,4 @@ Start with the [README](../README.md) for what this is and how to run it.
 | [0010](adr/0010-rate-limiting.md) | Rate limiting: GCRA and sliding windows in Redis Lua, one declaration of routes and policies | Accepted |
 | [0011](adr/0011-ids.md) | App-generated, time-sortable text ids | Accepted |
 | [0012](adr/0012-docs-from-code.md) | Generate the documentation that can drift | Accepted |
+| [0013](adr/0013-partitioned-events.md) | Partitioned events with a dedupe table and visitor_steps | Accepted |

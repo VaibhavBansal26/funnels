@@ -124,7 +124,7 @@ export async function submitForm(deps: Deps, p: { funnelId: string; stepId: stri
   try {
     return await inTx(deps, async (d): Promise<SubmitResult> => {
       const externalId = p.input.submissionId ? `form:${block.id}:${p.input.submissionId}` : null;
-      if (externalId && (await d.db.get('SELECT 1 FROM events WHERE funnel_id = ? AND type = ? AND external_id = ?', funnel.id, 'optin', externalId))) {
+      if (externalId && (await d.db.get('SELECT 1 FROM event_dedupe WHERE funnel_id = ? AND type = ? AND external_id = ?', funnel.id, 'optin', externalId))) {
         return { ok: true, recorded: false, duplicate: true };
       }
       const lead = await upsertLead(d, ws, { email, name: nameField ? values[nameField.id] : null, phone: phoneField ? values[phoneField.id] : null, data: values, funnelId: funnel.id });
