@@ -11,7 +11,8 @@ import { SaveInput } from '../services/pages.js';
 import { LimitedQuery, ListEntryInput, TierInput, WhoInput } from './ratelimits.js';
 import { ReorderInput, StepInput, StepPatch, ValidatePathInput } from '../services/steps.js';
 import { TagInput } from '../services/tags.js';
-import { CategoryInput, CustomBlockInput, TemplateCreate, TemplateHtmlQuery, TemplatePatch, TemplateQuery } from '../services/templates.js';
+import { CategoryInput, CustomBlockInput, TemplateCreate, TemplateDetailQuery, TemplateHtmlQuery, TemplatePatch, TemplateQuery, UseTemplateInput } from '../services/templates.js';
+import { TemplateImport } from '../services/templateio.js';
 import { WebhookInput, WebhookPatch } from '../services/webhooks.js';
 import { LoginInput, MemberPatch, PasswordChange, RegisterInput, WorkspacePatch } from '../services/accounts.js';
 import { ApiKeyInput, ApiKeyPatch } from '../services/apikeys.js';
@@ -203,11 +204,11 @@ export const OPERATIONS: Operation[] = [
   A('POST', '/api/notifications/read-all', 'any', 'notifications', 'Mark all read', { status: 204 }),
   A('POST', '/api/notifications/:id/read', 'any', 'notifications', 'Mark one read', { status: 204 }),
   // templates and blocks
-  A('GET', '/api/templates', 'funnels:read', 'templates', 'List templates', { query: TemplateQuery }),
+  A('GET', '/api/templates', 'funnels:read', 'templates', 'The template gallery: filters (category, industry, goal, tag, checkout), search, pages and facet counts; ETag', { query: TemplateQuery }),
   A('GET', '/api/templates/categories', 'funnels:read', 'templates', 'Template categories'),
   A('GET', '/api/templates/:id/html', 'funnels:read', 'templates', 'A template step rendered as a standalone page, for previews (`?step=1`); show it in a sandboxed iframe', { query: TemplateHtmlQuery }),
-  A('GET', '/api/templates/:id', 'funnels:read', 'templates', 'One template with step documents'),
-  A('POST', '/api/templates/:id/use', 'funnels:write', 'templates', 'Create a funnel from a template', { status: 201, cost: 3 }),
+  A('GET', '/api/templates/:id', 'funnels:read', 'templates', 'One template: steps, product slots, thumbnail and the first step rendered as an inert preview (`?docs=true` adds the step documents); ETag', { query: TemplateDetailQuery }),
+  A('POST', '/api/templates/:id/use', 'funnels:write', 'templates', 'Create a funnel from a template; `bindings` attach the template product slots to catalog prices (or create them from the template defaults)', { body: UseTemplateInput, status: 201, cost: 3, notes: 'The body is optional.' }),
   A('GET', '/api/blocks', 'funnels:read', 'blocks', 'Saved custom blocks'),
   A('POST', '/api/blocks', 'blocks:manage', 'blocks', 'Save a custom block', { body: CustomBlockInput, status: 201 }),
   A('DELETE', '/api/blocks/:id', 'blocks:manage', 'blocks', 'Delete a custom block', { status: 204 }),
@@ -215,6 +216,8 @@ export const OPERATIONS: Operation[] = [
   A('POST', '/api/assets', 'funnels:write', 'assets', 'Upload an image (multipart field `file`, or the raw image as the body with ?name=). PNG, JPEG, GIF or WebP, decided by content, at most 1.5 MB', { status: 201, cost: 2 }),
   A('DELETE', '/api/assets/:id', 'funnels:write', 'assets', 'Delete an uploaded image', { status: 204 }),
   PLATFORM('POST', '/api/admin/templates', 'admin', 'Publish a funnel as a global template (PLATFORM_ADMIN_EMAILS)', { body: TemplateCreate, status: 201 }),
+  PLATFORM('POST', '/api/admin/templates/import', 'admin', 'Import a template from JSON (the export format): validated like a page save, size limited; `onConflict: "replace"` replaces a template with the same slug', { body: TemplateImport, status: 201 }),
+  PLATFORM('GET', '/api/admin/templates/:id/export', 'admin', 'Export a template as a JSON file (a valid import)'),
   PLATFORM('PATCH', '/api/admin/templates/:id', 'admin', 'Edit a template', { body: TemplatePatch }),
   PLATFORM('DELETE', '/api/admin/templates/:id', 'admin', 'Delete a template', { status: 204 }),
   PLATFORM('POST', '/api/admin/template-categories', 'admin', 'Create a template category', { body: CategoryInput, status: 201 }),

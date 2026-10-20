@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { COLOR_RE, parseVideoUrl, safeUrl } from '../../blocks/safe.js';
-import { FormFieldSchema, SuccessSchema } from '../../blocks/schema.js';
+import { CheckoutCatalogFields, FormFieldSchema, SuccessSchema } from '../../blocks/schema.js';
 
 /**
  * Typed props of the dynamic components (stored on the GrapesJS component as `fnForm`, `fnProduct`, ...).
@@ -48,6 +48,7 @@ export const ProductPropsSchema = z.object({
   orderBump: z.boolean().default(false),
   oneClickUpsell: z.boolean().default(false),
   success: SuccessSchema.default({ type: 'next_step' }),
+  ...CheckoutCatalogFields,
 });
 export type ProductProps = z.infer<typeof ProductPropsSchema>;
 

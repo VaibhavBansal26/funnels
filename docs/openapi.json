@@ -2191,7 +2191,7 @@
                     "maxLength": 300
                   },
                   "permissions": {
-                    "maxItems": 27,
+                    "maxItems": 31,
                     "type": "array",
                     "items": {
                       "type": "string"
@@ -2272,7 +2272,7 @@
                     "maxLength": 300
                   },
                   "permissions": {
-                    "maxItems": 27,
+                    "maxItems": 31,
                     "type": "array",
                     "items": {
                       "type": "string"
@@ -6252,7 +6252,7 @@
         "tags": [
           "templates"
         ],
-        "summary": "List templates",
+        "summary": "The template gallery: filters (category, industry, goal, tag, checkout), search, pages and facet counts; ETag",
         "operationId": "get_api_templates",
         "parameters": [
           {
@@ -6265,12 +6265,81 @@
             }
           },
           {
+            "name": "industry",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "goal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "leads",
+                "webinar",
+                "sales",
+                "booking",
+                "events",
+                "donations",
+                "engagement"
+              ]
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "checkout",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          },
+          {
             "name": "search",
             "in": "query",
             "required": false,
             "schema": {
               "type": "string",
               "maxLength": 100
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
             }
           }
         ],
@@ -6411,7 +6480,7 @@
         "tags": [
           "templates"
         ],
-        "summary": "One template with step documents",
+        "summary": "One template: steps, product slots, thumbnail and the first step rendered as an inert preview (`?docs=true` adds the step documents); ETag",
         "operationId": "get_api_templates_id",
         "parameters": [
           {
@@ -6420,6 +6489,19 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "docs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
             }
           }
         ],
@@ -6462,7 +6544,8 @@
         "tags": [
           "templates"
         ],
-        "summary": "Create a funnel from a template",
+        "summary": "Create a funnel from a template; `bindings` attach the template product slots to catalog prices (or create them from the template defaults)",
+        "description": "The body is optional.",
         "operationId": "post_api_templates_id_use",
         "parameters": [
           {
@@ -6474,6 +6557,58 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "bindings": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "priceId": {
+                              "type": "string",
+                              "maxLength": 64
+                            }
+                          },
+                          "required": [
+                            "priceId"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "create": {
+                              "type": "boolean",
+                              "const": true
+                            }
+                          },
+                          "required": [
+                            "create"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "Success"
@@ -6847,6 +6982,325 @@
             "$ref": "#/components/responses/Error"
           },
           "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "platform",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "admin.platform",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/admin/templates/import": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Import a template from JSON (the export format): validated like a page save, size limited; `onConflict: \"replace\"` replaces a template with the same slug",
+        "operationId": "post_api_admin_templates_import",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "format": {
+                    "type": "string",
+                    "const": "funnels-template"
+                  },
+                  "formatVersion": {
+                    "type": "number",
+                    "const": 1
+                  },
+                  "template": {
+                    "type": "object",
+                    "properties": {
+                      "slug": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+                      },
+                      "version": {
+                        "default": 1,
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100000
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      "description": {
+                        "default": "",
+                        "type": "string",
+                        "maxLength": 400
+                      },
+                      "category": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+                      },
+                      "categoryName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 60
+                      },
+                      "industry": {
+                        "default": "general",
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9-]{0,31}$"
+                      },
+                      "goal": {
+                        "default": "leads",
+                        "type": "string",
+                        "enum": [
+                          "leads",
+                          "webinar",
+                          "sales",
+                          "booking",
+                          "events",
+                          "donations",
+                          "engagement"
+                        ]
+                      },
+                      "tags": {
+                        "default": [],
+                        "maxItems": 12,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32
+                        }
+                      },
+                      "basePath": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "accent": {
+                        "default": "#2563eb",
+                        "type": "string",
+                        "pattern": "^#[0-9a-fA-F]{6}$"
+                      },
+                      "products": {
+                        "default": [],
+                        "maxItems": 8,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "type": "string",
+                              "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+                            },
+                            "role": {
+                              "type": "string",
+                              "enum": [
+                                "main",
+                                "bump",
+                                "upsell",
+                                "downsell"
+                              ]
+                            },
+                            "name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "description": {
+                              "default": "",
+                              "type": "string",
+                              "maxLength": 500
+                            },
+                            "type": {
+                              "default": "one_time",
+                              "type": "string",
+                              "enum": [
+                                "one_time",
+                                "subscription"
+                              ]
+                            },
+                            "amount": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1000000
+                            },
+                            "currency": {
+                              "type": "string",
+                              "pattern": "^[A-Z]{3}$"
+                            },
+                            "interval": {
+                              "type": "string",
+                              "enum": [
+                                "day",
+                                "week",
+                                "month",
+                                "year"
+                              ]
+                            },
+                            "intervalCount": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 12
+                            },
+                            "trialDays": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 730
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "role",
+                            "name",
+                            "amount",
+                            "currency"
+                          ]
+                        }
+                      },
+                      "steps": {
+                        "minItems": 1,
+                        "maxItems": 12,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 120
+                            },
+                            "path": {
+                              "type": "string",
+                              "maxLength": 200
+                            },
+                            "kind": {
+                              "default": "page",
+                              "type": "string",
+                              "enum": [
+                                "page",
+                                "landing",
+                                "optin",
+                                "registration",
+                                "replay",
+                                "sales",
+                                "checkout",
+                                "upsell",
+                                "downsell",
+                                "booking",
+                                "application",
+                                "survey",
+                                "thankyou"
+                              ]
+                            },
+                            "doc": {}
+                          },
+                          "required": [
+                            "name",
+                            "path",
+                            "doc"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "slug",
+                      "name",
+                      "category",
+                      "basePath",
+                      "steps"
+                    ]
+                  },
+                  "onConflict": {
+                    "default": "fail",
+                    "type": "string",
+                    "enum": [
+                      "fail",
+                      "replace"
+                    ]
+                  }
+                },
+                "required": [
+                  "format",
+                  "formatVersion",
+                  "template"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "platform",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "admin.platform",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/admin/templates/{id}/export": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Export a template as a JSON file (a valid import)",
+        "operationId": "get_api_admin_templates_id_export",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
             "$ref": "#/components/responses/Error"
           },
           "429": {

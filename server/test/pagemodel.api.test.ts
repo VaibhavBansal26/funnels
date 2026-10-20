@@ -160,6 +160,7 @@ describe('legacy documents open in the new builder', () => {
   it('seeding upgrades a seeded template that is still stored as legacy blocks, and leaves everything else alone', async () => {
     const h = await makeHarness();
     await h.deps.db.run(`UPDATE template_steps SET doc_json = ? WHERE id = 'tpl_newsletter-signup_1'`, JSON.stringify(legacy));
+    await h.deps.db.run(`UPDATE templates SET version = 1 WHERE slug = 'newsletter-signup'`); // a database from before the template was upgraded
     expect((await seedTemplates(h.deps.db)).upgraded).toBe(1);
     expect((await h.deps.db.get<{ doc_json: string }>(`SELECT doc_json FROM template_steps WHERE id = 'tpl_newsletter-signup_1'`))!.doc_json).toContain('The Friday Brief');
     expect((await seedTemplates(h.deps.db)).upgraded).toBe(0);

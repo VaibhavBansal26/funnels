@@ -129,6 +129,20 @@ export const FormSchema = z
     }
     if (!f.fields.some((x) => x.type === 'email')) ctx.addIssue({ code: 'custom', message: 'A form needs an email field' });
   });
+/** Catalog link and offer options of a checkout component (docs/PRODUCTS.md). Shared by the legacy block schema and the page model props. */
+export const CheckoutCatalogFields = {
+  /** The server resolves the amount from the catalog price; `price`/`currency`/`productName` on the block are a display snapshot it refreshes on every save. */
+  productId: z.string().regex(/^prd_[A-Za-z0-9_-]{6,60}$/).optional(),
+  priceId: z.string().regex(/^prc_[A-Za-z0-9_-]{6,60}$/).optional(),
+  /** Template placeholder key ("main", "bump", ...), bound to a catalog product when the template is used. */
+  slot: z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/).optional(),
+  /** A one-click offer shown after the buyer declined an upsell (behaves like an upsell; analytics tell them apart). */
+  downsell: z.boolean().optional(),
+  /** Quantity picker on the offer. `max` bounds what the server accepts. */
+  quantity: z.object({ enabled: z.boolean(), min: z.number().int().min(1).max(99).default(1), max: z.number().int().min(1).max(99).default(10), default: z.number().int().min(1).max(99).default(1) }).optional(),
+  /** Show Stripe's promotion code field on the hosted checkout. */
+  allowPromotionCodes: z.boolean().optional(),
+};
 export const CheckoutSchema = z.object({
   id: blockId,
   type: z.literal('checkout'),
@@ -140,6 +154,7 @@ export const CheckoutSchema = z.object({
   orderBump: z.boolean().default(false),
   oneClickUpsell: z.boolean().default(false),
   success: SuccessSchema.default({ type: 'next_step' }),
+  ...CheckoutCatalogFields,
 });
 const Html = z.object({ id: blockId, type: z.literal('html'), html: z.string().max(LIMITS.maxHtml) });
 

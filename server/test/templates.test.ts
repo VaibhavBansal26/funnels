@@ -57,18 +57,19 @@ describe('templates API', () => {
   it('lists, filters by category and search, and shows details with step documents', async () => {
     const h = await makeHarness();
     const u = await h.register();
-    const all = (await h.call('GET', '/api/templates', { token: u.token })).json.data;
+    const all = (await h.call('GET', '/api/templates?limit=100', { token: u.token })).json.data;
     expect(all.length).toBe(SEED_TEMPLATES.length);
     expect(all[0]).toHaveProperty('heading');
     const cats = (await h.call('GET', '/api/templates/categories', { token: u.token })).json.data;
     expect(cats.map((c: any) => c.slug)).toEqual(CATEGORIES.map((c) => c.slug));
     expect(cats.reduce((n: number, c: any) => n + c.templateCount, 0)).toBe(SEED_TEMPLATES.length);
-    const sales = (await h.call('GET', '/api/templates?category=sales', { token: u.token })).json.data;
-    expect(sales.map((t: any) => t.slug).sort()).toEqual(['product-launch', 'sales-page-bump-upsell']);
+    const sales = (await h.call('GET', '/api/templates?category=sales&limit=100', { token: u.token })).json.data;
+    expect(sales.map((t: any) => t.slug)).toEqual(expect.arrayContaining(['product-launch', 'sales-page-bump-upsell']));
+    expect(sales.every((t: any) => t.categorySlug === 'sales')).toBe(true);
     expect((await h.call('GET', `/api/templates?category=${cats[0].id}`, { token: u.token })).json.data.length).toBeGreaterThan(0);
-    expect((await h.call('GET', '/api/templates?search=webinar', { token: u.token })).json.data).toHaveLength(1);
+    expect((await h.call('GET', '/api/templates?search=webinar', { token: u.token })).json.data.map((t: any) => t.slug)).toContain('webinar-registration');
     expect((await h.call('GET', '/api/templates?search=%25', { token: u.token })).json.data).toHaveLength(0);
-    const detail = (await h.call('GET', '/api/templates/book-a-call', { token: u.token })).json;
+    const detail = (await h.call('GET', '/api/templates/book-a-call?docs=true', { token: u.token })).json;
     expect(detail.steps).toHaveLength(2);
     expect(detail.steps[0].doc.version).toBe(2);
     expect((await h.call('GET', '/api/templates/nope', { token: u.token })).status).toBe(404);
@@ -91,7 +92,7 @@ describe('templates API', () => {
     const page = (await h.call('GET', `/api/funnels/${first.id}/steps/${first.steps[0].id}/page`, { token: a.token })).json;
     await h.call('PUT', `/api/funnels/${first.id}/steps/${first.steps[0].id}/page`, { token: a.token, body: { doc: { version: 1, blocks: [] } } });
     expect(page.doc.project.pages[0].frames[0].component.components.length).toBeGreaterThan(0);
-    const fresh = (await h.call('GET', '/api/templates/lead-magnet', { token: a.token })).json;
+    const fresh = (await h.call('GET', '/api/templates/lead-magnet?docs=true', { token: a.token })).json;
     expect(fresh.steps[0].doc.project.pages[0].frames[0].component.components.length).toBeGreaterThan(0); // template untouched
     expect(first.steps[0].path).toBe('/free-guide');
     expect((await h.call('POST', '/api/templates/nope/use', { token: a.token })).status).toBe(404);

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Auth } from '../auth/context.js';
 import { isPlatformAdmin } from '../auth/platform.js';
-import { headingOfJson, loadDoc } from '../pagemodel/doc.js';
+import { firstHeadingOfDoc, loadDoc } from '../pagemodel/doc.js';
 import { renderProject } from '../pagemodel/render.js';
 import { customBlockFromInput, customBlockToNode } from '../pagemodel/customblocks.js';
 import type { Deps } from '../deps.js';
@@ -13,7 +13,9 @@ import { listSteps, requireFunnel } from '../repos/funnels.js';
 import { newId } from '../util/ids.js';
 import { createFunnelFromSteps } from './funnels.js';
 import { slugPath } from './paths.js';
-import { validateDoc } from './pages.js';
+import { TEMPLATE_GOALS, type TemplateProduct } from '../templates/types.js';
+import { bindTemplateProducts, BindingsInput } from './catalogbind.js';
+import { stripCatalogLinks } from './catalogdoc.js';
 
 interface TemplateRow {
   id: string;
@@ -22,40 +24,89 @@ interface TemplateRow {
   description: string;
   category_id: string | null;
   category_name: string | null;
+  category_slug: string | null;
   base_path: string;
+  version: number;
+  source: string;
+  industry: string;
+  goal: string;
+  tags_json: string;
+  products_json: string;
+  accent: string;
+  heading: string | null;
   steps: number;
   created_at: string;
   updated_at: string;
 }
 
-const SELECT = `SELECT t.*, c.name AS category_name, (SELECT COUNT(*) FROM template_steps s WHERE s.template_id = t.id) AS steps
+const SELECT = `SELECT t.*, c.name AS category_name, c.slug AS category_slug, (SELECT COUNT(*) FROM template_steps s WHERE s.template_id = t.id) AS steps
                 FROM templates t LEFT JOIN template_categories c ON c.id = t.category_id`;
 
-const serialize = async (deps: Deps, t: TemplateRow) => {
-  const first = await deps.db.get<{ doc_json: string }>('SELECT doc_json FROM template_steps WHERE template_id = ? ORDER BY position LIMIT 1', t.id);
+const parseJson = <T>(s: string, fallback: T): T => {
+  try {
+    return JSON.parse(s) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+const serialize = (t: TemplateRow) => {
+  const products = parseJson<TemplateProduct[]>(t.products_json, []);
   return {
-    id: t.id, slug: t.slug, name: t.name, description: t.description, categoryId: t.category_id, categoryName: t.category_name,
-    stepCount: t.steps, heading: first ? headingOfJson(first.doc_json) : null, createdAt: t.created_at, updatedAt: t.updated_at,
+    id: t.id, slug: t.slug, name: t.name, description: t.description, categoryId: t.category_id, categoryName: t.category_name, categorySlug: t.category_slug,
+    industry: t.industry, goal: t.goal, tags: parseJson<string[]>(t.tags_json, []), version: t.version, source: t.source, accent: t.accent,
+    stepCount: t.steps, heading: t.heading, hasCheckout: products.length > 0, products,
+    thumbnail: { step: 1, url: `/api/templates/${t.slug}/html?step=1`, accent: t.accent, heading: t.heading },
+    createdAt: t.created_at, updatedAt: t.updated_at,
   };
 };
 
-export const TemplateQuery = z.object({ category: z.string().max(64).optional(), search: z.string().max(100).optional() });
+export const TemplateQuery = z.object({
+  category: z.string().max(64).optional(),
+  industry: z.string().max(64).optional(),
+  goal: z.enum(TEMPLATE_GOALS).optional(),
+  tag: z.string().max(64).optional(),
+  checkout: z.enum(['true', 'false']).optional(),
+  search: z.string().max(100).optional(),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(24),
+});
 
+/** The gallery: filters (category, industry, goal, tag, checkout), search over name, description, tags and industry, pages, and facet counts for the filter chips. */
 export async function listTemplates(deps: Deps, q: z.infer<typeof TemplateQuery>) {
   const where: string[] = [];
-  const params: string[] = [];
+  const params: (string | number)[] = [];
   if (q.category) {
     where.push('(t.category_id = ? OR c.slug = ?)');
     params.push(q.category, q.category);
   }
+  if (q.industry) (where.push('t.industry = ?'), params.push(q.industry));
+  if (q.goal) (where.push('t.goal = ?'), params.push(q.goal));
+  if (q.tag) (where.push(deps.db.dialect.ilike('t.tags_json')), params.push(like(JSON.stringify(q.tag))));
+  if (q.checkout) where.push(q.checkout === 'true' ? "t.products_json <> '[]'" : "t.products_json = '[]'");
   if (q.search?.trim()) {
-    where.push(`(${deps.db.dialect.ilike('t.name')} OR ${deps.db.dialect.ilike('t.description')})`);
-    params.push(like(q.search.trim()), like(q.search.trim()));
+    const p = like(q.search.trim());
+    where.push(`(${['t.name', 't.description', 't.tags_json', 't.industry'].map((c) => deps.db.dialect.ilike(c)).join(' OR ')})`);
+    params.push(p, p, p, p);
   }
-  const rows = await deps.db.all<TemplateRow>(`${SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY c.position, t.name, t.id`, ...params);
-  const data = [];
-  for (const r of rows) data.push(await serialize(deps, r));
-  return { data };
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const total = (await deps.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM templates t LEFT JOIN template_categories c ON c.id = t.category_id ${clause}`, ...params))!.n;
+  const rows = await deps.db.all<TemplateRow>(`${SELECT} ${clause} ORDER BY COALESCE(c.position, 999), t.name, t.id LIMIT ? OFFSET ?`, ...params, q.limit, (q.page - 1) * q.limit);
+  return { data: rows.map(serialize), pagination: { page: q.page, limit: q.limit, total, totalPages: Math.max(1, Math.ceil(total / q.limit)) }, facets: await facets(deps) };
+}
+
+async function facets(deps: Deps) {
+  const rows = await deps.db.all<{ industry: string; goal: string; tags_json: string }>('SELECT industry, goal, tags_json FROM templates');
+  const count = (m: Map<string, number>) => [...m].map(([value, n]) => ({ value, count: n })).sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+  const industries = new Map<string, number>();
+  const goals = new Map<string, number>();
+  const tags = new Map<string, number>();
+  for (const r of rows) {
+    industries.set(r.industry, (industries.get(r.industry) ?? 0) + 1);
+    goals.set(r.goal, (goals.get(r.goal) ?? 0) + 1);
+    for (const t of parseJson<string[]>(r.tags_json, [])) tags.set(t, (tags.get(t) ?? 0) + 1);
+  }
+  return { industries: count(industries), goals: count(goals), tags: count(tags).slice(0, 40) };
 }
 
 export async function listCategories(deps: Deps) {
@@ -66,33 +117,74 @@ export async function listCategories(deps: Deps) {
   };
 }
 
-async function requireTemplate(deps: Deps, id: string): Promise<TemplateRow> {
+export async function requireTemplate(deps: Deps, id: string): Promise<TemplateRow> {
   const t = await deps.db.get<TemplateRow>(`${SELECT} WHERE t.id = ? OR t.slug = ?`, id, id);
   if (!t) throw notFound('Template');
   return t;
 }
 
-export async function getTemplate(deps: Deps, id: string) {
+interface StepRow {
+  id: string;
+  name: string;
+  base_path: string;
+  position: number;
+  kind: string;
+  doc_json: string;
+}
+
+export const TemplateDetailQuery = z.object({ docs: z.enum(['true', 'false']).default('false') });
+
+/** One template: summary, its steps (with the page documents on request), and the first step rendered as an inert preview page. */
+export async function getTemplate(deps: Deps, id: string, opts: { docs?: boolean; preview?: boolean } = {}) {
   const t = await requireTemplate(deps, id);
-  const steps = await deps.db.all<{ id: string; name: string; base_path: string; position: number; doc_json: string }>('SELECT * FROM template_steps WHERE template_id = ? ORDER BY position', t.id);
-  return { ...(await serialize(deps, t)), steps: steps.map((s) => ({ id: s.id, name: s.name, path: s.base_path, position: s.position, doc: loadDoc(s.doc_json) })) };
+  const steps = await deps.db.all<StepRow>('SELECT * FROM template_steps WHERE template_id = ? ORDER BY position', t.id);
+  const out = {
+    ...serialize(t),
+    steps: steps.map((s) => ({ id: s.id, name: s.name, path: s.base_path, position: s.position, kind: s.kind, ...(opts.docs ? { doc: loadDoc(s.doc_json) } : {}) })),
+  };
+  if (!opts.preview) return out;
+  const first = steps[0];
+  return { ...out, preview: first ? { step: 1, name: first.name, html: renderStep(t, steps, first).html } : null };
 }
 
 export const TemplateHtmlQuery = z.object({ step: z.coerce.number().int().min(1).max(50).default(1) });
 
+const htmlCache = new Map<string, string>();
+function renderStep(t: TemplateRow, steps: StepRow[], row: StepRow): { html: string } {
+  const key = `${t.id}:${t.version}:${t.updated_at}:${row.position}`;
+  let html = htmlCache.get(key);
+  if (html === undefined) {
+    html = renderProject(loadDoc(row.doc_json).project, { funnelId: 'preview', stepId: row.id, stepName: row.name, mode: 'preview', steps: steps.map((s) => ({ id: s.id, href: s.base_path })) }).html;
+    if (htmlCache.size > 200) htmlCache.delete(htmlCache.keys().next().value!);
+    htmlCache.set(key, html);
+  }
+  return { html };
+}
+
 /** A template step rendered as a standalone page (inert: for previews, shown in a sandboxed iframe). */
 export async function templateStepHtml(deps: Deps, id: string, step: number) {
   const t = await requireTemplate(deps, id);
-  const row = await deps.db.get<{ id: string; name: string; doc_json: string }>('SELECT id, name, doc_json FROM template_steps WHERE template_id = ? AND position = ?', t.id, step);
+  const steps = await deps.db.all<StepRow>('SELECT * FROM template_steps WHERE template_id = ? ORDER BY position', t.id);
+  const row = steps.find((s) => s.position === step);
   if (!row) throw notFound('Template step');
-  const { html } = renderProject(loadDoc(row.doc_json).project, { funnelId: 'preview', stepId: row.id, stepName: row.name, mode: 'preview' });
-  return { step, name: row.name, html };
+  return { step, name: row.name, html: renderStep(t, steps, row).html };
 }
 
-/** Clones a template into the caller's workspace as a new test funnel. Names are uniquified ("Lead magnet", "Lead magnet 2", ...). */
-export async function useTemplate(deps: Deps, auth: Auth, id: string) {
-  const t = await getTemplate(deps, id);
-  return createFunnelFromSteps(deps, auth, { name: t.name, basePath: t.steps[0]?.path ?? slugPath(t.name), steps: t.steps.map((s) => ({ name: s.name, base_path: s.path, doc: s.doc, refId: s.id })) });
+export const UseTemplateInput = z.object({
+  /** Name of the new funnel (defaults to the template name; made unique within the workspace). */
+  name: z.string().trim().min(1).max(120).optional(),
+  /** Catalog binding per product slot of the template: an existing price, or created from the template defaults (the default). */
+  bindings: BindingsInput.optional(),
+});
+
+/** Clones a template into the caller's workspace as a new test funnel, binding its product slots to the workspace catalog. */
+export async function useTemplate(deps: Deps, auth: Auth, id: string, input: z.infer<typeof UseTemplateInput> = {}) {
+  const t = await requireTemplate(deps, id);
+  const rows = await deps.db.all<StepRow>('SELECT * FROM template_steps WHERE template_id = ? ORDER BY position', t.id);
+  return inTx(deps, async (d) => {
+    const bound = await bindTemplateProducts(d, auth, parseJson<TemplateProduct[]>(t.products_json, []), rows.map((s) => loadDoc(s.doc_json)), input.bindings ?? {});
+    return createFunnelFromSteps(d, auth, { name: input.name ?? t.name, basePath: rows[0]?.base_path ?? slugPath(t.name), steps: rows.map((s, i) => ({ name: s.name, base_path: s.base_path, doc: bound[i], refId: s.id })) });
+  });
 }
 
 // ----- platform admin (guarded by PLATFORM_ADMIN_EMAILS) -----
@@ -118,7 +210,7 @@ async function requireCategory(deps: Deps, id: string | null | undefined): Promi
   return id;
 }
 
-/** Publishes one of the caller's funnels as a global template (copies its step documents). */
+/** Publishes one of the caller's funnels as a global template (copies its step documents; catalog links are removed, a template carries no workspace ids). */
 export async function createTemplate(deps: Deps, auth: Auth, input: z.infer<typeof TemplateCreate>) {
   await assertPlatformAdmin(deps, auth);
   const id = await inTx(deps, async (d) => {
@@ -129,10 +221,16 @@ export async function createTemplate(deps: Deps, auth: Auth, input: z.infer<type
     for (let n = 2; await d.db.get('SELECT 1 FROM templates WHERE slug = ?', slug); n++) slug = `${slugOf(input.name)}-${n}`;
     const tid = newId('tpl');
     const at = d.now().toISOString();
-    await d.db.run('INSERT INTO templates (id, slug, name, description, category_id, base_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', tid, slug, input.name, input.description, category, funnel.base_path, at, at);
+    const docs: { s: (typeof steps)[number]; json: string }[] = [];
     for (const s of steps) {
       const page = await d.db.get<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE step_id = ?', s.id);
-      await d.db.run('INSERT INTO template_steps (id, template_id, name, base_path, position, doc_json) VALUES (?, ?, ?, ?, ?, ?)', newId('tps'), tid, s.name, s.base_path, s.position, page!.doc_json);
+      docs.push({ s, json: page!.doc_json });
+    }
+    const stripped = docs.map((x) => stripCatalogLinks(loadDoc(x.json)));
+    const heading = stripped[0] ? firstHeadingOfDoc(stripped[0]) : null;
+    await d.db.run("INSERT INTO templates (id, slug, name, description, category_id, base_path, source, heading, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?)", tid, slug, input.name, input.description, category, funnel.base_path, heading, at, at);
+    for (const [i, x] of docs.entries()) {
+      await d.db.run('INSERT INTO template_steps (id, template_id, name, base_path, position, doc_json) VALUES (?, ?, ?, ?, ?, ?)', newId('tps'), tid, x.s.name, x.s.base_path, x.s.position, JSON.stringify(stripped[i]));
     }
     return tid;
   }).catch((e) => {
@@ -146,7 +244,8 @@ export async function updateTemplate(deps: Deps, auth: Auth, id: string, patch: 
   await assertPlatformAdmin(deps, auth);
   const t = await requireTemplate(deps, id);
   const category = patch.categoryId === undefined ? t.category_id : await requireCategory(deps, patch.categoryId);
-  await deps.db.run('UPDATE templates SET name = ?, description = ?, category_id = ?, updated_at = ? WHERE id = ?', patch.name ?? t.name, patch.description ?? t.description, category, deps.now().toISOString(), t.id);
+  // `customized`: the built-in seed no longer replaces a template an administrator edited.
+  await deps.db.run('UPDATE templates SET name = ?, description = ?, category_id = ?, customized = 1, updated_at = ? WHERE id = ?', patch.name ?? t.name, patch.description ?? t.description, category, deps.now().toISOString(), t.id);
   return getTemplate(deps, t.id);
 }
 
