@@ -1,0 +1,40 @@
+{
+  "$id": "https://funnels.example/analytics-api/v1/error.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "description": "Validation problems: [{ path, message }]"
+        },
+        "retry_after_s": {
+          "description": "On 429 and 503: seconds to wait (also the Retry-After header)",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "policy": {
+          "description": "On 429: the rate limit policy that refused the request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": {}
+    }
+  },
+  "required": [
+    "error"
+  ],
+  "additionalProperties": {}
+}

@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS funnels.events
   currency      LowCardinality(String),
   utm_json      String,
   url           String,
+  device        LowCardinality(String),
+  country       LowCardinality(String),
+  referrer_host String,
   created_at    DateTime64(3, 'UTC'),
   ingested_at   DateTime DEFAULT now()
 )

@@ -40,7 +40,7 @@ describe('the route declaration', () => {
         expect(ids.has(id), `${o.method} ${o.path} names unknown policy "${id}"`).toBe(true);
         used.add(id);
       }
-      if (['user', 'platform'].includes(o.auth)) {
+      if (['user', 'apikey', 'platform'].includes(o.auth)) {
         expect(o.limits.some((id) => h.deps.limiter.policy(id).layer === 'workspace'), `${o.method} ${o.path}: authenticated routes count against the workspace quota`).toBe(true);
         expect(o.limits.some((id) => h.deps.limiter.policy(id).layer === 'principal'), `${o.method} ${o.path}: and against the caller`).toBe(true);
       }
@@ -56,7 +56,7 @@ describe('the route declaration', () => {
     for (const o of OPERATIONS) {
       const path = fill(o.path);
       const tokenGated = o.path.startsWith('/preview/'); // authorised by a signed ?token=, answered with a message page
-      if (o.auth === 'user') {
+      if (o.auth === 'user' || o.auth === 'apikey') {
         const anon = await h.call(o.method, path, { body: o.method === 'GET' || o.method === 'DELETE' ? undefined : {} });
         expect(anon.status, `${o.method} ${o.path} must require a token`).toBe(401);
       }

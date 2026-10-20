@@ -51,7 +51,7 @@ export function edgeRoutes(deps: Deps): Hono {
     let accepted = 0;
     let rejected = 0;
     let limited = 0;
-    for (const e of list as { id?: unknown; at?: unknown; ua?: unknown; body?: unknown }[]) {
+    for (const e of list as { id?: unknown; at?: unknown; ua?: unknown; country?: unknown; body?: unknown }[]) {
       const parsed = PublicEventInput.safeParse(e?.body);
       if (!parsed.success || typeof e.id !== 'string' || !/^[A-Za-z0-9]{8,64}$/.test(e.id)) {
         rejected++;
@@ -59,7 +59,7 @@ export function edgeRoutes(deps: Deps): Hono {
       }
       // An INGEST_BACKPRESSURE error propagates: the whole batch is answered 503 and retried by the queue (already-published events dedupe on id and time).
       try {
-        const res = await recordPublicEvent(deps, parsed.data, typeof e.ua === 'string' ? e.ua : undefined, { eventId: e.id, at: typeof e.at === 'number' ? e.at : undefined });
+        const res = await recordPublicEvent(deps, parsed.data, typeof e.ua === 'string' ? e.ua : undefined, { eventId: e.id, at: typeof e.at === 'number' ? e.at : undefined, country: typeof e.country === 'string' && /^[A-Z]{2}$/.test(e.country) ? e.country : null });
         if (res.recorded) accepted++;
         else rejected++;
       } catch (err) {

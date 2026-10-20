@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { EnvSchema } from '../src/config.js';
-import { configDoc, openApiText, withPolicies, withRbac } from '../scripts/docgen.js';
+import { analyticsSchemaFiles, configDoc, openApiText, withPolicies, withRbac } from '../scripts/docgen.js';
 import { BACKEND, makeHarness } from './helpers.js';
 
 // Documentation enforcement (docs/adr/0012). Pure file checks, so they run once (with the sqlite project).
@@ -96,6 +96,7 @@ describe.skipIf(BACKEND !== 'sqlite')('documentation', () => {
     expect(read('docs/openapi.json') === openApiText(), 'docs/openapi.json is stale: npm run docs:api').toBe(true);
     const rl = read('docs/RATE-LIMITING.md');
     expect(rl === withPolicies(rl), 'the policy table in docs/RATE-LIMITING.md is stale: npm run docs:config').toBe(true);
+    for (const [name, text] of Object.entries(analyticsSchemaFiles())) expect(read(`docs/analytics-api/${name}`) === text, `docs/analytics-api/${name} is stale: npm run docs:api`).toBe(true);
     const rbac = read('docs/RBAC.md');
     expect(rbac === withRbac(rbac), 'the permission and route tables in docs/RBAC.md are stale: npm run docs:config').toBe(true);
     expect(rbac).toContain('<!-- permissions:start -->');

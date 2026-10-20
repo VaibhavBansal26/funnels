@@ -28,6 +28,8 @@ export interface QueuedEvent {
   id: string;
   at: number;
   ua: string | null;
+  /** Two-letter country from Cloudflare (CF-IPCountry), or null. The signed batch is what makes the origin trust it. */
+  country: string | null;
   body: unknown;
 }
 
@@ -176,7 +178,7 @@ export async function handle(request: Request, env: Env, ctx: Ctx, rt: Runtime):
         try {
           const body = JSON.parse(bodyText) as unknown;
           if (body && typeof body === 'object') {
-            await env.EVENTS_QUEUE.send({ id: rt.randomHex(12), at: rt.now(), ua: request.headers.get('user-agent'), body } satisfies QueuedEvent);
+            await env.EVENTS_QUEUE.send({ id: rt.randomHex(12), at: rt.now(), ua: request.headers.get('user-agent'), country: request.headers.get('cf-ipcountry'), body } satisfies QueuedEvent);
             return new Response(JSON.stringify({ ok: true, recorded: true, queued: true }), { status: 202, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' } });
           }
         } catch {

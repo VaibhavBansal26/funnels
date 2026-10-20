@@ -1,0 +1,108 @@
+{
+  "$id": "https://funnels.example/analytics-api/v1/funnels.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "live",
+              "test"
+            ]
+          },
+          "steps_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "visits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Page views across all steps in the range"
+          },
+          "unique_visits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "First views of the entry step by a visitor in the range"
+          },
+          "optins": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "optin_rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "optins / unique_visits (0 when there are no unique visits)"
+          },
+          "orders": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "gross": {
+            "type": "number",
+            "description": "Order revenue in major currency units"
+          },
+          "currency": {
+            "description": "The single currency of the funnel orders in the range; null when there are none or they are mixed",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "earnings_per_view": {
+            "type": "number",
+            "minimum": 0,
+            "description": "gross / visits"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "UTC ISO-8601 timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "steps_count",
+          "visits",
+          "unique_visits",
+          "optins",
+          "optin_rate",
+          "orders",
+          "gross",
+          "currency",
+          "earnings_per_view",
+          "created_at"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "next_cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "data",
+    "next_cursor"
+  ],
+  "additionalProperties": {}
+}

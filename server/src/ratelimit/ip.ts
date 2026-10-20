@@ -72,3 +72,17 @@ export function clientIp(c: Ctx, cfg: IpConfig): string {
   }
   return peer ?? 'unknown';
 }
+
+/**
+ * Country code from `CF-IPCountry`, believed only when the request provably came through our Cloudflare zone (same proof as CF-Connecting-IP above); anyone else
+ * could send the header themselves. Returns null otherwise, and for Cloudflare's "unknown" (XX) and "Tor" (T1) pseudo-codes.
+ */
+export function trustedCountry(c: Ctx, cfg: IpConfig): string | null {
+  const v = c.req.header('cf-ipcountry')?.trim().toUpperCase();
+  if (!v || !/^[A-Z]{2}$/.test(v) || v === 'XX' || v === 'T1') return null;
+  const secret = cfg.CF_ORIGIN_SECRET;
+  const given = c.req.header('x-cf-origin-secret');
+  if (secret && given && given.length === secret.length && timingSafeEqual(Buffer.from(given), Buffer.from(secret))) return v;
+  const peer = peerOf(c);
+  return cfg.TRUST_CLOUDFLARE_RANGES !== false && peer && (cfg.CF_IP_RANGES ?? CLOUDFLARE_RANGES).some((r) => inCidr(peer, r)) ? v : null;
+}

@@ -1,5 +1,7 @@
 import type { Db } from '../db/index.js';
 import type { Deps } from '../deps.js';
+import { inTx } from '../db/scope.js';
+import { fireWebhookEvent } from './webhooks.js';
 
 /** Arbitrary constant; serialises partition creation between replicas. */
 const PARTITION_LOCK = 724_309_118;
@@ -36,12 +38,37 @@ export async function pruneEventDedupe(db: Db, now: Date, days: number): Promise
   return (await db.run('DELETE FROM event_dedupe WHERE created_at < ?', cutoff)).changes;
 }
 
-export async function runMaintenance(deps: Deps): Promise<{ partitions: string[]; dedupePruned: number }> {
+/**
+ * Tells workspaces that subscribed to `analytics.daily_rollup_ready` that yesterday's (UTC) data is complete enough to pull from the analytics API. Once per workspace
+ * and day: the marker row and the queued delivery are one transaction, and the marker's primary key makes concurrent replicas agree. Catches up only for
+ * yesterday (a longer outage skips the days in between; consumers can always poll the API for any range).
+ */
+export async function announceDailyRollups(deps: Deps): Promise<number> {
+  const now = deps.now();
+  const today = now.toISOString().slice(0, 10);
+  const day = new Date(Date.parse(`${today}T00:00:00.000Z`) - 86_400_000).toISOString().slice(0, 10);
+  const subscribed = await deps.db.all<{ workspace_id: string }>("SELECT DISTINCT workspace_id FROM webhooks WHERE active = 1 AND events_json LIKE '%analytics.daily_rollup_ready%'");
+  let announced = 0;
+  for (const { workspace_id: ws } of subscribed) {
+    const fired = await inTx(deps, async (d) => {
+      const claim = await d.db.run(`INSERT INTO analytics_daily_ready (workspace_id, day, created_at) VALUES (?, ?, ?)${d.db.dialect.onConflictDoNothing()}`, ws, day, now.toISOString());
+      if (claim.changes !== 1) return false;
+      const funnels = (await d.db.all<{ funnel_id: string }>('SELECT DISTINCT funnel_id FROM event_rollups WHERE workspace_id = ? AND bucket >= ? AND bucket < ?', ws, `${day}T00:00`, `${today}T00:00`)).map((r) => r.funnel_id).sort();
+      await fireWebhookEvent(d, ws, 'analytics.daily_rollup_ready', { day, from: day, to: day, tz: 'UTC', funnels, schemaVersion: 1 });
+      return true;
+    });
+    if (fired) announced++;
+  }
+  return announced;
+}
+
+export async function runMaintenance(deps: Deps): Promise<{ partitions: string[]; dedupePruned: number; rollupsAnnounced: number }> {
   const now = deps.now();
   const partitions = await ensureEventPartitions(deps.db, now, deps.config.PARTITION_MONTHS_AHEAD);
   const dedupePruned = await pruneEventDedupe(deps.db, now, deps.config.EVENT_DEDUPE_DAYS);
-  if (partitions.length || dedupePruned) deps.log.info('maintenance', { partitions, dedupePruned });
-  return { partitions, dedupePruned };
+  const rollupsAnnounced = await announceDailyRollups(deps);
+  if (partitions.length || dedupePruned || rollupsAnnounced) deps.log.info('maintenance', { partitions, dedupePruned, rollupsAnnounced });
+  return { partitions, dedupePruned, rollupsAnnounced };
 }
 
 /** Job handler: runs the maintenance and schedules the next run (one pending job at a time, whichever replica enqueues it). */

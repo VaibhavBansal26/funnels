@@ -28,6 +28,9 @@ export function toClickHouseRow(r: EventInsert): Record<string, string | number>
     currency: r.currency ?? '',
     utm_json: r.utm_json ?? '',
     url: r.url ?? '',
+    device: r.device ?? '',
+    country: r.country ?? '',
+    referrer_host: r.referrer_host ?? '',
     created_at: r.created_at.replace('T', ' ').replace('Z', ''), // DateTime64(3, 'UTC') accepts 'YYYY-MM-DD hh:mm:ss.fff'
   };
 }

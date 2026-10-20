@@ -1,0 +1,81 @@
+{
+  "$id": "https://funnels.example/analytics-api/v1/export-lead.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "description": "UTC ISO-8601 timestamp"
+    },
+    "funnel_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "step_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "contact_key": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "form",
+        "checkout"
+      ],
+      "description": "How the lead was first created: an opt-in form or a purchase"
+    },
+    "utm_source": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "utm_campaign": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "converted_to_order": {
+      "type": "boolean"
+    },
+    "order_total": {
+      "type": "number",
+      "description": "Sum of the lead orders in major units (0 when none)"
+    },
+    "first_order_at": {
+      "anyOf": [
+        {
+          "type": "string",
+          "description": "UTC ISO-8601 timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "created_at",
+    "funnel_id",
+    "step_id",
+    "contact_key",
+    "source",
+    "utm_source",
+    "utm_campaign",
+    "converted_to_order",
+    "order_total",
+    "first_order_at"
+  ],
+  "additionalProperties": {}
+}

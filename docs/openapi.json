@@ -284,6 +284,11 @@
                     "type": "string",
                     "pattern": "^[A-Za-z0-9_.:-]{1,100}$"
                   },
+                  "referrer": {
+                    "type": "string",
+                    "maxLength": 253,
+                    "pattern": "^[A-Za-z0-9.-]+$"
+                  },
                   "preview": {
                     "type": "boolean"
                   }
@@ -2101,7 +2106,7 @@
                     "maxLength": 300
                   },
                   "permissions": {
-                    "maxItems": 25,
+                    "maxItems": 26,
                     "type": "array",
                     "items": {
                       "type": "string"
@@ -2182,7 +2187,7 @@
                     "maxLength": 300
                   },
                   "permissions": {
-                    "maxItems": 25,
+                    "maxItems": 26,
                     "type": "array",
                     "items": {
                       "type": "string"
@@ -5583,13 +5588,14 @@
                   },
                   "events": {
                     "minItems": 1,
-                    "maxItems": 2,
+                    "maxItems": 3,
                     "type": "array",
                     "items": {
                       "type": "string",
                       "enum": [
                         "funnel.optin",
-                        "funnel.purchase"
+                        "funnel.purchase",
+                        "analytics.daily_rollup_ready"
                       ]
                     }
                   },
@@ -5667,13 +5673,14 @@
                   },
                   "events": {
                     "minItems": 1,
-                    "maxItems": 2,
+                    "maxItems": 3,
                     "type": "array",
                     "items": {
                       "type": "string",
                       "enum": [
                         "funnel.optin",
-                        "funnel.purchase"
+                        "funnel.purchase",
+                        "analytics.daily_rollup_ready"
                       ]
                     }
                   },
@@ -7181,6 +7188,956 @@
         ]
       }
     },
+    "/api/v1/analytics/funnels": {
+      "get": {
+        "tags": [
+          "analytics-api"
+        ],
+        "summary": "Funnels with totals for a range (cursor pagination)",
+        "operationId": "get_api_v1_analytics_funnels",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-api-scope": "analytics:read",
+        "x-auth": "apikey",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "analytics.read",
+          "analytics.workspace"
+        ]
+      }
+    },
+    "/api/v1/analytics/funnels/{id}/steps": {
+      "get": {
+        "tags": [
+          "analytics-api"
+        ],
+        "summary": "Per-step totals, rates and exit rate for a funnel",
+        "operationId": "get_api_v1_analytics_funnels_id_steps",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-api-scope": "analytics:read",
+        "x-auth": "apikey",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "analytics.read",
+          "analytics.workspace"
+        ]
+      }
+    },
+    "/api/v1/analytics/funnels/{id}/timeseries": {
+      "get": {
+        "tags": [
+          "analytics-api"
+        ],
+        "summary": "Zero-filled time series of one metric, bucketed by hour, day, week or month in a time zone",
+        "operationId": "get_api_v1_analytics_funnels_id_timeseries",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "metric",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": "visits",
+              "type": "string",
+              "enum": [
+                "visits",
+                "unique_visits",
+                "optins",
+                "orders",
+                "gross"
+              ]
+            }
+          },
+          {
+            "name": "interval",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "type": "string",
+              "enum": [
+                "hour",
+                "day",
+                "week",
+                "month"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-api-scope": "analytics:read",
+        "x-auth": "apikey",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "analytics.read",
+          "analytics.workspace"
+        ]
+      }
+    },
+    "/api/v1/analytics/schema": {
+      "get": {
+        "tags": [
+          "analytics-api"
+        ],
+        "summary": "JSON Schemas of every response and export line, with schema_version",
+        "operationId": "get_api_v1_analytics_schema",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-api-scope": "analytics:read",
+        "x-auth": "apikey",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "analytics.read",
+          "analytics.workspace"
+        ]
+      }
+    },
+    "/api/v1/analytics/export/events": {
+      "get": {
+        "tags": [
+          "analytics-api"
+        ],
+        "summary": "Events as NDJSON, one page per request (X-Next-Cursor), PII-free keys",
+        "description": "Lines are keyed with HMAC of the workspace identity pepper (visitor_key, contact_key); raw emails never appear.",
+        "operationId": "get_api_v1_analytics_export_events",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 5000,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20000
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 300
+            }
+          },
+          {
+            "name": "funnel_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-api-scope": "analytics:export",
+        "x-auth": "apikey",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "analytics.export",
+          "analytics.workspace"
+        ]
+      }
+    },
+    "/api/v1/analytics/export/leads": {
+      "get": {
+        "tags": [
+          "analytics-api"
+        ],
+        "summary": "Leads as NDJSON, one page per request (X-Next-Cursor), PII-free keys",
+        "operationId": "get_api_v1_analytics_export_leads",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 5000,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20000
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 300
+            }
+          },
+          {
+            "name": "funnel_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-api-scope": "analytics:export",
+        "x-auth": "apikey",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "analytics.export",
+          "analytics.workspace"
+        ]
+      }
+    },
+    "/api/v1/analytics/export/funnel-structure": {
+      "get": {
+        "tags": [
+          "analytics-api"
+        ],
+        "summary": "Funnels with their steps: block counts, word counts, order bump and upsell flags",
+        "operationId": "get_api_v1_analytics_export_funnel_structure",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-api-scope": "analytics:export",
+        "x-auth": "apikey",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "analytics.export",
+          "analytics.workspace"
+        ]
+      }
+    },
+    "/api/v1/api-keys": {
+      "get": {
+        "tags": [
+          "api-keys"
+        ],
+        "summary": "API keys (prefix, scopes, last use; never the secret)",
+        "operationId": "get_api_v1_api_keys",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "api_keys:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      },
+      "post": {
+        "tags": [
+          "api-keys"
+        ],
+        "summary": "Create an API key; the secret is returned once",
+        "operationId": "post_api_v1_api_keys",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "mode": {
+                    "default": "live",
+                    "type": "string",
+                    "enum": [
+                      "live",
+                      "test"
+                    ]
+                  },
+                  "scopes": {
+                    "minItems": 1,
+                    "maxItems": 2,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "analytics:read",
+                        "analytics:export"
+                      ]
+                    }
+                  },
+                  "expiresAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ipAllowlist": {
+                    "default": [],
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "scopes"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "api_keys:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/v1/api-keys/{id}": {
+      "patch": {
+        "tags": [
+          "api-keys"
+        ],
+        "summary": "Rename, set the expiry or the IP allow-list of a key",
+        "operationId": "patch_api_v1_api_keys_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "expiresAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ipAllowlist": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "api_keys:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      },
+      "delete": {
+        "tags": [
+          "api-keys"
+        ],
+        "summary": "Revoke a key",
+        "operationId": "delete_api_v1_api_keys_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "api_keys:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/v1/analytics/identity-pepper": {
+      "get": {
+        "tags": [
+          "api-keys"
+        ],
+        "summary": "The workspace identity pepper (a secret, shown to people only)",
+        "operationId": "get_api_v1_analytics_identity_pepper",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-also-permissions": [
+          "analytics:export"
+        ],
+        "x-auth": "user",
+        "x-permission": "analytics_identity:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/v1/analytics/identity-pepper/rotate": {
+      "post": {
+        "tags": [
+          "api-keys"
+        ],
+        "summary": "Replace the pepper: exported keys change, so consumers must adopt the new one",
+        "operationId": "post_api_v1_analytics_identity_pepper_rotate",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-also-permissions": [
+          "analytics:export"
+        ],
+        "x-auth": "user",
+        "x-permission": "analytics_identity:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
     "/api/ai/status": {
       "get": {
         "tags": [
@@ -7613,6 +8570,12 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
+      },
+      "apiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "fa_live_... / fa_test_... API key",
+        "description": "Workspace API key for /api/v1/analytics (docs/ANALYTICS-API.md)"
       }
     },
     "schemas": {

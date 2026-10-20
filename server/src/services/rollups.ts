@@ -17,9 +17,13 @@ export interface EventInsert {
   utm_json: string | null;
   url: string | null;
   created_at: string;
+  /** Optional context captured at the beacon (analytics export contract); absent for server-created events such as orders. */
+  device?: string | null;
+  country?: string | null;
+  referrer_host?: string | null;
 }
 
-const COLUMNS = ['id', 'workspace_id', 'funnel_id', 'step_id', 'type', 'visitor_id', 'unique_visit', 'lead_id', 'order_id', 'external_id', 'amount_cents', 'currency', 'utm_json', 'url', 'created_at'] as const;
+const COLUMNS = ['id', 'workspace_id', 'funnel_id', 'step_id', 'type', 'visitor_id', 'unique_visit', 'lead_id', 'order_id', 'external_id', 'amount_cents', 'currency', 'utm_json', 'url', 'created_at', 'device', 'country', 'referrer_host'] as const;
 const CHUNK = 200;
 
 /** 15-minute UTC bucket label `YYYY-MM-DDTHH:MM`. Every real time-zone offset is a multiple of 15 minutes, so a local-day boundary never splits a bucket. */
@@ -118,7 +122,7 @@ export async function insertEvents(tx: Db, rows: EventInsert[], opts: { decideUn
     const one = `(${COLUMNS.map(() => '?').join(', ')})`;
     const got = await tx.all<{ id: string }>(
       `INSERT INTO events (${COLUMNS.join(', ')}) VALUES ${chunk.map(() => one).join(', ')}${tx.dialect.onConflictDoNothing()}${tx.dialect.returning('id')}`,
-      ...chunk.flatMap((r) => COLUMNS.map((c) => r[c])),
+      ...chunk.flatMap((r) => COLUMNS.map((c) => r[c] ?? null)),
     );
     for (const g of got) inserted.add(g.id);
   }

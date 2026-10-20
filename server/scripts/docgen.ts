@@ -3,13 +3,14 @@
 //   docs/openapi.json            from the route declaration (src/routes/spec.ts) and the zod request schemas
 //   docs/RATE-LIMITING.md table  from the policy registry (between the policies:start/end markers)
 // Usage: tsx scripts/docgen.ts [config|api|all]. test/docs.test.ts fails when the committed files differ from a fresh generation.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { ENV_DOCS } from '../src/config.docs.js';
 import { EnvSchema } from '../src/config.js';
 import { buildPolicies } from '../src/ratelimit/policies.js';
 import { ALL_PERMISSIONS, PERMISSIONS, SYSTEM_ROLES } from '../src/auth/permissions.js';
+import { DOCUMENTS, SCHEMA_VERSION, jsonSchemaOf } from '../src/analyticsapi/schemas.js';
 import { OPERATIONS } from '../src/routes/spec.js';
 
 const docs = (f: string) => fileURLToPath(new URL(`../../docs/${f}`, import.meta.url));
@@ -80,8 +81,8 @@ export function openApi(): Record<string, unknown> {
       const q = schemaOf(o.query) as { properties?: Record<string, unknown>; required?: string[] };
       for (const [name, schema] of Object.entries(q.properties ?? {})) params.push({ name, in: 'query', required: q.required?.includes(name) ?? false, schema });
     }
-    const secured = ['user', 'platform'].includes(o.auth);
-    const gated = o.auth === 'platform' || (!!o.permission && o.permission !== 'any');
+    const secured = ['user', 'apikey', 'platform'].includes(o.auth);
+    const gated = o.auth === 'platform' || o.auth === 'apikey' || (!!o.permission && o.permission !== 'any');
     const op: Record<string, unknown> = {
       tags: [o.tag],
       summary: o.summary,
@@ -97,7 +98,9 @@ export function openApi(): Record<string, unknown> {
         ...(o.path.includes(':') ? { '404': { $ref: '#/components/responses/Error' } } : {}),
         ...(o.exempt ? {} : { '429': { $ref: '#/components/responses/RateLimited' } }),
       },
-      ...(secured ? { security: [{ bearer: [] }] } : {}),
+      ...(secured ? { security: [{ [o.auth === 'apikey' ? 'apiKey' : 'bearer']: [] }] } : {}),
+      ...(o.apiScope ? { 'x-api-scope': o.apiScope } : {}),
+      ...(o.also?.length ? { 'x-also-permissions': o.also } : {}),
       'x-auth': o.auth,
       ...(o.permission ? { 'x-permission': o.permission } : {}),
       'x-rate-limit-policies': [...o.limits, ...(o.inHandler ?? [])],
@@ -113,7 +116,7 @@ export function openApi(): Record<string, unknown> {
     servers: [{ url: 'http://localhost:3000' }],
     paths,
     components: {
-      securitySchemes: { bearer: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
+      securitySchemes: { bearer: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, apiKey: { type: 'http', scheme: 'bearer', bearerFormat: 'fa_live_... / fa_test_... API key', description: 'Workspace API key for /api/v1/analytics (docs/ANALYTICS-API.md)' } },
       schemas: { Error: { type: 'object', required: ['error'], properties: { error: { type: 'object', required: ['code', 'message'], properties: { code: { type: 'string' }, message: { type: 'string' }, details: {} } } } } },
       responses: {
         Error: { description: 'Error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
@@ -161,6 +164,13 @@ export function withRbac(md: string): string {
     .replace(/<!-- routes:start -->[\s\S]*<!-- routes:end -->/, `<!-- routes:start -->\n${routesTable()}\n<!-- routes:end -->`);
 }
 
+/** The JSON Schema files published for consumers of the analytics API: file name to text. */
+export function analyticsSchemaFiles(): Record<string, string> {
+  const files: Record<string, string> = {};
+  for (const [name, schema] of Object.entries(DOCUMENTS)) files[`${name}.schema.json`] = `${JSON.stringify({ $id: `https://funnels.example/analytics-api/v${SCHEMA_VERSION}/${name}.schema.json`, ...jsonSchemaOf(schema) }, null, 2)}\n`;
+  return files;
+}
+
 export const openApiText = (): string => `${JSON.stringify(openApi(), null, 2)}\n`;
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
@@ -170,6 +180,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     writeFileSync(docs('RATE-LIMITING.md'), withPolicies(readFileSync(docs('RATE-LIMITING.md'), 'utf8')));
     writeFileSync(docs('RBAC.md'), withRbac(readFileSync(docs('RBAC.md'), 'utf8')));
   }
-  if (mode === 'api' || mode === 'all') writeFileSync(docs('openapi.json'), openApiText());
+  if (mode === 'api' || mode === 'all') {
+    writeFileSync(docs('openapi.json'), openApiText());
+    mkdirSync(docs('analytics-api'), { recursive: true });
+    for (const [file, text] of Object.entries(analyticsSchemaFiles())) writeFileSync(docs(`analytics-api/${file}`), text);
+  }
   process.stdout.write(`docs generated (${mode})\n`);
 }

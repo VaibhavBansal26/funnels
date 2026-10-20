@@ -1,0 +1,117 @@
+{
+  "$id": "https://funnels.example/analytics-api/v1/export-event.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "description": "UTC ISO-8601 timestamp"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "page_view",
+        "optin",
+        "order"
+      ]
+    },
+    "funnel_id": {
+      "type": "string"
+    },
+    "step_id": {
+      "type": "string"
+    },
+    "visitor_key": {
+      "description": "Hex HMAC-SHA256 of the visitor id with the workspace pepper; null when the event has no visitor",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "contact_key": {
+      "description": "Hex HMAC-SHA256 of the lower-cased, trimmed email with the workspace pepper; null when the event is not tied to a lead",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "utm_source": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "utm_medium": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "utm_campaign": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "device": {
+      "type": "string",
+      "enum": [
+        "desktop",
+        "mobile",
+        "tablet",
+        "unknown"
+      ]
+    },
+    "country": {
+      "description": "ISO 3166-1 alpha-2, only from a verified Cloudflare header",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "referrer_host": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "amount": {
+      "description": "Order amount in major units; null for other events",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "unique_visit": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "ts",
+    "type",
+    "funnel_id",
+    "step_id",
+    "visitor_key",
+    "contact_key",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "device",
+    "country",
+    "referrer_host",
+    "amount",
+    "currency",
+    "unique_visit"
+  ],
+  "additionalProperties": {}
+}

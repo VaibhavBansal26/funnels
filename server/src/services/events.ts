@@ -20,10 +20,20 @@ export const PublicEventInput = z.object({
   url: z.string().max(500).optional(),
   utms: z.unknown().optional(),
   externalId: z.string().regex(/^[A-Za-z0-9_.:-]{1,100}$/).optional(),
+  /** Host of document.referrer (never the full URL). */
+  referrer: z.string().max(253).regex(/^[A-Za-z0-9.-]+$/).optional(),
   preview: z.boolean().optional(),
 });
 
 export const BOT_UA = /bot\b|crawler|spider|crawl|slurp|headless|lighthouse|pingdom|uptimerobot|curl\/|wget\/|python-requests|go-http-client|httpclient|facebookexternalhit|preview|monitor/i;
+
+/** Coarse device class from the User-Agent. 'unknown' only when there is no usable header. */
+export function deviceOf(ua: string | undefined): 'desktop' | 'mobile' | 'tablet' | 'unknown' {
+  if (!ua) return 'unknown';
+  if (/ipad|tablet|kindle|silk|playbook|(android(?!.*mobile))/i.test(ua)) return 'tablet';
+  if (/mobi|iphone|ipod|android|windows phone|blackberry/i.test(ua)) return 'mobile';
+  return 'desktop';
+}
 
 export const isBot = (ua: string | undefined): boolean => !ua || ua.length < 8 || BOT_UA.test(ua);
 
@@ -37,7 +47,7 @@ export interface EventResult {
  * `opts` is for events that were accepted earlier at the edge queue: `eventId` and `at` come from the edge, so a redelivered queue message is the same
  * row (same id and created_at) and the primary key drops it. `at` is trusted only within the last 48 hours and never in the future.
  */
-export async function recordPublicEvent(deps: Deps, input: z.infer<typeof PublicEventInput>, userAgent: string | undefined, opts: { eventId?: string; at?: number } = {}): Promise<EventResult> {
+export async function recordPublicEvent(deps: Deps, input: z.infer<typeof PublicEventInput>, userAgent: string | undefined, opts: { eventId?: string; at?: number; country?: string | null } = {}): Promise<EventResult> {
   if (isBot(userAgent)) return { ok: true, recorded: false, reason: 'bot' };
   if (input.preview) return { ok: true, recorded: false, reason: 'preview' };
   // The workspace is always derived from the funnel; unknown, trashed or mismatched ids are silently ignored.
@@ -61,6 +71,7 @@ export async function recordPublicEvent(deps: Deps, input: z.infer<typeof Public
   const row = (type: 'page_view' | 'optin', unique: number, external: string | null): EventRow => ({
     id: opts.eventId ? `evt_${opts.eventId}${type === 'optin' ? '_o' : ''}` : newId('evt'), workspace_id: funnel.workspace_id, funnel_id: funnel.id, step_id: step.id, type, visitor_id: input.visitorId ?? null,
     unique_visit: unique, lead_id: null, order_id: null, external_id: external, amount_cents: 0, currency: null, utm_json: utm, url: input.url ?? null, created_at: at,
+    device: deviceOf(userAgent), country: opts.country ?? null, referrer_host: input.referrer ? input.referrer.toLowerCase() : null,
   });
   if (input.type === 'page_view') {
     if (!input.visitorId) return { ok: true, recorded: false, reason: 'no_visitor' };

@@ -4,7 +4,7 @@ import { OPERATIONS } from '../src/routes/spec.js';
 import { makeHarness } from './helpers.js';
 
 /** Permissions that exist in the catalogue before any route needs them (their features are not built yet). The list only ever shrinks: a permission that is neither used nor listed here fails the test. */
-const RESERVED = new Set<Permission>(['api_keys:manage', 'analytics_identity:manage', 'billing:read', 'billing:manage']);
+const RESERVED = new Set<Permission>(['billing:read', 'billing:manage']);
 
 /** Permissions enforced inside a service because they depend on the request body (not on which route is called); covered by `rbac.test.ts`. */
 const ENFORCED_IN_SERVICES = new Set<Permission>(['funnels:tracking']);
@@ -15,7 +15,11 @@ describe('central route policy', () => {
       if (o.auth === 'user') {
         expect(o.permission, `${o.method} ${o.path} has no permission`).toBeDefined();
         if (o.permission !== 'any') expect(isPermission(o.permission!), `${o.method} ${o.path}: unknown permission ${o.permission}`).toBe(true);
-      } else expect(o.permission, `${o.method} ${o.path} (${o.auth}) must not declare a permission`).toBeUndefined();
+      } else {
+        expect(o.permission, `${o.method} ${o.path} (${o.auth}) must not declare a permission`).toBeUndefined();
+        expect(o.also, `${o.method} ${o.path} (${o.auth}) must not declare further permissions`).toBeUndefined();
+      }
+      if (o.auth === 'apikey') expect(o.apiScope, `${o.method} ${o.path} needs an API key scope`).toBeDefined();
     }
   });
 
@@ -29,7 +33,7 @@ describe('central route policy', () => {
   });
 
   it('the catalogue has no dead permissions: each is used by a route or explicitly reserved', () => {
-    const used = new Set(OPERATIONS.map((o) => o.permission).filter((p): p is Permission => !!p && p !== 'any'));
+    const used = new Set([...OPERATIONS.map((o) => o.permission), ...OPERATIONS.flatMap((o) => o.also ?? [])].filter((p): p is Permission => !!p && p !== 'any'));
     expect(ALL_PERMISSIONS.filter((p) => !used.has(p) && !RESERVED.has(p) && !ENFORCED_IN_SERVICES.has(p))).toEqual([]);
     expect([...RESERVED].filter((p) => used.has(p)), 'a reserved permission got a route: remove it from RESERVED').toEqual([]);
   });
@@ -50,11 +54,10 @@ describe('central route policy', () => {
 
     const permissions = [...new Set(ops.map((o) => o.permission).filter((p): p is Permission => !!p && p !== 'any'))];
     const but = new Map<Permission, string>();
-    const only = new Map<Permission, string>();
-    for (const p of permissions) {
-      but.set(p, (await h.memberWith(owner, ALL_PERMISSIONS.filter((x) => x !== p))).token);
-      only.set(p, (await h.memberWith(owner, [p])).token);
-    }
+    for (const p of new Set([...permissions, ...ops.flatMap((o) => o.also ?? [])])) but.set(p, (await h.memberWith(owner, ALL_PERMISSIONS.filter((x) => x !== p))).token);
+    const onlyKey = (o: (typeof OPERATIONS)[number]) => [o.permission as Permission, ...(o.also ?? [])].sort().join('+');
+    const only = new Map<string, string>();
+    for (const o of ops) if (o.permission !== 'any' && !only.has(onlyKey(o))) only.set(onlyKey(o), (await h.memberWith(owner, [o.permission as Permission, ...(o.also ?? [])])).token);
     const nobody = (await h.memberWith(owner, [])).token;
 
     const failures: string[] = [];
@@ -69,8 +72,12 @@ describe('central route policy', () => {
       const p = o.permission as Permission;
       const refused = await call(o, but.get(p)!);
       if (refused.status !== 403) failures.push(`${label}: a role with everything but "${p}" got ${refused.status}, expected 403`);
-      const admitted = await call(o, only.get(p)!);
-      if (admitted.status === 403 || admitted.status === 401) failures.push(`${label}: a role holding only "${p}" got ${admitted.status}`);
+      for (const extra of o.also ?? []) {
+        const short = await call(o, but.get(extra)!);
+        if (short.status !== 403) failures.push(`${label}: a role with everything but the extra "${extra}" got ${short.status}, expected 403`);
+      }
+      const admitted = await call(o, only.get(onlyKey(o))!);
+      if (admitted.status === 403 || admitted.status === 401) failures.push(`${label}: a role holding only "${p}"${o.also?.length ? ` and ${o.also.join(', ')}` : ''} got ${admitted.status}`);
     }
     expect(failures).toEqual([]);
   }, 120_000);

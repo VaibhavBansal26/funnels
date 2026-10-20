@@ -16,6 +16,7 @@ export const PERMISSIONS = {
   'orders:read': 'View orders',
   'orders:export': 'Export orders as CSV',
   'analytics:read': 'View funnel and step analytics',
+  'analytics:export': 'Create API keys with the export scope and read the raw analytics exports (with analytics_identity:manage: the identity pepper)',
   'ai:use': 'Use the AI assistant',
   'domains:read': 'View domains and DNS instructions',
   'domains:manage': 'Add, verify, configure and delete domains',

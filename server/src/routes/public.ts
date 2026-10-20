@@ -7,6 +7,7 @@ import { PublicEventInput, recordPublicEvent } from '../services/events.js';
 import { SubmitInput, submitForm } from '../services/leads.js';
 import { CheckoutInput, checkout } from '../services/orders.js';
 import { enforceInHandler } from '../ratelimit/http.js';
+import { trustedCountry } from '../ratelimit/ip.js';
 
 const tooLarge = () => new AppError(413, 'PAYLOAD_TOO_LARGE', 'The request body is too large');
 const limitTo = (maxSize: number) =>
@@ -50,7 +51,7 @@ export function publicRoutes(deps: Deps): Hono {
     const raw = await readBody(c);
     await enforceInHandler(deps, c, 'public.events', { scope: idOf(raw) });
     const input = parse(PublicEventInput, raw);
-    return c.json(await recordPublicEvent(deps, input, c.req.header('user-agent')), 202);
+    return c.json(await recordPublicEvent(deps, input, c.req.header('user-agent'), { country: trustedCountry(c, deps.config) }), 202);
   });
 
   r.post('/api/public/forms/:funnelId/:stepId/:blockId', limitTo(64 * 1024), async (c) => {

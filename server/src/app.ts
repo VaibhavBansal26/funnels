@@ -7,6 +7,7 @@ import { createMetrics } from './metrics.js';
 import { rateLimitMiddleware } from './ratelimit/http.js';
 import { rateLimitAdminRoutes } from './routes/ratelimits.js';
 import { aiRoutes } from './routes/ai.js';
+import { analyticsApiRoutes } from './routes/analyticsapi.js';
 import { teamRoutes } from './routes/team.js';
 import { authRoutes } from './routes/auth.js';
 import { domainRoutes } from './routes/domains.js';
@@ -76,6 +77,7 @@ export function createApp(deps: Deps): Hono {
   api.use('*', bodyLimit({ maxSize: 2 * 1024 * 1024, onError: () => { throw new AppError(413, 'PAYLOAD_TOO_LARGE', 'The request body is too large'); } }));
   api.route('/', authRoutes(deps));
   api.route('/', teamRoutes(deps));
+  api.route('/v1', analyticsApiRoutes(deps));
   api.route('/funnels', funnelRoutes(deps));
   api.route('/tags', tagRoutes(deps));
   api.route('/domains', domainRoutes(deps));

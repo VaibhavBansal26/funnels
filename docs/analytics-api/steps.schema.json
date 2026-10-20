@@ -1,0 +1,105 @@
+{
+  "$id": "https://funnels.example/analytics-api/v1/steps.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "description": "1-based position in the funnel"
+          },
+          "visits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "unique_visits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Visitors whose first view of this step fell in the range"
+          },
+          "optins": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "optin_rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Fraction between 0 and 1"
+          },
+          "orders": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "gross": {
+            "type": "number"
+          },
+          "exit_rate": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Fraction between 0 and 1"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of this step visitors who never reached the next step; null for the last step"
+          },
+          "avg_time_on_page_s": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Always null: time on page is not collected"
+          }
+        },
+        "required": [
+          "step_id",
+          "name",
+          "order",
+          "visits",
+          "unique_visits",
+          "optins",
+          "optin_rate",
+          "orders",
+          "gross",
+          "exit_rate",
+          "avg_time_on_page_s"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "next_cursor": {
+      "type": "null"
+    }
+  },
+  "required": [
+    "data",
+    "next_cursor"
+  ],
+  "additionalProperties": {}
+}

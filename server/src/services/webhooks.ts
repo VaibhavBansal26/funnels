@@ -6,7 +6,7 @@ import { PermanentJobError, type Job } from '../jobs/queue.js';
 import { assertPublicUrl, SsrfError } from '../net/ssrf.js';
 import { newId } from '../util/ids.js';
 
-export const WEBHOOK_EVENTS = ['funnel.optin', 'funnel.purchase'] as const;
+export const WEBHOOK_EVENTS = ['funnel.optin', 'funnel.purchase', 'analytics.daily_rollup_ready'] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number] | 'funnel.test';
 
 export const WebhookInput = z.object({
@@ -177,6 +177,8 @@ export async function deliverWebhook(deps: Deps, payload: { deliveryId: string }
         'x-funnels-delivery': d.id,
         'x-funnels-timestamp': timestamp,
         'x-funnels-signature': `sha256=${signPayload(w.secret, timestamp, body)}`,
+        // The analytics contract's signature: HMAC-SHA-256 of the body alone (no timestamp), for consumers that only verify the body.
+        'x-signature': `sha256=${createHmac('sha256', w.secret).update(body).digest('hex')}`,
       },
     });
     if (res.status >= 200 && res.status < 300) {

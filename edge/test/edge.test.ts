@@ -287,7 +287,7 @@ describe('edge rate limiting', () => {
 
 describe('event queue at the edge', () => {
   const postEvent = (w: ReturnType<typeof world>, body: string) =>
-    handle(new Request('https://shop.example.com/api/public/events', { method: 'POST', body, headers: { 'user-agent': 'Mozilla/5.0 Chrome', 'cf-connecting-ip': '198.51.100.9' } }), w.env, w.ctx, w.rt);
+    handle(new Request('https://shop.example.com/api/public/events', { method: 'POST', body, headers: { 'user-agent': 'Mozilla/5.0 Chrome', 'cf-connecting-ip': '198.51.100.9', 'cf-ipcountry': 'DE' } }), w.env, w.ctx, w.rt);
 
   it('answers 202 at the edge and queues the beacon with a stable id and time; the origin is not called', async () => {
     const sent: unknown[] = [];
@@ -296,7 +296,7 @@ describe('event queue at the edge', () => {
     expect(res.status).toBe(202);
     expect(await res.json()).toMatchObject({ ok: true, recorded: true, queued: true });
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ at: w.clock.t, ua: 'Mozilla/5.0 Chrome', body: { funnelId: 'fn_1', visitorId: 'v1' } });
+    expect(sent[0]).toMatchObject({ at: w.clock.t, ua: 'Mozilla/5.0 Chrome', country: 'DE', body: { funnelId: 'fn_1', visitorId: 'v1' } });
     expect((sent[0] as { id: string }).id).toMatch(/^[0-9a-f]+$/);
     expect(w.origin.proxied).toHaveLength(0);
   });
@@ -323,7 +323,7 @@ describe('event queue at the edge', () => {
     const w = world();
     const batch = (n: number) => {
       const retried: { delaySeconds?: number }[] = [];
-      return { retried, b: { messages: Array.from({ length: n }, (_, i) => ({ id: `m${i}`, body: { id: `abc12345${i}`, at: w.clock.t, ua: 'Mozilla', body: { funnelId: 'f' } } })), retryAll: (o?: { delaySeconds?: number }) => void retried.push(o ?? {}) } };
+      return { retried, b: { messages: Array.from({ length: n }, (_, i) => ({ id: `m${i}`, body: { id: `abc12345${i}`, at: w.clock.t, ua: 'Mozilla', country: 'DE', body: { funnelId: 'f' } } })), retryAll: (o?: { delaySeconds?: number }) => void retried.push(o ?? {}) } };
     };
     const verify = vi.fn();
     const rt = (status: number | Error): Runtime => ({

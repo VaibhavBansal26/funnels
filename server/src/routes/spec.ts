@@ -14,6 +14,8 @@ import { TagInput } from '../services/tags.js';
 import { CategoryInput, CustomBlockInput, TemplateCreate, TemplatePatch, TemplateQuery } from '../services/templates.js';
 import { WebhookInput, WebhookPatch } from '../services/webhooks.js';
 import { LoginInput, MemberPatch, PasswordChange, RegisterInput, WorkspacePatch } from '../services/accounts.js';
+import { ApiKeyInput, ApiKeyPatch } from '../services/apikeys.js';
+import { ApiListQuery, ApiRangeQuery, ExportQuery, TimeseriesQuery } from '../services/analyticsapi.js';
 import { AuditQuery } from '../services/audit.js';
 import { AcceptInput, InvitationInput, LookupQuery } from '../services/invitations.js';
 import { ForgotInput, ResetInput } from '../services/recovery.js';
@@ -29,7 +31,7 @@ import { RefreshInput } from './auth.js';
  *    a role-gated route that answers a lower role, or a route without a limiter policy.
  * Adding a route means adding its row here.
  */
-export type Auth = 'public' | 'user' | 'platform' | 'edge' | 'infra';
+export type Auth = 'public' | 'user' | 'apikey' | 'platform' | 'edge' | 'infra';
 
 export interface Operation {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -37,6 +39,10 @@ export interface Operation {
   auth: Auth;
   /** Required for `auth: 'user'` rows (see auth/permissions.ts). Absent on public, edge, infra and platform rows. */
   permission?: Permission | 'any';
+  /** Further permissions the route needs on top of `permission` (all are required; enforced centrally). */
+  also?: Permission[];
+  /** For `auth: 'apikey'` rows: the scope the API key must carry. */
+  apiScope?: 'analytics:read' | 'analytics:export';
   tag: string;
   summary: string;
   body?: ZodType;
@@ -56,9 +62,11 @@ export interface Operation {
 }
 
 const READ = ['ip.global', 'api.read', 'api.workspace'];
+const KEY_READ = ['ip.global', 'analytics.read', 'analytics.workspace'];
+const KEY_EXPORT = ['ip.global', 'analytics.export', 'analytics.workspace'];
 const WRITE = ['ip.global', 'api.write', 'api.workspace'];
 
-type Extra = Partial<Pick<Operation, 'body' | 'query' | 'cost' | 'inHandler' | 'scope' | 'status' | 'notes'>> & { limits?: string[] };
+type Extra = Partial<Pick<Operation, 'body' | 'query' | 'cost' | 'inHandler' | 'scope' | 'status' | 'notes' | 'also'>> & { limits?: string[] };
 
 const make = (method: Operation['method'], path: string, auth: Auth, tag: string, summary: string, x: Extra = {}): Operation => {
   const { limits, ...rest } = x;
@@ -68,6 +76,9 @@ const make = (method: Operation['method'], path: string, auth: Auth, tag: string
 /** An authenticated route. `permission` is the one permission it needs (`any`: every signed-in member), enforced centrally by authenticate(). */
 const A = (m: Operation['method'], p: string, permission: Permission | 'any', tag: string, s: string, x?: Extra): Operation => ({ ...make(m, p, 'user', tag, s, x), permission });
 const PLATFORM = (m: Operation['method'], p: string, tag: string, s: string, x?: Extra) => make(m, p, 'platform', tag, s, { limits: ['ip.global', 'admin.platform', 'api.workspace'], ...x });
+
+/** A route called with an API key (not a user session): `apiScope` is the scope the key must carry. */
+const K = (path: string, apiScope: 'analytics:read' | 'analytics:export', summary: string, x: Extra = {}): Operation => ({ ...make('GET', path, 'apikey', 'analytics-api', summary, { limits: apiScope === 'analytics:export' ? KEY_EXPORT : KEY_READ, ...x }), apiScope });
 
 export const OPERATIONS: Operation[] = [
   // infrastructure
@@ -200,6 +211,21 @@ export const OPERATIONS: Operation[] = [
   PLATFORM('POST', '/api/admin/rate-limits/allows', 'admin', 'Allow-list a client for a TTL (bypasses its limits)', { body: ListEntryInput, status: 201 }),
   PLATFORM('DELETE', '/api/admin/rate-limits/allows', 'admin', 'Remove an allow-list entry', { body: WhoInput, status: 204 }),
   PLATFORM('PUT', '/api/admin/workspaces/:id/rate-tier', 'admin', 'Override a workspace plan or rate multiplier', { body: TierInput }),
+  // analytics API v1 (docs/ANALYTICS-API.md): API-key authenticated
+  K('/api/v1/analytics/funnels', 'analytics:read', 'Funnels with totals for a range (cursor pagination)', { query: ApiListQuery }),
+  K('/api/v1/analytics/funnels/:id/steps', 'analytics:read', 'Per-step totals, rates and exit rate for a funnel', { query: ApiRangeQuery }),
+  K('/api/v1/analytics/funnels/:id/timeseries', 'analytics:read', 'Zero-filled time series of one metric, bucketed by hour, day, week or month in a time zone', { query: TimeseriesQuery }),
+  K('/api/v1/analytics/schema', 'analytics:read', 'JSON Schemas of every response and export line, with schema_version'),
+  K('/api/v1/analytics/export/events', 'analytics:export', 'Events as NDJSON, one page per request (X-Next-Cursor), PII-free keys', { query: ExportQuery, notes: 'Lines are keyed with HMAC of the workspace identity pepper (visitor_key, contact_key); raw emails never appear.' }),
+  K('/api/v1/analytics/export/leads', 'analytics:export', 'Leads as NDJSON, one page per request (X-Next-Cursor), PII-free keys', { query: ExportQuery }),
+  K('/api/v1/analytics/export/funnel-structure', 'analytics:export', 'Funnels with their steps: block counts, word counts, order bump and upsell flags', { query: ApiListQuery }),
+  // API keys and the identity pepper: managed by people with a session
+  A('GET', '/api/v1/api-keys', 'api_keys:manage', 'api-keys', 'API keys (prefix, scopes, last use; never the secret)'),
+  A('POST', '/api/v1/api-keys', 'api_keys:manage', 'api-keys', 'Create an API key; the secret is returned once', { body: ApiKeyInput, status: 201 }),
+  A('PATCH', '/api/v1/api-keys/:id', 'api_keys:manage', 'api-keys', 'Rename, set the expiry or the IP allow-list of a key', { body: ApiKeyPatch }),
+  A('DELETE', '/api/v1/api-keys/:id', 'api_keys:manage', 'api-keys', 'Revoke a key', { status: 204 }),
+  A('GET', '/api/v1/analytics/identity-pepper', 'analytics_identity:manage', 'api-keys', 'The workspace identity pepper (a secret, shown to people only)', { also: ['analytics:export'] }),
+  A('POST', '/api/v1/analytics/identity-pepper/rotate', 'analytics_identity:manage', 'api-keys', 'Replace the pepper: exported keys change, so consumers must adopt the new one', { also: ['analytics:export'] }),
   // AI
   A('GET', '/api/ai/status', 'ai:use', 'ai', 'Provider and daily usage'),
   A('POST', '/api/ai/funnel', 'ai:use', 'ai', 'Generate a funnel', { body: ai.FunnelRequest, status: 201, limits: ['ip.global', 'api.write', 'api.workspace'], inHandler: ['ai.minute', 'ai.daily'] }),

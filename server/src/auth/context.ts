@@ -84,8 +84,10 @@ export function authenticate(deps: Deps, opts: { allowTicket?: boolean } = {}): 
     if (!who) throw unauthorized();
     const auth = await loadAuth(deps, who.userId, who.sessionId);
     c.set('auth', auth);
-    const required = rlOf(c)?.op?.permission;
+    const op = rlOf(c)?.op;
+    const required = op?.permission;
     if (required && required !== 'any' && !auth.permissions.has(required)) throw forbidden(`This action requires the "${required}" permission`);
+    for (const p of op?.also ?? []) if (!auth.permissions.has(p)) throw forbidden(`This action also requires the "${p}" permission`);
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD') deps.db.noteWrite(auth.workspaceId); // reads right after a change must see it, even with read replicas
     // Per-user and per-workspace limits need to know who is calling, so they run here, right after authentication.
     await (c.get('rl' as never) as { afterAuth?: (a: Auth) => Promise<void> } | undefined)?.afterAuth?.(auth);

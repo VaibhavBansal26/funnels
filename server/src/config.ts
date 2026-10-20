@@ -82,6 +82,8 @@ export const EnvSchema = z.object({
   DOMAIN_VERIFY_TIMEOUT_HOURS: int(72, 1),
   ANALYTICS_DISTINCT_MODE: z.enum(['auto', 'exact', 'sketch']).default('auto'),
   ANALYTICS_EXACT_DISTINCT_MAX: int(200_000, 0),
+  ANALYTICS_API_PER_MINUTE: int(60, 1),
+  ANALYTICS_EXPORT_PER_MINUTE: int(10, 1),
   ANALYTICS_READ_STORE: z.enum(['postgres', 'clickhouse']).default('postgres'),
   ANALYTICS_CLICKHOUSE_MAX_LAG_S: int(60, 0),
   ANALYTICS_CLICKHOUSE_FALLBACK: bool(true),

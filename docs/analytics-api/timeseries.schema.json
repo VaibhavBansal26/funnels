@@ -1,0 +1,56 @@
+{
+  "$id": "https://funnels.example/analytics-api/v1/timeseries.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "interval": {
+      "type": "string",
+      "enum": [
+        "hour",
+        "day",
+        "week",
+        "month"
+      ]
+    },
+    "metric": {
+      "type": "string",
+      "enum": [
+        "visits",
+        "unique_visits",
+        "optins",
+        "orders",
+        "gross"
+      ]
+    },
+    "tz": {
+      "type": "string"
+    },
+    "points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "description": "Start of the interval as a UTC instant (intervals follow the local calendar of tz)"
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "t",
+          "value"
+        ],
+        "additionalProperties": {}
+      }
+    }
+  },
+  "required": [
+    "interval",
+    "metric",
+    "tz",
+    "points"
+  ],
+  "additionalProperties": {}
+}
