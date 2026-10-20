@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeDoc } from '../src/pagemodel/doc.js';
-import { PROJECT_LIMITS, cleanProject, exceedsLimits } from '../src/pagemodel/shared/clean.js';
+import { COMPONENT_MIGRATIONS, COMPONENT_VERSION, PROJECT_LIMITS, cleanProject, exceedsLimits } from '../src/pagemodel/shared/clean.js';
 import { contrastRatio, createPageBuilder } from '../src/pagemodel/shared/build.js';
 import { BASE_CSS } from '../src/pagemodel/shared/css.js';
 import { convertDocument } from '../src/pagemodel/convert.js';
@@ -149,5 +149,20 @@ describe('colour contrast (WCAG AA)', () => {
       }
     }
     void createPageBuilder;
+  });
+});
+
+describe('component version reconciliation', () => {
+  it('stamps unversioned components with the current version and runs registered migrations once, from the saved version up', () => {
+    const heading = (fnV?: string) => ({ type: 'fn-heading', tagName: 'h2', ...(fnV ? { fnV } : {}), name: 'Old', components: [{ type: 'textnode', content: 'x' }] });
+    const names = (r: ReturnType<typeof cleanProject>) => (r.ok ? (r.project.pages[0]!.frames[0]!.component.components as { name?: string; fnV?: string }[]).map((n) => `${n.name}:${n.fnV}`) : []);
+    const plain = cleanProject(wrap([heading(), heading(String(COMPONENT_VERSION))]));
+    expect(names(plain)).toEqual([`Old:${COMPONENT_VERSION}`, `Old:${COMPONENT_VERSION}`]);
+    COMPONENT_MIGRATIONS['fn-heading@0'] = (n) => ({ ...n, name: 'Migrated' });
+    try {
+      expect(names(cleanProject(wrap([heading(), heading(String(COMPONENT_VERSION))])))).toEqual([`Migrated:${COMPONENT_VERSION}`, `Old:${COMPONENT_VERSION}`]);
+    } finally {
+      delete COMPONENT_MIGRATIONS['fn-heading@0'];
+    }
   });
 });

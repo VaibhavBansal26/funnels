@@ -51,10 +51,28 @@ const CORE_TYPES = new Set(['default', 'text', 'textnode', 'image', 'link', 'lab
 /** Component types the builder defines. Each maps to a fixed tag and, for the dynamic ones, a typed props key. */
 export const FN_TYPES = [
   'fn-section', 'fn-row', 'fn-column', 'fn-heading', 'fn-text', 'fn-button', 'fn-list', 'fn-divider', 'fn-spacer', 'fn-image', 'fn-video', 'fn-faq', 'fn-tabs',
-  'fn-countdown', 'fn-progress', 'fn-form', 'fn-checkout', 'fn-code', 'fn-popup', 'fn-box',
+  'fn-countdown', 'fn-progress', 'fn-form', 'fn-checkout', 'fn-code', 'fn-popup', 'fn-box', 'fn-faq-item', 'fn-tab-nav', 'fn-tab-btn', 'fn-tab-panel', 'fn-popup-dialog',
 ] as const;
 export type FnType = (typeof FN_TYPES)[number];
 const FN_SET = new Set<string>(FN_TYPES);
+
+/**
+ * Component versions (the idea of the legacy builder's componentVersions.json): every builder component carries `fnV`, the shape version it was
+ * saved with. When a component's shape changes in a release, bump the number here and register a migration; stored pages are upgraded when
+ * they are cleaned (opened, saved, rendered), so old pages keep working without a data migration. No shape has changed yet: every type is at 1
+ * and unversioned nodes (pages converted from legacy blocks, older saves) are stamped with the current version.
+ */
+export const COMPONENT_VERSION = 1;
+export type ComponentMigration = (node: GjsNode) => GjsNode;
+export const COMPONENT_MIGRATIONS: Record<string, ComponentMigration> = {}; // key: `${type}@${fromVersion}`, e.g. 'fn-section@1'
+
+export function reconcileNode(type: string, node: GjsNode): GjsNode {
+  let v = Number(node.fnV ?? 0);
+  if (!Number.isFinite(v) || v < 0) v = 0;
+  let out = node;
+  for (; v < COMPONENT_VERSION; v++) out = COMPONENT_MIGRATIONS[`${type}@${v}`]?.(out) ?? out;
+  return out;
+}
 const DYNAMIC = new Set(['fn-video', 'fn-countdown', 'fn-progress', 'fn-form', 'fn-checkout', 'fn-code']);
 export const isFnType = (t: unknown): t is FnType => typeof t === 'string' && FN_SET.has(t);
 export const isDynamicType = (t: unknown): boolean => typeof t === 'string' && DYNAMIC.has(t);
@@ -174,7 +192,7 @@ function cleanClasses(raw: unknown, attrs: unknown): string[] {
 }
 
 const FN_TAG: Record<string, string> = {
-  'fn-section': 'section', 'fn-row': 'div', 'fn-column': 'div', 'fn-list': 'ul', 'fn-divider': 'hr', 'fn-spacer': 'div', 'fn-faq': 'div', 'fn-tabs': 'div', 'fn-popup': 'div', 'fn-box': 'div',
+  'fn-section': 'section', 'fn-row': 'div', 'fn-column': 'div', 'fn-list': 'ul', 'fn-divider': 'hr', 'fn-spacer': 'div', 'fn-faq': 'div', 'fn-tabs': 'div', 'fn-popup': 'div', 'fn-box': 'div', 'fn-faq-item': 'details', 'fn-tab-nav': 'div', 'fn-tab-btn': 'button', 'fn-tab-panel': 'div', 'fn-popup-dialog': 'div',
   'fn-video': 'div', 'fn-countdown': 'div', 'fn-progress': 'div', 'fn-form': 'div', 'fn-checkout': 'div', 'fn-code': 'div', 'fn-button': 'a', 'fn-text': 'p', 'fn-heading': 'h2', 'fn-image': 'img',
 };
 
@@ -182,8 +200,9 @@ function propIssue(path: string, label: string, err: z.ZodError, ctx: Ctx): void
   for (const i of err.issues.slice(0, 5)) ctx.issues.push({ path: `${path}${i.path.length ? `.${i.path.join('.')}` : ''}`, message: `${label}: ${i.message}` });
 }
 
-function cleanNode(raw: unknown, depth: number, path: string, ctx: Ctx): GjsNode | null {
-  if (!isObj(raw)) return null;
+function cleanNode(input: unknown, depth: number, path: string, ctx: Ctx): GjsNode | null {
+  if (!isObj(input)) return null;
+  const raw: Record<string, unknown> = typeof input.type === 'string' && isFnType(input.type) ? reconcileNode(input.type, input) : input;
   if (++ctx.nodes > PROJECT_LIMITS.maxNodes) {
     if (ctx.nodes === PROJECT_LIMITS.maxNodes + 1) ctx.issues.push({ path, message: `A page may contain at most ${PROJECT_LIMITS.maxNodes} elements` });
     return null;
@@ -200,7 +219,7 @@ function cleanNode(raw: unknown, depth: number, path: string, ctx: Ctx): GjsNode
   // Fixed tags of the structural types keep their meaning (a divider is always <hr>, a section always <section>).
   if (type === 'fn-divider') tag = 'hr';
   if (type === 'fn-image' || type === 'image') tag = 'img';
-  if (isDynamicType(type) || type === 'fn-section' || type === 'fn-row' || type === 'fn-column' || type === 'fn-faq' || type === 'fn-tabs' || type === 'fn-popup' || type === 'fn-spacer') tag = FN_TAG[type]!;
+  if (isDynamicType(type) || ['fn-section', 'fn-row', 'fn-column', 'fn-faq', 'fn-faq-item', 'fn-tabs', 'fn-tab-nav', 'fn-tab-btn', 'fn-tab-panel', 'fn-popup', 'fn-popup-dialog', 'fn-spacer'].includes(type)) tag = FN_TAG[type]!;
   if (type === 'fn-heading' && !/^h[1-6]$/.test(tag)) tag = 'h2';
   if (type === 'fn-button' && tag !== 'a' && tag !== 'button') tag = 'a';
   if (type === 'fn-list' && tag !== 'ul' && tag !== 'ol') tag = 'ul';
@@ -218,8 +237,7 @@ function cleanNode(raw: unknown, depth: number, path: string, ctx: Ctx): GjsNode
     if (typeof v === 'boolean') out[k] = v;
     else if ((k === 'draggable' || k === 'droppable') && typeof v === 'string' && SELECTOR_FLAG.test(v)) out[k] = v;
   }
-  const v = str(raw.fnV, 40);
-  if (v) out.fnV = v;
+  if (isFnType(type)) out.fnV = String(COMPONENT_VERSION);
 
   if (raw.style && isObj(raw.style)) {
     const style = cleanDeclarations(raw.style);
@@ -277,7 +295,7 @@ function cleanNode(raw: unknown, depth: number, path: string, ctx: Ctx): GjsNode
   }
 
   if (isDynamicType(type) || VOID.has(tag)) return out;
-  if (type === 'text' || type === 'fn-text' || type === 'fn-heading' || type === 'link' || type === 'label') {
+  if (type === 'text' || type === 'fn-text' || type === 'fn-heading' || type === 'fn-tab-btn' || type === 'link' || type === 'label') {
     // Text content that was never split into components (pasted or older data) is kept as escaped text.
     const c = str(raw.content, PROJECT_LIMITS.maxText);
     if (c && !Array.isArray(raw.components)) out.components = [{ type: 'textnode', content: c }];

@@ -61,6 +61,7 @@ export function funnelRoutes(deps: Deps): Hono<AppEnv> {
     const b = await bodyOf(c, pages.SaveInput);
     return c.json(await pages.savePage(deps, authOf(c), c.req.param('id'), c.req.param('sid'), b.doc, { expectedVersion: b.version, backup: b.backup }));
   });
+  r.get('/:id/steps/:sid/html', async (c) => c.json(await pages.getPageHtml(deps, ws(c), c.req.param('id'), c.req.param('sid'))));
   r.get('/:id/steps/:sid/backups', async (c) => c.json({ data: await pages.listBackups(deps, ws(c), c.req.param('id'), c.req.param('sid')) }));
   r.get('/:id/steps/:sid/backups/:bid', async (c) => c.json(await pages.getBackup(deps, ws(c), c.req.param('id'), c.req.param('sid'), c.req.param('bid'))));
   r.post('/:id/steps/:sid/backups/:bid/restore', async (c) => c.json(await pages.restoreBackup(deps, authOf(c), c.req.param('id'), c.req.param('sid'), c.req.param('bid'))));

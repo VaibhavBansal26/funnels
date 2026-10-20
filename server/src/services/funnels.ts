@@ -86,27 +86,23 @@ async function statsFor(deps: Deps, ws: string, ids: string[]): Promise<Map<stri
   return map;
 }
 
-async function thumbnails(deps: Deps, ids: string[]): Promise<Map<string, string | null>> {
-  const map = new Map<string, string | null>();
+async function thumbnails(deps: Deps, ids: string[]): Promise<Map<string, { heading: string | null; stepId: string }>> {
+  const map = new Map<string, { heading: string | null; stepId: string }>();
   if (ids.length === 0) return map;
-  const rows = await deps.db.all<{ funnel_id: string; doc_json: string }>(
-    `SELECT s.funnel_id, p.doc_json FROM steps s JOIN step_pages p ON p.step_id = s.id
+  const rows = await deps.db.all<{ funnel_id: string; step_id: string; doc_json: string }>(
+    `SELECT s.funnel_id, s.id AS step_id, p.doc_json FROM steps s JOIN step_pages p ON p.step_id = s.id
      WHERE s.funnel_id IN (${placeholders(ids.length)}) AND s.position = (SELECT MIN(position) FROM steps WHERE funnel_id = s.funnel_id)`,
     ...ids,
   );
   for (const r of rows) {
-    try {
-      map.set(r.funnel_id, headingOfJson(r.doc_json));
-    } catch {
-      map.set(r.funnel_id, null);
-    }
+    map.set(r.funnel_id, { heading: headingOfJson(r.doc_json), stepId: r.step_id });
   }
   return map;
 }
 
 type Summary = ReturnType<typeof summarize>;
 
-function summarize(f: FunnelRow, extra: { domain: Pick<DomainRow, 'id' | 'hostname' | 'status'> | null; tags: { id: string; name: string }[]; stepCount: number; stats: FunnelStats; heading: string | null }) {
+function summarize(f: FunnelRow, extra: { domain: Pick<DomainRow, 'id' | 'hostname' | 'status'> | null; tags: { id: string; name: string }[]; stepCount: number; stats: FunnelStats; heading: string | null; firstStepId?: string | null }) {
   return {
     id: f.id,
     name: f.name,
@@ -119,7 +115,7 @@ function summarize(f: FunnelRow, extra: { domain: Pick<DomainRow, 'id' | 'hostna
     tags: extra.tags,
     stepCount: extra.stepCount,
     stats: extra.stats,
-    thumbnail: { heading: extra.heading ?? f.name, ...gradientFor(f.id) },
+    thumbnail: { heading: extra.heading ?? f.name, stepId: extra.firstStepId ?? null, ...gradientFor(f.id) },
     createdAt: f.created_at,
     updatedAt: f.updated_at,
     deletedAt: f.deleted_at,
@@ -148,7 +144,8 @@ async function summaries(deps: Deps, ws: string, rows: FunnelRow[]): Promise<Sum
       tags: tags.get(f.id) ?? [],
       stepCount: counts.get(f.id) ?? 0,
       stats: stats.get(f.id) ?? EMPTY_STATS,
-      heading: headings.get(f.id) ?? null,
+      heading: headings.get(f.id)?.heading ?? null,
+      firstStepId: headings.get(f.id)?.stepId ?? null,
     }),
   );
 }

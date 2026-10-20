@@ -198,11 +198,19 @@ async function requireBackup(deps: Deps, ws: string, stepId: string, backupId: s
   return b;
 }
 
+/** The stored, published HTML of a step (what visitors get). For thumbnails and previews: the web app shows it in an iframe with `sandbox=""`, so nothing in it runs. */
+export async function getPageHtml(deps: Deps, ws: string, funnelId: string, stepId: string) {
+  await requireFunnel(deps.db, ws, funnelId);
+  await requireStep(deps.db, ws, funnelId, stepId);
+  const page = await getPageRow(deps, ws, stepId);
+  return { stepId, html: page.html, checksum: page.checksum };
+}
+
 export async function getBackup(deps: Deps, ws: string, funnelId: string, stepId: string, backupId: string) {
   await requireFunnel(deps.db, ws, funnelId);
   await requireStep(deps.db, ws, funnelId, stepId);
   const b = await requireBackup(deps, ws, stepId, backupId);
-  return { id: b.id, version: b.version, label: b.label, createdAt: b.created_at, doc: loadDoc(b.doc_json) };
+  return { id: b.id, version: b.version, label: b.label, createdAt: b.created_at, doc: loadDoc(b.doc_json), html: b.html };
 }
 
 /** Restoring is a normal save of the old document, so the version being replaced is itself backed up. */

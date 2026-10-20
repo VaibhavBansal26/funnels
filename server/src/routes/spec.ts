@@ -11,7 +11,7 @@ import { SaveInput } from '../services/pages.js';
 import { LimitedQuery, ListEntryInput, TierInput, WhoInput } from './ratelimits.js';
 import { ReorderInput, StepInput, StepPatch, ValidatePathInput } from '../services/steps.js';
 import { TagInput } from '../services/tags.js';
-import { CategoryInput, CustomBlockInput, TemplateCreate, TemplatePatch, TemplateQuery } from '../services/templates.js';
+import { CategoryInput, CustomBlockInput, TemplateCreate, TemplateHtmlQuery, TemplatePatch, TemplateQuery } from '../services/templates.js';
 import { WebhookInput, WebhookPatch } from '../services/webhooks.js';
 import { LoginInput, MemberPatch, PasswordChange, RegisterInput, WorkspacePatch } from '../services/accounts.js';
 import { ApiKeyInput, ApiKeyPatch } from '../services/apikeys.js';
@@ -165,6 +165,7 @@ export const OPERATIONS: Operation[] = [
   A('GET', '/api/funnels/:id/steps/:sid/analytics', 'analytics:read', 'analytics', 'Step analytics', { query: AnalyticsQuery }),
   A('GET', '/api/funnels/:id/steps/:sid/page', 'funnels:read', 'pages', 'Page document and version'),
   A('PUT', '/api/funnels/:id/steps/:sid/page', 'funnels:write', 'pages', 'Save the page document (optimistic concurrency on `version`)', { body: SaveInput, cost: 2 }),
+  A('GET', '/api/funnels/:id/steps/:sid/html', 'funnels:read', 'pages', 'The stored, published HTML of a step (for thumbnails and previews; show it in a sandboxed iframe)'),
   A('GET', '/api/funnels/:id/steps/:sid/backups', 'funnels:read', 'pages', 'Page backups'),
   A('GET', '/api/funnels/:id/steps/:sid/backups/:bid', 'funnels:read', 'pages', 'One backup'),
   A('POST', '/api/funnels/:id/steps/:sid/backups/:bid/restore', 'funnels:write', 'pages', 'Restore a backup', { cost: 2 }),
@@ -204,6 +205,7 @@ export const OPERATIONS: Operation[] = [
   // templates and blocks
   A('GET', '/api/templates', 'funnels:read', 'templates', 'List templates', { query: TemplateQuery }),
   A('GET', '/api/templates/categories', 'funnels:read', 'templates', 'Template categories'),
+  A('GET', '/api/templates/:id/html', 'funnels:read', 'templates', 'A template step rendered as a standalone page, for previews (`?step=1`); show it in a sandboxed iframe', { query: TemplateHtmlQuery }),
   A('GET', '/api/templates/:id', 'funnels:read', 'templates', 'One template with step documents'),
   A('POST', '/api/templates/:id/use', 'funnels:write', 'templates', 'Create a funnel from a template', { status: 201, cost: 3 }),
   A('GET', '/api/blocks', 'funnels:read', 'blocks', 'Saved custom blocks'),

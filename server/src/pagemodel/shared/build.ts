@@ -191,7 +191,7 @@ const col = (children: GjsNode[], o: NodeOpts & { grow?: number } = {}): GjsNode
         {
           type: 'fn-faq', tagName: 'div', classes: ['fn-faq'],
           components: items.map((i) => ({
-            type: 'default', tagName: 'details', classes: ['fn-faq-item'], name: 'FAQ item',
+            type: 'fn-faq-item', tagName: 'details', classes: ['fn-faq-item'], name: 'FAQ item',
             components: [
               { type: 'text', tagName: 'summary', components: inlineNodes(i.q) },
               { type: 'text', tagName: 'div', components: inlineNodes(i.a) },
@@ -206,8 +206,8 @@ const col = (children: GjsNode[], o: NodeOpts & { grow?: number } = {}): GjsNode
         {
           type: 'fn-tabs', tagName: 'div', classes: ['fn-tabs'],
           components: [
-            { type: 'default', tagName: 'div', classes: ['fn-tab-nav'], name: 'Tab bar', components: items.map((i, k) => ({ type: 'text', tagName: 'button', classes: ['fn-tab-btn', ...(k === 0 ? ['fn-active'] : [])], attributes: { type: 'button' }, components: inlineNodes(i.label) })) },
-            ...items.map((i, k) => ({ type: 'default', tagName: 'div', classes: ['fn-tab-panel'], name: `Tab ${k + 1}`, ...(k === 0 ? {} : { attributes: { hidden: '' } }), components: i.children })),
+            { type: 'fn-tab-nav', tagName: 'div', classes: ['fn-tab-nav'], name: 'Tab bar', components: items.map((i, k) => ({ type: 'fn-tab-btn', tagName: 'button', classes: ['fn-tab-btn', ...(k === 0 ? ['fn-active'] : [])], attributes: { type: 'button' }, components: inlineNodes(i.label) })) },
+            ...items.map((i, k) => ({ type: 'fn-tab-panel', tagName: 'div', classes: ['fn-tab-panel'], name: `Tab ${k + 1}`, ...(k === 0 ? {} : { attributes: { hidden: '' } }), components: i.children })),
           ],
         },
         { ...o, name: o.name ?? 'Tabs' },
@@ -236,7 +236,7 @@ const col = (children: GjsNode[], o: NodeOpts & { grow?: number } = {}): GjsNode
       return fin(
         {
           type: 'fn-popup', tagName: 'div', classes: ['fn-popup'],
-          components: [{ type: 'default', tagName: 'div', classes: ['fn-popup-dialog', 'fn-column'], name: 'Dialog', components: [{ type: 'text', tagName: 'button', classes: ['fn-popup-close'], attributes: { type: 'button', 'aria-label': 'Close' }, components: [{ type: 'textnode', content: '×' }] }, ...children] }],
+          components: [{ type: 'fn-popup-dialog', tagName: 'div', classes: ['fn-popup-dialog', 'fn-column'], name: 'Dialog', components: [{ type: 'text', tagName: 'button', classes: ['fn-popup-close'], attributes: { type: 'button', 'aria-label': 'Close' }, components: [{ type: 'textnode', content: '×' }] }, ...children] }],
         },
         { ...o, id, name: o.name ?? 'Popup' },
       );

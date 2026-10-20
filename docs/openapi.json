@@ -4344,6 +4344,65 @@
         "x-rate-limit-cost": 2
       }
     },
+    "/api/funnels/{id}/steps/{sid}/html": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "The stored, published HTML of a step (for thumbnails and previews; show it in a sandboxed iframe)",
+        "operationId": "get_api_funnels_id_steps_sid_html",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "funnels:read",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      }
+    },
     "/api/funnels/{id}/steps/{sid}/backups": {
       "get": {
         "tags": [
@@ -6265,6 +6324,68 @@
             "$ref": "#/components/responses/Error"
           },
           "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "funnels:read",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/templates/{id}/html": {
+      "get": {
+        "tags": [
+          "templates"
+        ],
+        "summary": "A template step rendered as a standalone page, for previews (`?step=1`); show it in a sandboxed iframe",
+        "operationId": "get_api_templates_id_html",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "step",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
             "$ref": "#/components/responses/Error"
           },
           "429": {

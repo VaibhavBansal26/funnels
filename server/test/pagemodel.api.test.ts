@@ -224,3 +224,24 @@ describe('preview and published pages', () => {
     expect(html).not.toMatch(/gjs-|data-gjs|grapesjs|contenteditable|fn-editor/);
   });
 });
+
+describe('previews and thumbnails', () => {
+  it('serves the stored page html, template step html and backup html for sandboxed iframes, scoped to the workspace', async () => {
+    const { h, u, f, stepId, url, put, project } = await setup();
+    await put({ doc: { version: 2, project: project((pm) => [pm.section([pm.stack([pm.heading('Mine', { level: 1 })])])]) } });
+    await put({ doc: { version: 2, project: project((pm) => [pm.section([pm.stack([pm.heading('Newer', { level: 1 })])])]) } });
+    const page = (await h.call('GET', `${url}/html`, { token: u.token })).json;
+    expect(page.html).toContain('Newer');
+    expect(page.checksum).toHaveLength(32);
+    const backups = (await h.call('GET', `${url}/backups`, { token: u.token })).json.data;
+    expect((await h.call('GET', `${url}/backups/${backups[0].id}`, { token: u.token })).json.html).toContain('Mine');
+    const t = (await h.call('GET', '/api/templates/lead-magnet/html?step=1', { token: u.token })).json;
+    expect(t.html).toContain('7 ways to double your email list');
+    expect(t.html).toContain('data-preview="1"');
+    expect((await h.call('GET', '/api/templates/lead-magnet/html?step=9', { token: u.token })).status).toBe(404);
+    const other = await h.register();
+    expect((await h.call('GET', `${url}/html`, { token: other.token })).status).toBe(404);
+    expect((await h.call('GET', `${url}/html`)).status).toBe(401);
+    void f; void stepId;
+  });
+});

@@ -9,6 +9,7 @@ export function templateRoutes(deps: Deps): Hono<AppEnv> {
   r.use('*', authenticate(deps));
   r.get('/', async (c) => c.json(await templates.listTemplates(deps, queryOf(c, templates.TemplateQuery))));
   r.get('/categories', async (c) => c.json(await templates.listCategories(deps)));
+  r.get('/:id/html', async (c) => c.json(await templates.templateStepHtml(deps, c.req.param('id'), queryOf(c, templates.TemplateHtmlQuery).step), 200, { 'cache-control': 'private, max-age=300' }));
   r.get('/:id', async (c) => c.json(await templates.getTemplate(deps, c.req.param('id'))));
   r.post('/:id/use', async (c) => c.json(await templates.useTemplate(deps, authOf(c), c.req.param('id')), 201));
   return r;

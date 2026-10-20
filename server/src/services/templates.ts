@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Auth } from '../auth/context.js';
 import { isPlatformAdmin } from '../auth/platform.js';
 import { headingOfJson, loadDoc } from '../pagemodel/doc.js';
+import { renderProject } from '../pagemodel/render.js';
 import { customBlockFromInput, customBlockToNode } from '../pagemodel/customblocks.js';
 import type { Deps } from '../deps.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -75,6 +76,17 @@ export async function getTemplate(deps: Deps, id: string) {
   const t = await requireTemplate(deps, id);
   const steps = await deps.db.all<{ id: string; name: string; base_path: string; position: number; doc_json: string }>('SELECT * FROM template_steps WHERE template_id = ? ORDER BY position', t.id);
   return { ...(await serialize(deps, t)), steps: steps.map((s) => ({ id: s.id, name: s.name, path: s.base_path, position: s.position, doc: loadDoc(s.doc_json) })) };
+}
+
+export const TemplateHtmlQuery = z.object({ step: z.coerce.number().int().min(1).max(50).default(1) });
+
+/** A template step rendered as a standalone page (inert: for previews, shown in a sandboxed iframe). */
+export async function templateStepHtml(deps: Deps, id: string, step: number) {
+  const t = await requireTemplate(deps, id);
+  const row = await deps.db.get<{ id: string; name: string; doc_json: string }>('SELECT id, name, doc_json FROM template_steps WHERE template_id = ? AND position = ?', t.id, step);
+  if (!row) throw notFound('Template step');
+  const { html } = renderProject(loadDoc(row.doc_json).project, { funnelId: 'preview', stepId: row.id, stepName: row.name, mode: 'preview' });
+  return { step, name: row.name, html };
 }
 
 /** Clones a template into the caller's workspace as a new test funnel. Names are uniquified ("Lead magnet", "Lead magnet 2", ...). */
