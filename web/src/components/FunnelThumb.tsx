@@ -1,4 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { useId } from 'react';
+import { api } from '../api/client';
+import { cn } from '../ui';
+import { ScaledPage, useNearViewport } from './PreviewFrame';
 
 /** Wraps a headline into at most `lines` lines of roughly `width` characters. */
 export function wrapText(text: string, width = 22, lines = 3): string[] {
@@ -18,8 +22,8 @@ export function wrapText(text: string, width = 22, lines = 3): string[] {
   return result.length ? result : [''];
 }
 
-/** Placeholder thumbnail: a gradient (derived from the funnel id on the server) with the first heading of the first page. No screenshots involved. */
-export function FunnelThumb({ thumb, small, className }: { thumb: { heading: string; from: string; to: string }; small?: boolean; className?: string }) {
+/** Generated thumbnail: a gradient (derived from the funnel id on the server) with the first heading of the first page. Shown while the real page loads and when it cannot be shown. */
+export function GeneratedThumb({ thumb, small, className }: { thumb: { heading: string; from: string; to: string }; small?: boolean; className?: string }) {
   const id = useId();
   const lines = wrapText(thumb.heading, small ? 14 : 22, small ? 2 : 3);
   return (
@@ -37,5 +41,26 @@ export function FunnelThumb({ thumb, small, className }: { thumb: { heading: str
       ))}
       <rect x="24" y="168" width="84" height="16" rx="8" fill="#fff" opacity="0.85" />
     </svg>
+  );
+}
+
+/**
+ * The funnel's first page as it really looks: the stored, published HTML scaled into the card (sandboxed iframe, no scripts, loaded when the card
+ * scrolls near the viewport). Falls back to the generated thumbnail while loading, on errors and for funnels without a page.
+ */
+export function FunnelThumb({ thumb, funnelId, small, className }: { thumb: { heading: string; from: string; to: string; stepId?: string | null }; funnelId?: string; small?: boolean; className?: string }) {
+  const [ref, near] = useNearViewport<HTMLDivElement>();
+  const stepId = thumb.stepId;
+  const q = useQuery({
+    queryKey: ['page-html', stepId],
+    enabled: near && !!funnelId && !!stepId,
+    queryFn: () => api.get<{ html: string; checksum: string }>(`/api/funnels/${funnelId}/steps/${stepId}/html`),
+    staleTime: 60_000,
+  });
+  const fallback = <GeneratedThumb thumb={thumb} small={small} className={cn(small ? 'h-10 w-16' : 'aspect-[16/10] w-full', 'block')} />;
+  return (
+    <div ref={ref} className={cn('overflow-hidden rounded-md border border-border', small ? 'h-10 w-16 flex-none' : 'w-full', className)}>
+      {q.data ? <ScaledPage html={q.data.html} title={`Preview of ${thumb.heading}`} className="rounded-none" /> : fallback}
+    </div>
   );
 }

@@ -169,7 +169,7 @@ export function FunnelsPage() {
               {rows.map((f) => (
                 <tr key={f.id}>
                   <td><input type="checkbox" aria-label={`Select ${f.name}`} checked={selected.includes(f.id)} onChange={() => toggle(f.id)} /></td>
-                  <td><FunnelThumb small thumb={f.thumbnail} /></td>
+                  <td><FunnelThumb small thumb={f.thumbnail} funnelId={f.id} /></td>
                   <td>
                     <Link to={`/funnels/${f.id}`}><strong>{f.name}</strong></Link>
                     <div className="row" style={{ gap: 4 }}>{f.tags.map((t) => <span key={t.id} className="tag-chip">{t.name}</span>)}{f.domain ? <span className="muted small">{f.domain.hostname}</span> : null}</div>
@@ -195,10 +195,10 @@ export function FunnelsPage() {
         <>
           <div className="grid cards">
             {rows.map((f) => (
-              <article key={f.id} className="card funnel-card" aria-label={f.name}>
-                <FunnelThumb thumb={f.thumbnail} />
+              <article key={f.id} className="card flex flex-col gap-3 transition-shadow hover:shadow-pop" aria-label={f.name}>
+                <FunnelThumb thumb={f.thumbnail} funnelId={f.id} />
                 <div className="row between"><h3><Link to={`/funnels/${f.id}`}>{f.name}</Link></h3><StatusBadge status={f.status} /></div>
-                <div className="meta"><span>{f.stepCount} steps</span><span>{fmtNum(f.stats.visits)} visits</span><span>{fmtNum(f.stats.optins)} opt-ins</span><span>{fmtMoney(f.stats.sales)}</span></div>
+                <div className="flex justify-between text-[0.85rem] text-muted"><span>{f.stepCount} steps</span><span>{fmtNum(f.stats.visits)} visits</span><span>{fmtNum(f.stats.optins)} opt-ins</span><span>{fmtMoney(f.stats.sales)}</span></div>
                 <div className="row"><label className="check small"><input type="checkbox" checked={selected.includes(f.id)} onChange={() => toggle(f.id)} />Select</label><span className="right row"><button type="button" className="btn sm" onClick={() => nav(`/funnels/${f.id}`)}>Open</button><button type="button" className="btn sm" onClick={() => dup.mutate(f.id)}>Duplicate</button></span></div>
               </article>
             ))}

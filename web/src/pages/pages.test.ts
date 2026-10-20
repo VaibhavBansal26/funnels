@@ -7,7 +7,7 @@ import { moveItem, reorderKey, toOrders } from './reorder';
 import { buildPatch, validateSettings } from './SettingsTab';
 import { validateHostname } from './DomainsPage';
 import { validateWebhook } from './WebhooksPage';
-import { validatePageSettings } from '../builder/PageSettingsDialog';
+import { validatePageSettings } from '../builder/dialogs';
 import { validateLogin, validateRegister } from '../auth/validate';
 
 describe('step reordering', () => {
@@ -59,7 +59,7 @@ describe('form validation helpers', () => {
     expect(validateSettings({ ...base, status: 'live' }).domainId).toBeDefined();
     expect(validateSettings({ ...base, favicon: 'javascript:x' }).favicon).toBeDefined();
     expect(validateSettings(base)).toEqual({});
-    expect(validatePageSettings({ name: '', path: 'x', title: '', seo: '', css: '', header: '', footer: '', accent: 'red;x', background: '', font: 'system' })).toMatchObject({ name: expect.any(String), path: expect.any(String), accent: expect.any(String) });
+    expect(validatePageSettings({ name: '', path: 'x', title: '', seo: '', css: '', header: '', footer: '', accent: 'red;x', background: '', font: '' })).toMatchObject({ name: expect.any(String), path: expect.any(String), accent: expect.any(String) });
     expect(validateResolutions([{ path: '/a', resolved_path: '/a-1' }, { path: '/b', resolved_path: '/A-1/' }])['/b']).toContain('Already used');
     expect(validateResolutions([{ path: '/a', resolved_path: 'bad' }])['/a']).toBeDefined();
     expect(validateResolutions([{ path: '/a', resolved_path: '/a-1' }])).toEqual({});

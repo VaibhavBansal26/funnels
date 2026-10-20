@@ -1,0 +1,137 @@
+/*
+ * Restyles the parts of GrapesJS that live in the app document (selection toolbar, badge, hover and selection outlines, drop indicator, resize handles,
+ * rich-text toolbar, canvas workspace). GrapesJS's own panels are not used at all: blocks, layers, styles and settings are the React panels.
+ * The page INSIDE the canvas iframe is styled only by the published page stylesheet (see editor/canvasCss.ts).
+ */
+.builder-canvas,
+.builder-canvas .gjs-editor-cont,
+.builder-canvas .gjs-editor {
+  --gjs-main-font: inherit;
+  --gjs-primary-color: var(--surface);
+  --gjs-secondary-color: var(--text);
+  --gjs-tertiary-color: var(--primary);
+  --gjs-quaternary-color: var(--primary);
+  --gjs-color-blue: var(--primary);
+  --gjs-placeholder-background-color: var(--primary);
+  font-family: inherit;
+}
+.builder-canvas .gjs-cv-canvas {
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+.builder-canvas .gjs-cv-canvas-bg {
+  background-color: var(--surface-3);
+  background-image: radial-gradient(color-mix(in srgb, var(--border-strong) 60%, transparent) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+.builder-canvas .gjs-frame-wrapper {
+  box-shadow: 0 0 0 1px var(--border), 0 10px 40px -12px rgb(15 23 42 / 0.35);
+  border-radius: 4px;
+  background: #fff;
+}
+.builder-canvas .gjs-frame-wrapper--anim {
+  transition: width 0.22s ease, height 0.22s ease;
+}
+
+/* hover and selection overlays */
+.builder-canvas .gjs-hlt {
+  outline: 1.5px solid color-mix(in srgb, var(--primary) 70%, transparent);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+.builder-canvas .gjs-badge {
+  background: var(--primary);
+  color: var(--primary-contrast);
+  font: 600 11px/1 'Inter Variable', system-ui, sans-serif;
+  padding: 4px 8px;
+  border-radius: 6px;
+  box-shadow: var(--shadow-sm);
+  letter-spacing: 0.01em;
+}
+.builder-canvas .gjs-toolbar {
+  background: var(--text);
+  border-radius: 8px;
+  padding: 2px;
+  width: max-content;
+  box-shadow: var(--shadow-pop);
+}
+.builder-canvas .gjs-toolbar-items {
+  display: flex;
+  gap: 1px;
+}
+.builder-canvas .gjs-toolbar-item {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--bg);
+  cursor: pointer;
+  font-size: 0;
+}
+.builder-canvas .gjs-toolbar-item:hover {
+  background: color-mix(in srgb, var(--bg) 22%, transparent);
+}
+.builder-canvas .gjs-toolbar-item[draggable='true'] {
+  cursor: grab;
+}
+.builder-canvas .gjs-toolbar-item svg {
+  pointer-events: none;
+}
+
+/* drop indicator while dragging */
+.builder-canvas .gjs-placeholder {
+  pointer-events: none;
+  z-index: 20;
+}
+.builder-canvas .gjs-placeholder-int {
+  background: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent);
+  border-radius: 2px;
+  min-height: 3px;
+  min-width: 3px;
+}
+
+/* resize handles */
+.builder-canvas .gjs-resizer-h {
+  background: var(--surface);
+  border: 2px solid var(--primary);
+  border-radius: 3px;
+  width: 11px;
+  height: 11px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* inline text editor toolbar */
+.builder-canvas .gjs-rte-toolbar {
+  background: var(--text);
+  border: 0;
+  border-radius: 8px;
+  padding: 2px;
+  box-shadow: var(--shadow-pop);
+  z-index: 40;
+}
+.builder-canvas .gjs-rte-actionbar {
+  display: flex;
+  gap: 1px;
+}
+.builder-canvas .gjs-rte-action {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: var(--bg);
+  cursor: pointer;
+}
+.builder-canvas .gjs-rte-action:hover {
+  background: color-mix(in srgb, var(--bg) 22%, transparent);
+}
+.builder-canvas .gjs-rte-active {
+  background: var(--primary);
+  color: var(--primary-contrast);
+}

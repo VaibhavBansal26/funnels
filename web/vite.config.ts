@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
@@ -5,17 +6,17 @@ import { defineConfig } from 'vitest/config';
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      // The page block model (schema, sanitiser, deterministic renderer) is shared source: the builder canvas renders with the very same code the server uses.
-      '@blocks': r('../server/src/blocks/index.ts'),
+      // The page model (project cleaning, props schemas, component markup, base CSS) is shared source: the builder canvas renders with the very same code the server uses.
+      '@pagemodel': r('../server/src/pagemodel/shared/index.ts'),
       zod: r('./node_modules/zod'),
     },
   },
   server: {
-    port: 5173,
-    proxy: { '/api': 'http://localhost:3000', '/preview': 'http://localhost:3000', '/beacon.js': 'http://localhost:3000' },
+    port: Number(process.env.VITE_PORT ?? 5173),
+    proxy: Object.fromEntries(['/api', '/preview', '/uploads', '/beacon.js'].map((p) => [p, process.env.API_ORIGIN ?? 'http://localhost:3000'])),
   },
   build: { outDir: 'dist', sourcemap: false, chunkSizeWarningLimit: 700 },
   test: {

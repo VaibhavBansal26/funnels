@@ -17,7 +17,7 @@ export interface FunnelSummary {
   headerTrackingCode: string | null; footerTrackingCode: string | null;
   domain: DomainRef | null; tags: Tag[]; stepCount: number;
   stats: { visits: number; optins: number; orders: number; sales: number };
-  thumbnail: { heading: string; from: string; to: string };
+  thumbnail: { heading: string; from: string; to: string; stepId: string | null };
   createdAt: string; updatedAt: string; deletedAt: string | null;
 }
 export interface Step {
@@ -84,7 +84,7 @@ export interface Analytics {
 }
 export interface Insights { metrics: Analytics; weakestStepId: string | null; summary: string; actions: { title: string; detail: string }[]; source: string }
 export interface Backup { id: string; version: number; label: string; checksum: string; createdAt: string }
-export interface PageData { stepId: string; version: number; checksum: string; updatedAt: string; doc: unknown }
+export interface PageData { stepId: string; version: number; checksum: string; updatedAt: string; format: 'grapesjs'; scriptsAllowed: boolean; doc: unknown }
 
 export interface PathConflict { path: string; resolved_path: string; conflictsWith?: { funnelName: string; stepName: string } }
 

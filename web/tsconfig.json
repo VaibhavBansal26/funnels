@@ -15,7 +15,7 @@
     "types": ["node", "vite/client", "@testing-library/jest-dom"],
     "baseUrl": ".",
     "paths": {
-      "@blocks": ["../server/src/blocks/index.ts"],
+      "@pagemodel": ["../server/src/pagemodel/shared/index.ts"],
       "zod": ["./node_modules/zod"]
     }
   },
