@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { linkFromMail, register } from './helpers.js';
+import { linkFromMail, register, signOut } from './helpers.js';
 import { totp } from './totp.js';
 
 test('invite a viewer by email: they accept, sign in with the role, and the UI and the server both hold them to it', async ({ page, browser }) => {
@@ -21,7 +21,9 @@ test('invite a viewer by email: they accept, sign in with the role, and the UI a
   await g.getByLabel('Choose a password').fill('correct horse battery');
   await g.getByRole('button', { name: 'Accept invitation' }).click();
   await expect(g.getByRole('heading', { name: 'My Funnels' })).toBeVisible();
-  await expect(g.getByText('Viewer', { exact: true }).first()).toBeVisible();
+  await g.getByRole('button', { name: 'Account menu' }).click(); // the role is shown in the account menu
+  await expect(g.getByRole('menu').getByText('Viewer', { exact: true })).toBeVisible();
+  await g.keyboard.press('Escape');
 
   // the interface follows the role...
   await g.goto('/domains');
@@ -91,7 +93,7 @@ test('two-factor authentication: enrol with an authenticator code, sign out, sig
   await codesDialog.getByRole('button', { name: 'I saved them' }).click();
   await expect(page.getByText('Two-factor authentication is on', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await signOut(page);
   await page.getByLabel('Email').fill(u.email);
   await page.getByLabel('Password').fill('correct horse battery');
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -104,14 +106,14 @@ test('two-factor authentication: enrol with an authenticator code, sign out, sig
   await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible(); // back where they were before signing out
 
   // a recovery code signs in once
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await signOut(page);
   await page.getByLabel('Email').fill(u.email);
   await page.getByLabel('Password').fill('correct horse battery');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.getByLabel('Authentication code').fill(recovery[0]!);
   await page.getByRole('button', { name: 'Verify' }).click();
   await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible(); // back where they were before signing out
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await signOut(page);
   await page.getByLabel('Email').fill(u.email);
   await page.getByLabel('Password').fill('correct horse battery');
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -130,7 +132,7 @@ test('forgotten password: the emailed link sets a new one, the old one stops wor
   await o.getByRole('button', { name: 'Sign in' }).click();
   await expect(o.getByRole('heading', { name: 'My Funnels' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await signOut(page);
   await page.getByRole('link', { name: 'Forgot password?' }).click();
   await expect(page.getByRole('heading', { name: 'Reset your password' })).toBeVisible();
   await page.getByLabel('Email').fill(u.email);

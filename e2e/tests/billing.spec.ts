@@ -16,10 +16,8 @@ test('Settings shows plan, usage and payment status; an order from a sales funne
     const f = await (await fetch('/api/templates/sales-page-bump-upsell/use', { method: 'POST', headers: h })).json();
     const step = f.steps[0];
     const doc = (await (await fetch(`/api/funnels/${f.id}/steps/${step.id}/page`, { headers: h })).json()).doc;
-    const found: { id: string; orderBump?: boolean }[] = [];
-    const walk = (list: any[]) => list.forEach((b) => { if (b.type === 'checkout') found.push(b); if (b.children) walk(b.children); if (b.columns) b.columns.forEach((c: any) => walk(c.children)); });
-    walk(doc.blocks);
-    const main = found.find((b) => !b.orderBump)!;
+    const found: { id: string; type: string; orderBump?: boolean; oneClickUpsell?: boolean }[] = doc.products; // derived by the server from the page's checkout blocks
+    const main = found.find((b) => b.type === 'checkout' && !b.orderBump && !b.oneClickUpsell)!;
     const r = await fetch(`/api/public/checkout/${f.id}/${step.id}/${main.id}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'buyer@example.com', name: 'Bea Buyer' }) });
     return { funnelId: f.id as string, status: r.status };
   });

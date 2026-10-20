@@ -17,6 +17,8 @@ export interface TraitProps {
 }
 
 const val = <T,>(t: Trait, fallback: T): T => (t.getValue() as T | undefined) ?? fallback;
+/** The trait's CURRENT value merged over what this render saw: two edits in quick succession (two fields, two keystrokes) must not overwrite each other with a stale copy. */
+const live = <T extends object>(t: Trait, seen: T): T => ({ ...seen, ...((t.getValue() as T | undefined) ?? {}) });
 const Field = ({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) => (
   <div className="flex flex-col gap-1">
     <span className="text-[0.8rem] font-medium text-muted">{label}</span>
@@ -123,9 +125,9 @@ export function VideoTrait({ trait }: TraitProps) {
   const parsed = parseVideoUrl(v.url);
   return (
     <div className="flex flex-col gap-2.5">
-      <Row label="Video URL"><input aria-label="Video URL" aria-invalid={!parsed || undefined} className={inputCls} value={v.url} onChange={(e) => trait.setValue({ ...v, url: e.target.value })} placeholder="https://www.youtube.com/watch?v=…" /></Row>
+      <Row label="Video URL"><input aria-label="Video URL" aria-invalid={!parsed || undefined} className={inputCls} value={v.url} onChange={(e) => trait.setValue({ ...live(trait, v), url: e.target.value })} placeholder="https://www.youtube.com/watch?v=…" /></Row>
       <p role="status" className={parsed ? 'text-[0.75rem] text-ok' : 'text-[0.75rem] text-danger'}>{parsed ? `${parsed.kind === 'mp4' ? 'MP4 file' : parsed.kind === 'youtube' ? 'YouTube' : 'Vimeo'} video` : 'Only YouTube, Vimeo and https .mp4 links are allowed.'}</p>
-      <Row label="Title"><input aria-label="Video title" className={inputCls} value={v.title} onChange={(e) => trait.setValue({ ...v, title: e.target.value })} /></Row>
+      <Row label="Title"><input aria-label="Video title" className={inputCls} value={v.title} onChange={(e) => trait.setValue({ ...live(trait, v), title: e.target.value })} /></Row>
     </div>
   );
 }
@@ -134,7 +136,7 @@ export function VideoTrait({ trait }: TraitProps) {
 const toLocal = (iso?: string) => (iso && !Number.isNaN(Date.parse(iso)) ? new Date(Date.parse(iso) - new Date(iso).getTimezoneOffset() * 60_000).toISOString().slice(0, 16) : '');
 export function CountdownTrait({ trait }: TraitProps) {
   const v = val<Record<string, unknown>>(trait, { mode: 'evergreen', minutes: 30 });
-  const set = (n: Record<string, unknown>) => trait.setValue({ ...v, ...n });
+  const set = (n: Record<string, unknown>) => trait.setValue({ ...live(trait, v), ...n });
   const issues = (() => { const r = CountdownPropsSchema.safeParse(v); return r.success ? [] : r.error.issues.map((i) => i.message); })();
   return (
     <div className="flex flex-col gap-2.5">
@@ -151,8 +153,8 @@ export function ProgressTrait({ trait }: TraitProps) {
   const v = val<{ value: number; label?: string }>(trait, { value: 50 });
   return (
     <div className="flex flex-col gap-2.5">
-      <Row label={`Value ${v.value}%`}><Slider min={0} max={100} step={1} value={[v.value]} aria-label="Progress value" onValueChange={([n]) => trait.setValue({ ...v, value: n })} /></Row>
-      <Row label="Label"><input aria-label="Progress label" className={inputCls} value={v.label ?? ''} onChange={(e) => trait.setValue({ ...v, label: e.target.value })} /></Row>
+      <Row label={`Value ${v.value}%`}><Slider min={0} max={100} step={1} value={[v.value]} aria-label="Progress value" onValueChange={([n]) => trait.setValue({ ...live(trait, v), value: n })} /></Row>
+      <Row label="Label"><input aria-label="Progress label" className={inputCls} value={v.label ?? ''} onChange={(e) => trait.setValue({ ...live(trait, v), label: e.target.value })} /></Row>
     </div>
   );
 }
@@ -173,9 +175,9 @@ const FIELD_TYPES = [{ value: 'name', label: 'Name' }, { value: 'email', label: 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').replace(/^[^a-z]+/, '').slice(0, 30) || 'field';
 export function FormTrait({ trait }: TraitProps) {
   const f = val<FormProps>(trait, { name: 'Form', fields: [], submitLabel: 'Submit', consent: { enabled: false, text: '' }, success: { type: 'next_step' } });
-  const set = (n: Partial<FormProps>) => trait.setValue({ ...f, ...n });
-  const setField = (i: number, n: Record<string, unknown>) => set({ fields: f.fields.map((x, k) => (k === i ? { ...x, ...n } : x)) as FormProps['fields'] });
-  const move = (i: number, d: -1 | 1) => { const a = [...f.fields]; const j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j]!, a[i]!]; set({ fields: a }); };
+  const set = (n: Partial<FormProps>) => trait.setValue({ ...live(trait, f), ...n });
+  const setField = (i: number, n: Record<string, unknown>) => set({ fields: live(trait, f).fields.map((x, k) => (k === i ? { ...x, ...n } : x)) as FormProps['fields'] });
+  const move = (i: number, d: -1 | 1) => { const a = [...live(trait, f).fields]; const j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j]!, a[i]!]; set({ fields: a }); };
   const parsed = FormPropsSchema.safeParse(f);
   const issues = parsed.success ? [] : parsed.error.issues.map((i) => i.message);
   return (
@@ -189,7 +191,7 @@ export function FormTrait({ trait }: TraitProps) {
               <input aria-label={`Field ${i + 1} label`} className={inputCls} value={x.label} onChange={(e) => setField(i, { label: e.target.value })} />
               <Button variant="ghost" size="icon-sm" aria-label="Move field up" disabled={i === 0} onClick={() => move(i, -1)}><ArrowUp /></Button>
               <Button variant="ghost" size="icon-sm" aria-label="Move field down" disabled={i === f.fields.length - 1} onClick={() => move(i, 1)}><ArrowDown /></Button>
-              <Button variant="ghost" size="icon-sm" aria-label={`Remove field ${x.label}`} disabled={f.fields.length <= 1} onClick={() => set({ fields: f.fields.filter((_, k) => k !== i) })}><Trash2 /></Button>
+              <Button variant="ghost" size="icon-sm" aria-label={`Remove field ${x.label}`} disabled={f.fields.length <= 1} onClick={() => set({ fields: live(trait, f).fields.filter((_, k) => k !== i) })}><Trash2 /></Button>
             </div>
             <div className="mt-1.5 grid grid-cols-[1fr_auto] items-center gap-2">
               <input aria-label={`Field ${i + 1} placeholder`} className={inputCls} placeholder="Placeholder (optional)" value={x.placeholder ?? ''} onChange={(e) => setField(i, { placeholder: e.target.value || undefined })} />
@@ -214,7 +216,7 @@ export function FormTrait({ trait }: TraitProps) {
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'SEK', 'NZD', 'INR'].map((c) => ({ value: c, label: c }));
 export function ProductTrait({ trait }: TraitProps) {
   const p = val<ProductProps>(trait, { productName: '', price: 0, currency: 'USD', buttonLabel: 'Buy now', orderBump: false, oneClickUpsell: false, success: { type: 'next_step' } });
-  const set = (n: Partial<ProductProps>) => trait.setValue({ ...p, ...n });
+  const set = (n: Partial<ProductProps>) => trait.setValue({ ...live(trait, p), ...n });
   const role = p.orderBump ? 'bump' : p.oneClickUpsell ? 'upsell' : 'main';
   const parsed = ProductPropsSchema.safeParse(p);
   const issues = parsed.success ? [] : parsed.error.issues.map((i) => i.message);
@@ -243,7 +245,7 @@ export function CodeTrait({ trait }: TraitProps) {
     return <p className="rounded-md bg-warn-soft p-2.5 text-[0.8rem] text-warn">Scripts and raw HTML are only for workspace owners with “custom scripts” enabled in Settings. Anyone can see this block; saving removes scripts you did not write.</p>;
   }
   const area = (key: 'html' | 'css' | 'js', label: string) => (
-    <Field label={label}><Textarea aria-label={label} spellCheck={false} className="min-h-24 font-mono text-[0.78rem]" value={c[key]} onChange={(e) => trait.setValue({ ...c, [key]: e.target.value })} /></Field>
+    <Field label={label}><Textarea aria-label={label} spellCheck={false} className="min-h-24 font-mono text-[0.78rem]" value={c[key]} onChange={(e) => trait.setValue({ ...live(trait, c), [key]: e.target.value })} /></Field>
   );
   return (
     <div className="flex flex-col gap-2.5">

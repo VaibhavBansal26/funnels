@@ -25,18 +25,42 @@ export async function createLeadMagnet(page: Page) {
   return { funnelId };
 }
 
-/** Opens the builder for the first step of the current funnel and waits until the canvas has rendered. */
+/** Opens the builder for the first step of the current funnel and waits until the editor and the canvas are ready. */
 export async function openBuilder(page: Page) {
   await page.getByRole('link', { name: 'Edit page' }).first().click();
+  await page.waitForSelector('[data-builder-ready="1"]');
   await expect(page.getByRole('toolbar', { name: 'Builder' })).toBeVisible();
-  await expect(canvas(page).getByRole('heading', { level: 1 }).first()).toBeVisible();
+  await expect(canvas(page).locator('h1').first()).toBeVisible();
 }
 
-export const canvas = (page: Page) => page.frameLocator('iframe[title^="Live preview"]');
+/** The editing canvas: GrapesJS renders the page into this iframe. */
+export const canvas = (page: Page) => page.frameLocator('iframe.gjs-frame');
 
-/** Texts of the top-level children of the first section in the Structure tree, in order. */
-export async function outlineLabels(page: Page): Promise<string[]> {
-  return page.getByRole('tree', { name: 'Page structure' }).getByRole('treeitem').evaluateAll((els) => els.map((e) => (e.getAttribute('aria-label') ?? e.textContent ?? '').replace(/^[\s⋮]+/, '').trim()));
+/** The editor instance, for READING state in assertions (every action in the tests goes through real mouse and keyboard input). */
+export const readEditor = <T>(page: Page, fn: (ed: any) => T): Promise<T> => page.evaluate(`(${fn.toString()})(window.__editor)`) as Promise<T>;
+
+/** Names of the top-level sections in the Layers tree, in order. */
+export async function layerLabels(page: Page): Promise<string[]> {
+  return page.getByRole('tree', { name: 'Page layers' }).getByRole('treeitem').evaluateAll((els) => els.map((e) => (e.getAttribute('aria-label') ?? e.textContent ?? '').trim()));
+}
+
+/** Real-mouse drag of a block tile from the Blocks panel to a point inside the canvas (page coordinates), with the live placeholder in between. */
+export async function dragBlock(page: Page, blockId: string, to: { x: number; y: number }, search = '') {
+  if (search) await page.getByLabel('Search blocks').fill(search);
+  const tile = page.locator(`[data-block="${blockId}"]`);
+  await tile.scrollIntoViewIfNeeded();
+  const tb = (await tile.boundingBox())!;
+  // The very first synthesised drag after the editor loads is ignored when the pointer has never been over the canvas (the second one always works);
+  // a person's pointer has always crossed it. Move over it once before pressing, as a user would.
+  const frame = (await page.locator('iframe.gjs-frame').boundingBox())!;
+  await page.mouse.move(frame.x + frame.width / 2, frame.y + 40);
+  await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.move(tb.x + tb.width / 2 + 30, tb.y + 20, { steps: 4 });
+  await page.mouse.move(to.x, to.y, { steps: 18 });
+  await page.waitForTimeout(250);
+  await page.mouse.up();
+  await page.waitForTimeout(400);
 }
 
 /** Adds a domain on the Domains page and verifies it (the e2e server answers DNS for *.e2e.test). */
@@ -67,4 +91,10 @@ export async function linkFromMail(to: string): Promise<string> {
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error(`no mail arrived for ${to}`);
+}
+
+/** Signs the current user out through the account menu. */
+export async function signOut(page: Page) {
+  await page.getByRole('button', { name: 'Account menu' }).click();
+  await page.getByRole('menuitem', { name: 'Sign out' }).click();
 }

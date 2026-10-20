@@ -1,6 +1,6 @@
 // Adapted from the legacy builder (see docs/PROVENANCE.md): getEditorConfig (canvas, devices, undo manager, layer / style / selector managers rendered by the
 // host app), the Desktop / Mobile device list (plus Tablet), and the editor-only outline colours (section green, row blue, element orange).
-import grapesjs, { type Editor } from 'grapesjs';
+import grapesjs, { type Component, type Editor } from 'grapesjs';
 import 'grapesjs/dist/css/grapes.min.css';
 import { CANVAS_CSS, installFramePolicy } from './canvasCss';
 import { installCommands, installRte, installToolbar } from './commands';
@@ -28,6 +28,8 @@ export function createEditor(container: HTMLElement | null, env: BuilderEnv, opt
     height: '100%',
     width: 'auto',
     fromElement: false,
+    telemetry: false, // GrapesJS would otherwise report usage to its own servers: nothing leaves this app
+    cssIcons: '', // and would load an icon font from a CDN (blocked by the app CSP, and not needed: icons are inline SVG)
     storageManager: false,
     noticeOnUnload: false,
     avoidInlineStyle: true,
@@ -72,6 +74,11 @@ export function createEditor(container: HTMLElement | null, env: BuilderEnv, opt
       body.id = 'fnroot';
       body.classList.add('fn-page');
     }
+  });
+  // A block dropped from the panel becomes the selection, so the inspector is ready for it (the same as inserting it with a click).
+  editor.on('block:drag:stop', (c: Component | undefined) => {
+    const one = Array.isArray(c) ? c[0] : c;
+    if (one) setTimeout(() => editor.select(one), 0);
   });
   editor.on('load', () => setWrapperRules(editor));
   editor.fnDispose = () => {

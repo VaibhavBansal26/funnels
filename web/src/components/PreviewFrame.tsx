@@ -8,8 +8,18 @@ export const DEVICE_WIDTH: Record<Device, string> = { desktop: '100%', tablet: '
  * Shows server-rendered page HTML in an iframe with `sandbox=""`: no scripts, no same-origin access, no forms, no popups. The HTML comes from
  * the stored page (`/api/funnels/:id/steps/:sid/html`, templates and backups), never from the browser, and is inert even if it were hostile.
  */
+/**
+ * Previews are pictures of the page, not the page: scripts are left out (the sandbox would refuse them and log each one) and so are embedded players
+ * (YouTube, Vimeo, mp4), which would otherwise make a third-party request for every card on screen. The video box keeps its size and its dark background.
+ */
+export const inertHtml = (html: string): string =>
+  html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>/gi, '')
+    .replace(/<video\b[^>]*>[\s\S]*?<\/video\s*>/gi, '');
+
 export function HtmlFrame({ html, title, device = 'desktop', height = 480 }: { html: string; title: string; device?: Device; height?: number }) {
-  return <iframe title={title} sandbox="" srcDoc={html} style={{ width: DEVICE_WIDTH[device], maxWidth: '100%', height }} className="mx-auto block rounded-lg border border-border bg-white" />;
+  return <iframe title={title} sandbox="" srcDoc={inertHtml(html)} style={{ width: DEVICE_WIDTH[device], maxWidth: '100%', height }} className="mx-auto block rounded-lg border border-border bg-white" />;
 }
 
 /** True once the element has been near the viewport (thumbnails of long lists load lazily). */
@@ -42,7 +52,7 @@ export function ScaledPage({ html, title, className, width = 1280, height = 800 
   }, [width]);
   return (
     <div ref={box} className={cn('relative overflow-hidden bg-white', className)} style={{ aspectRatio: `${width} / ${height}` }}>
-      <iframe title={title} sandbox="" srcDoc={html} tabIndex={-1} loading="lazy" className="pointer-events-none absolute top-0 left-0 origin-top-left border-0" style={{ width, height, transform: `scale(${scale})` }} />
+      <iframe title={title} sandbox="" srcDoc={inertHtml(html)} tabIndex={-1} loading="lazy" className="pointer-events-none absolute top-0 left-0 origin-top-left border-0" style={{ width, height, transform: `scale(${scale})` }} />
     </div>
   );
 }

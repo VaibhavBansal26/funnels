@@ -29,6 +29,7 @@ export default defineConfig({
       PORT: String(PORT),
       DATABASE_PATH: ':memory:',
       JWT_SECRET: 'e2e-secret-e2e-secret-e2e-secret-123456',
+      DATA_ENCRYPTION_KEY: 'e2e-data-key-e2e-data-key-e2e-data-key-1234', // production mode: the analytics identity pepper is encrypted at rest and needs it
       WEB_DIST: fileURLToPath(new URL('../web/dist', import.meta.url)),
       APP_PUBLIC_URL: BASE,
       APP_PUBLIC_CNAME_TARGET: 'sites.e2e.test',
