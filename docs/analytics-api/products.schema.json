@@ -1,0 +1,551 @@
+{
+  "$id": "https://funnels.example/analytics-api/v1/products.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "description": "Catalog product id; null for orders that predate the catalog and could not be matched",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "exponent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3,
+            "description": "Currency decimals: amounts are major units rounded to this many places"
+          },
+          "orders": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Order lines: an order bump or upsell is its own order"
+          },
+          "units": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "gross": {
+            "type": "number",
+            "description": "Booked amount after promotion codes, minus amounts lost to lost disputes (the same meaning as gross on funnels)"
+          },
+          "refunded": {
+            "type": "number",
+            "description": "Refunds on these orders (as of now), attributed to the order date"
+          },
+          "disputed_lost": {
+            "type": "number",
+            "description": "Amounts lost to lost disputes on these orders (already out of gross)"
+          },
+          "net": {
+            "type": "number",
+            "description": "gross - refunded"
+          },
+          "discount": {
+            "type": "number",
+            "description": "Promotion code discounts (already out of gross)"
+          },
+          "aov": {
+            "type": "number",
+            "description": "gross / orders"
+          },
+          "refund_rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "refunded / gross"
+          },
+          "refunded_orders": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "roles": {
+            "type": "object",
+            "properties": {
+              "main": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "bump": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "upsell": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "downsell": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "main",
+              "bump",
+              "upsell",
+              "downsell"
+            ],
+            "additionalProperties": {},
+            "description": "Orders by role"
+          },
+          "customers": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "new": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "First ever order in the workspace fell in the range"
+              },
+              "repeat": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "total",
+              "new",
+              "repeat"
+            ],
+            "additionalProperties": {}
+          },
+          "checkout": {
+            "type": "object",
+            "properties": {
+              "visitors": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "orders": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "conversion": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "main-offer orders / unique visitors of the checkout steps"
+              }
+            },
+            "required": [
+              "visitors",
+              "orders",
+              "conversion"
+            ],
+            "additionalProperties": {}
+          },
+          "take_rates": {
+            "type": "object",
+            "properties": {
+              "bump": {
+                "type": "object",
+                "properties": {
+                  "offered": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "taken": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "rate": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "taken / offered (0 when nothing was offered)"
+                  }
+                },
+                "required": [
+                  "offered",
+                  "taken",
+                  "rate"
+                ],
+                "additionalProperties": {}
+              },
+              "upsell": {
+                "type": "object",
+                "properties": {
+                  "offered": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "taken": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "rate": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "taken / offered (0 when nothing was offered)"
+                  }
+                },
+                "required": [
+                  "offered",
+                  "taken",
+                  "rate"
+                ],
+                "additionalProperties": {}
+              },
+              "downsell": {
+                "type": "object",
+                "properties": {
+                  "offered": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "taken": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "rate": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "taken / offered (0 when nothing was offered)"
+                  }
+                },
+                "required": [
+                  "offered",
+                  "taken",
+                  "rate"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "bump",
+              "upsell",
+              "downsell"
+            ],
+            "additionalProperties": {}
+          },
+          "top_funnels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "funnel_id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "orders": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "gross": {
+                  "type": "number",
+                  "description": "Major currency units, in the row currency (never summed across currencies)"
+                },
+                "refunded": {
+                  "type": "number",
+                  "description": "Major currency units, in the row currency (never summed across currencies)"
+                },
+                "net": {
+                  "type": "number",
+                  "description": "Major currency units, in the row currency (never summed across currencies)"
+                }
+              },
+              "required": [
+                "funnel_id",
+                "name",
+                "orders",
+                "gross",
+                "refunded",
+                "net"
+              ],
+              "additionalProperties": {}
+            }
+          },
+          "series": {
+            "description": "Zero-filled intervals; only with include=series",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "t": {
+                  "type": "string",
+                  "description": "UTC ISO-8601 timestamp"
+                },
+                "orders": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "units": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "gross": {
+                  "type": "number",
+                  "description": "Major currency units, in the row currency (never summed across currencies)"
+                },
+                "refunded": {
+                  "type": "number",
+                  "description": "Major currency units, in the row currency (never summed across currencies)"
+                },
+                "disputed_lost": {
+                  "type": "number",
+                  "description": "Major currency units, in the row currency (never summed across currencies)"
+                },
+                "net": {
+                  "type": "number",
+                  "description": "Major currency units, in the row currency (never summed across currencies)"
+                }
+              },
+              "required": [
+                "t",
+                "orders",
+                "units",
+                "gross",
+                "refunded",
+                "disputed_lost",
+                "net"
+              ],
+              "additionalProperties": {}
+            }
+          }
+        },
+        "required": [
+          "product_id",
+          "name",
+          "currency",
+          "exponent",
+          "orders",
+          "units",
+          "gross",
+          "refunded",
+          "disputed_lost",
+          "net",
+          "discount",
+          "aov",
+          "refund_rate",
+          "refunded_orders",
+          "roles",
+          "customers",
+          "checkout",
+          "take_rates",
+          "top_funnels"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "next_cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "from": {
+      "type": "string"
+    },
+    "to": {
+      "type": "string"
+    },
+    "tz": {
+      "type": "string"
+    },
+    "interval": {
+      "type": "string",
+      "enum": [
+        "day",
+        "week",
+        "month"
+      ]
+    },
+    "totals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "exponent": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "orders": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "units": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "gross": {
+            "type": "number",
+            "description": "Major currency units, in the row currency (never summed across currencies)"
+          },
+          "refunded": {
+            "type": "number",
+            "description": "Major currency units, in the row currency (never summed across currencies)"
+          },
+          "disputed_lost": {
+            "type": "number",
+            "description": "Major currency units, in the row currency (never summed across currencies)"
+          },
+          "net": {
+            "type": "number",
+            "description": "Major currency units, in the row currency (never summed across currencies)"
+          },
+          "discount": {
+            "type": "number",
+            "description": "Major currency units, in the row currency (never summed across currencies)"
+          },
+          "aov": {
+            "type": "number",
+            "description": "Major currency units, in the row currency (never summed across currencies)"
+          },
+          "refund_rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Fraction between 0 and 1"
+          },
+          "customers": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "new": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "repeat": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "total",
+              "new",
+              "repeat"
+            ],
+            "additionalProperties": {}
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "t": {
+                  "type": "string",
+                  "description": "UTC ISO-8601 timestamp"
+                },
+                "orders": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "units": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "gross": {
+                  "type": "number",
+                  "description": "Major currency units, in the row currency (never summed across currencies)"
+                },
+                "refunded": {
+                  "type": "number",
+                  "description": "Major currency units, in the row currency (never summed across currencies)"
+                },
+                "disputed_lost": {
+                  "type": "number",
+                  "description": "Major currency units, in the row currency (never summed across currencies)"
+                },
+                "net": {
+                  "type": "number",
+                  "description": "Major currency units, in the row currency (never summed across currencies)"
+                }
+              },
+              "required": [
+                "t",
+                "orders",
+                "units",
+                "gross",
+                "refunded",
+                "disputed_lost",
+                "net"
+              ],
+              "additionalProperties": {}
+            }
+          }
+        },
+        "required": [
+          "currency",
+          "exponent",
+          "orders",
+          "units",
+          "gross",
+          "refunded",
+          "disputed_lost",
+          "net",
+          "discount",
+          "aov",
+          "refund_rate",
+          "customers"
+        ],
+        "additionalProperties": {}
+      },
+      "description": "One row per currency: currencies are never added together"
+    }
+  },
+  "required": [
+    "data",
+    "next_cursor",
+    "from",
+    "to",
+    "tz",
+    "interval",
+    "totals"
+  ],
+  "additionalProperties": {}
+}

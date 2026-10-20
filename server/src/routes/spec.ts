@@ -22,6 +22,9 @@ import { RefundInput } from '../services/stripepay.js';
 import { PriceInput, PricePatch, ProductInput, ProductPatch, ProductQuery } from '../services/catalog.js';
 import { PaymentSettingsPatch } from '../services/paymentsettings.js';
 import { WizardInput } from '../services/paymentswizard.js';
+import { ProductsExportQuery, ProductsQuery } from '../services/productanalytics.js';
+import { SummaryRequest } from '../services/analyticssummary.js';
+import { ApiProductsQuery } from '../services/analyticsproducts.js';
 import { DisputeQuery } from '../services/disputes.js';
 import { AuditQuery } from '../services/audit.js';
 import { AcceptInput, InvitationInput, LookupQuery } from '../services/invitations.js';
@@ -33,6 +36,14 @@ import { AdminAddInput, DeleteWorkspaceInput, ImpersonateInput, PlatformAuditQue
 import { AnnouncementInput, AnnouncementPatch } from '../services/announcements.js';
 import { FlagInput, OverrideInput } from '../services/flags.js';
 import { SubjectInput } from '../services/gdpr.js';
+import { AttributionInput } from '../services/attribution.js';
+import { ImportQuery, MapInput, SpendInput, SpendQuery } from '../services/adspend.js';
+import { AdsQuery, AttributionQuery } from '../services/adsreport.js';
+import { DeliveryQuery, IntegrationInput, IntegrationPatch } from '../services/integrations.js';
+import { PixelSettings } from '../ads/pixelConfig.js';
+import { ApiAdsQuery, ApiAttributionQuery } from '../services/analyticsapi.js';
+import { ConnectInput, SettingsInput, UnpublishInput } from '../services/publishing.js';
+import { DisconnectQuery } from './publishing.js';
 
 /**
  * THE route declaration. One row per HTTP operation, read by:
@@ -107,6 +118,7 @@ export const OPERATIONS: Operation[] = [
   { method: 'POST', path: '/api/public/events', auth: 'public', tag: 'public', summary: 'Record a page view or opt-in (accepted into a write-behind buffer)', body: PublicEventInput, limits: ['ip.global'], inHandler: ['public.events', 'ingest.workspace'], status: 202, notes: 'Keyed by IP and the funnelId in the body.' },
   { method: 'POST', path: '/api/public/forms/:funnelId/:stepId/:blockId', auth: 'public', tag: 'public', summary: 'Submit a lead form', body: SubmitInput, limits: ['ip.global', 'public.forms'], scope: 'funnelId' },
   { method: 'POST', path: '/api/public/checkout/:funnelId/:stepId/:blockId', auth: 'public', tag: 'public', summary: 'Checkout (main offer, bumps, one-click upsell)', body: CheckoutInput, limits: ['ip.global', 'public.checkout'], scope: 'funnelId' },
+  { method: 'POST', path: '/api/public/attribution', auth: 'public', tag: 'public', summary: 'Record a visitor\'s marketing touch (UTM parameters, click ids, referrer) and browser ids for ad attribution and server-side conversions', body: AttributionInput, limits: ['ip.global'], inHandler: ['public.events', 'ingest.workspace'], status: 202, notes: 'Every value is validated and length-capped; the workspace is derived from the funnel. Bots and previews are ignored.' },
   // auth and account
   make('POST', '/api/auth/register', 'public', 'auth', 'Create an account and its workspace', { body: RegisterInput, limits: ['ip.global', 'auth.attempts'], status: 201 }),
   make('POST', '/api/auth/login', 'public', 'auth', 'Log in', { body: LoginInput, limits: ['ip.global', 'auth.attempts'], inHandler: ['auth.failures.account', 'auth.failures.ip'] }),
@@ -166,6 +178,10 @@ export const OPERATIONS: Operation[] = [
   A('PATCH', '/api/funnels/:id/steps/:sid', 'funnels:write', 'steps', 'Update step settings', { body: StepPatch }),
   A('DELETE', '/api/funnels/:id/steps/:sid', 'funnels:write', 'steps', 'Delete a step', { status: 204 }),
   A('POST', '/api/funnels/:id/steps/:sid/duplicate', 'funnels:write', 'steps', 'Duplicate a step', { status: 201 }),
+  A('GET', '/api/funnels/:id/analytics/products', 'analytics:read', 'analytics', 'Product analytics of one funnel (see /api/analytics/products)', { query: ProductsQuery }),
+  A('GET', '/api/analytics/products', 'analytics:read', 'analytics', 'Product analytics for a date range and time zone: per product and currency orders, units, gross, refunded, disputed lost, net, AOV, refund rate, checkout conversion, bump and upsell take rates, new and repeat customers, zero-filled revenue series, top funnels and steps', { query: ProductsQuery }),
+  A('GET', '/api/analytics/products/export', 'analytics:read', 'analytics', 'The product table as CSV (formula-injection neutralised)', { query: ProductsExportQuery, cost: 5 }),
+  A('POST', '/api/analytics/summary', 'analytics:read', 'analytics', 'Summarise a period for the workspace, one funnel or one product: a short narrative and 3 prioritised actions grounded only in numbers computed from SQL (every number in the text is verified against that evidence; otherwise the deterministic narrator writes it)', { also: ['ai:use'], body: SummaryRequest, inHandler: ['ai.minute', 'ai.daily'] }),
   A('GET', '/api/funnels/:id/steps/:sid/analytics', 'analytics:read', 'analytics', 'Step analytics', { query: AnalyticsQuery }),
   A('GET', '/api/funnels/:id/steps/:sid/page', 'funnels:read', 'pages', 'Page document and version'),
   A('PUT', '/api/funnels/:id/steps/:sid/page', 'funnels:write', 'pages', 'Save the page document (optimistic concurrency on `version`)', { body: SaveInput, cost: 2 }),
@@ -269,6 +285,9 @@ export const OPERATIONS: Operation[] = [
   K('/api/v1/analytics/export/events', 'analytics:export', 'Events as NDJSON, one page per request (X-Next-Cursor), PII-free keys', { query: ExportQuery, notes: 'Lines are keyed with HMAC of the workspace identity pepper (visitor_key, contact_key); raw emails never appear.' }),
   K('/api/v1/analytics/export/leads', 'analytics:export', 'Leads as NDJSON, one page per request (X-Next-Cursor), PII-free keys', { query: ExportQuery }),
   K('/api/v1/analytics/export/funnel-structure', 'analytics:export', 'Funnels with their steps: block counts, word counts, order bump and upsell flags', { query: ApiListQuery }),
+  K('/api/v1/analytics/ads', 'analytics:read', 'Ad performance by campaign, source, funnel or day: spend, visits, leads, orders, revenue, CPL, CPA, ROAS, profit, in one currency', { query: ApiAdsQuery, notes: 'Dates are whole calendar days (YYYY-MM-DD). Ad spend belongs to live funnels: a test key sees none.' }),
+  K('/api/v1/analytics/attribution', 'analytics:read', 'Visits, leads, orders and revenue by source, medium, campaign or content for the first or last touch', { query: ApiAttributionQuery }),
+  K('/api/v1/analytics/products', 'analytics:read', 'Product analytics: orders, units, gross, refunded, disputed_lost, net, AOV, refund rate, checkout conversion, bump and upsell take rates, new and repeat customers and top funnels per product and currency (cursor pagination, include=series for zero-filled series)', { query: ApiProductsQuery }),
   // API keys and the identity pepper: managed by people with a session
   A('GET', '/api/v1/api-keys', 'api_keys:manage', 'api-keys', 'API keys (prefix, scopes, last use; never the secret)'),
   A('POST', '/api/v1/api-keys', 'api_keys:manage', 'api-keys', 'Create an API key; the secret is returned once', { body: ApiKeyInput, status: 201 }),
@@ -287,6 +306,46 @@ export const OPERATIONS: Operation[] = [
   A('GET', '/api/billing/connect', 'billing:read', 'billing', 'Connected Stripe account state (refreshed from Stripe)'),
   A('POST', '/api/billing/connect/start', 'billing:manage', 'billing', 'Start or resume Stripe Connect onboarding: returns the onboarding URL'),
   A('POST', '/api/billing/connect/disconnect', 'billing:manage', 'billing', 'Stop taking payments through the connected account', { status: 204 }),
+  A('POST', '/api/orders/:id/refund', 'orders:refund', 'orders', 'Refund an order, in full or in part (the refundable amount is reserved atomically)', { body: RefundInput, notes: 'Body is optional: no amount refunds what is left.' }),
+  A('GET', '/api/disputes', 'orders:read', 'orders', 'Stripe disputes (chargebacks) of the workspace: status, outcome, evidence due date, amount lost, Stripe dashboard link; orphans (payment not known yet) included', { query: DisputeQuery }),
+  // publishing to Cloudflare Pages (docs/CLOUDFLARE-PAGES.md)
+  A('GET', '/api/publishing/connection', 'publishing:manage', 'publishing', 'The workspace\'s Cloudflare connection (account id, masked token, status) and whether the platform account is available'),
+  A('PUT', '/api/publishing/connection', 'publishing:manage', 'publishing', 'Connect a Cloudflare account: verifies the token with a read call, stores it encrypted, never returns it', { body: ConnectInput, limits: [...WRITE, 'publishing.deploy'] }),
+  A('POST', '/api/publishing/connection/verify', 'publishing:manage', 'publishing', 'Check the stored token again', { limits: [...WRITE, 'publishing.deploy'] }),
+  A('DELETE', '/api/publishing/connection', 'publishing:manage', 'publishing', 'Disconnect Cloudflare (force=true switches funnels that use it back to this server)', { query: DisconnectQuery, status: 204 }),
+  A('GET', '/api/funnels/:id/publishing', 'funnels:read', 'publishing', 'Where a funnel is published: target, Pages project and URL, custom domain and its status, the live and latest deployment'),
+  A('PUT', '/api/funnels/:id/publishing', 'publishing:manage', 'publishing', 'Choose the target (this server or Cloudflare Pages); creates the Pages project and queues the first deployment when the funnel is live', { body: SettingsInput, limits: [...WRITE, 'publishing.deploy'] }),
+  A('POST', '/api/funnels/:id/publishing/redeploy', 'publishing:manage', 'publishing', 'Build and deploy the current state again, ending any rollback or unpublish hold', { limits: [...WRITE, 'publishing.deploy'], status: 202 }),
+  A('POST', '/api/funnels/:id/publishing/unpublish', 'publishing:manage', 'publishing', 'Take the site offline: replace it with a paused page, or delete the project the app created', { body: UnpublishInput, limits: [...WRITE, 'publishing.deploy'] }),
+  A('POST', '/api/funnels/:id/publishing/rollback/:did', 'publishing:manage', 'publishing', 'Make an earlier successful deployment the live one; automatic deployments then wait until Redeploy', { limits: [...WRITE, 'publishing.deploy'] }),
+  A('POST', '/api/funnels/:id/publishing/domain/refresh', 'publishing:manage', 'publishing', 'Read the custom domain status from Cloudflare now'),
+  A('GET', '/api/funnels/:id/publishing/deployments', 'funnels:read', 'publishing', 'Deployment history, newest first (status, version, time, errors)'),
+  A('GET', '/api/funnels/:id/publishing/deployments/:did', 'funnels:read', 'publishing', 'One deployment with its log'),
+  // ads: integrations, pixels, spend, reports (docs/ADS.md)
+  A('GET', '/api/integrations', 'integrations:manage', 'ads', 'Ad integrations (Meta, GA4, TikTok): pixel, masked token, last delivery status'),
+  A('POST', '/api/integrations', 'integrations:manage', 'ads', 'Connect an ad network for server-side conversions; the token is stored encrypted and never returned', { body: IntegrationInput, status: 201 }),
+  A('PATCH', '/api/integrations/:id', 'integrations:manage', 'ads', 'Rename, switch on or off, replace the token or set the test event code', { body: IntegrationPatch }),
+  A('DELETE', '/api/integrations/:id', 'integrations:manage', 'ads', 'Remove an integration and its delivery log', { status: 204 }),
+  A('POST', '/api/integrations/:id/test', 'integrations:manage', 'ads', 'Send one test event now (Meta and TikTok test event code, GA4 validation endpoint) and return the network\'s answer', { limits: [...WRITE, 'integrations.test'], notes: 'A real outbound call: limited to 10 per minute per workspace.' }),
+  A('GET', '/api/integrations/:id/deliveries', 'integrations:manage', 'ads', 'Delivery log of an integration, newest first (status, attempts, error; no personal data)', { query: DeliveryQuery }),
+  A('POST', '/api/integrations/deliveries/:did/retry', 'integrations:manage', 'ads', 'Send a failed or dead delivery again'),
+  A('GET', '/api/pixels', 'funnels:read', 'ads', 'Workspace default pixels and consent banner settings'),
+  A('PUT', '/api/pixels', 'integrations:manage', 'ads', 'Set the workspace default pixels and consent settings (pages are re-rendered)', { body: PixelSettings, cost: 3 }),
+  A('GET', '/api/funnels/:id/pixels', 'funnels:read', 'ads', 'Pixels and consent settings of a funnel, with the effective result'),
+  A('PUT', '/api/funnels/:id/pixels', 'integrations:manage', 'ads', 'Set the pixels and consent settings of a funnel (its pages are re-rendered)', { body: PixelSettings, cost: 2 }),
+  A('GET', '/api/funnels/:id/steps/:sid/pixels', 'funnels:read', 'ads', 'Pixels of one step, with the effective result'),
+  A('PUT', '/api/funnels/:id/steps/:sid/pixels', 'integrations:manage', 'ads', 'Set the pixels of one step (overrides the funnel)', { body: PixelSettings, cost: 2 }),
+  A('GET', '/api/ads/performance', 'ads:read', 'ads', 'Ad performance: spend, visits, leads, orders, revenue, CPL, CPA, ROAS and profit by campaign, source, funnel or day (one currency per report)', { query: AdsQuery }),
+  A('GET', '/api/ads/performance/export', 'ads:read', 'ads', 'The performance report as CSV (formula-injection safe)', { query: AdsQuery, cost: 5 }),
+  A('GET', '/api/ads/attribution', 'ads:read', 'ads', 'Visits, leads, orders and revenue by source, medium, campaign or content, first or last touch', { query: AttributionQuery }),
+  A('GET', '/api/ads/attribution/export', 'ads:read', 'ads', 'The attribution report as CSV', { query: AttributionQuery, cost: 5 }),
+  A('GET', '/api/ads/spend', 'ads:read', 'ads', 'Ad spend rows, newest day first (cursor pagination)', { query: SpendQuery }),
+  A('POST', '/api/ads/spend', 'ads:write', 'ads', 'Enter or correct one day of spend for a campaign (same day, source, account, campaign and currency replaces the amount)', { body: SpendInput }),
+  A('DELETE', '/api/ads/spend/:id', 'ads:write', 'ads', 'Delete a spend row', { status: 204 }),
+  A('POST', '/api/ads/spend/import', 'ads:write', 'ads', 'Import spend from CSV (request body, Content-Type: text/csv): validates every row, dry run and skip-invalid options, idempotent re-import', { query: ImportQuery, cost: 5, limits: [...WRITE, 'ads.import'], notes: 'Columns: date, source, account (optional), campaign, currency, spend, impressions and clicks (optional). At most ADS_IMPORT_MAX_ROWS rows and 2 MB.' }),
+  A('GET', '/api/ads/mappings', 'ads:read', 'ads', 'Mappings from an ad platform campaign name to the UTM values its traffic carries'),
+  A('PUT', '/api/ads/mappings', 'ads:write', 'ads', 'Map a spend campaign to a utm_campaign (and optionally utm_source)', { body: MapInput }),
+  A('DELETE', '/api/ads/mappings/:id', 'ads:write', 'ads', 'Remove a campaign mapping', { status: 204 }),
   // product catalog and payments setup (docs/PRODUCTS.md, docs/STRIPE.md)
   A('GET', '/api/products', 'products:read', 'products', 'The product catalog: products with their prices, Stripe sync state and order counts (status, search, pages)', { query: ProductQuery }),
   A('POST', '/api/products', 'products:write', 'products', 'Create a product, optionally with its first price (amount in minor units or major units, currency exponent applied); synced to Stripe when connected', { body: ProductInput, status: 201, cost: 2 }),
@@ -299,12 +358,10 @@ export const OPERATIONS: Operation[] = [
   A('POST', '/api/products/:id/prices', 'products:write', 'products', 'Add a price (prices are immutable: change an amount with .../replace)', { body: PriceInput, status: 201 }),
   A('POST', '/api/products/:id/prices/:priceId/replace', 'products:write', 'products', 'Change a price: creates the new price, archives the old one and points it at the new one (pages and checkouts naming the old price use the new one; past orders keep theirs)', { body: PriceInput }),
   A('PATCH', '/api/products/:id/prices/:priceId', 'products:write', 'products', 'Rename a price (nickname)', { body: PricePatch }),
-  A('POST', '/api/funnels/:id/payments', 'funnels:write', 'payments', 'Add payments to a funnel (the wizard): picks or creates the products, builds the checkout (one-step or offer plus checkout), order bump, one-click upsell and downsell and thank-you steps, and wires the flow', { also: ['products:write'], body: WizardInput, status: 201, cost: 3 }),
   A('POST', '/api/products/:id/prices/:priceId/archive', 'products:write', 'products', 'Archive a price (a product keeps at least one active price)'),
+  A('POST', '/api/funnels/:id/payments', 'funnels:write', 'payments', 'Add payments to a funnel (the wizard): picks or creates the products, builds the checkout (one-step or offer plus checkout), order bump, one-click upsell and downsell and thank-you steps, and wires the flow', { also: ['products:write'], body: WizardInput, status: 201, cost: 3 }),
   A('GET', '/api/payments/status', 'products:read', 'payments', 'Payments overview: test or live mode, connection state, charges and payouts, payment methods, currency, statement descriptor, Stripe Tax availability, checkout settings and the Stripe test cards'),
   A('PATCH', '/api/payments/settings', 'billing:manage', 'payments', 'Checkout settings: statement descriptor suffix, receipt emails, Stripe Tax', { body: PaymentSettingsPatch }),
-  A('POST', '/api/orders/:id/refund', 'orders:refund', 'orders', 'Refund an order, in full or in part (the refundable amount is reserved atomically)', { body: RefundInput, notes: 'Body is optional: no amount refunds what is left.' }),
-  A('GET', '/api/disputes', 'orders:read', 'orders', 'Stripe disputes (chargebacks) of the workspace: status, outcome, evidence due date, amount lost, Stripe dashboard link; orphans (payment not known yet) included', { query: DisputeQuery }),
   // AI
   A('GET', '/api/ai/status', 'ai:use', 'ai', 'Provider and daily usage'),
   A('POST', '/api/ai/funnel', 'ai:use', 'ai', 'Generate a funnel', { body: ai.FunnelRequest, status: 201, limits: ['ip.global', 'api.write', 'api.workspace'], inHandler: ['ai.minute', 'ai.daily'] }),

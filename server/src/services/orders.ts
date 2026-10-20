@@ -16,6 +16,10 @@ import { insertEvents } from './rollups.js';
 import { EMAIL_RE, resolvePublicBlock, sanitizeUtms } from './publicblocks.js';
 import { fireWebhookEvent } from './webhooks.js';
 import { startHostedCheckout, stripeUpsellCharge } from './stripepay.js';
+import { snapshotFor, stampOrder } from './attribution.js';
+import { enqueueConversions, userFromLead } from './conversions.js';
+import { checkQuantity, resolveOffer, type Offer } from './catalogcheckout.js';
+import { currencyExponent, fromMinor } from '../util/money.js';
 
 export const CheckoutInput = z.object({
   email: z.string().trim().max(254).optional(),
@@ -24,12 +28,12 @@ export const CheckoutInput = z.object({
   previousOrderId: z.string().max(64).optional(),
   submissionId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional(),
   visitorId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
+  /** Units of the main offer when its block offers a quantity picker (checked against the block's own range). */
+  quantity: z.number().int().min(1).max(99).optional(),
   _hp: z.string().max(200).optional(),
   utms: z.unknown().optional(),
   preview: z.boolean().optional(),
 });
-  /** Units of the main offer when its block offers a quantity picker (checked against the block's own range). */
-  quantity: z.number().int().min(1).max(99).optional(),
 
 export interface OrderRow {
   id: string;
@@ -56,14 +60,14 @@ export interface OrderRow {
   disputed_lost_cents?: number;
   provider_customer?: string | null;
   provider_account?: string | null;
-}
-
-export const serializeLine = (o: OrderRow) => ({ id: o.id, productName: o.product_name, amountCents: o.amount_cents, currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1, status: o.status ?? 'paid', refundedCents: o.refunded_cents ?? 0, disputedLostCents: o.disputed_lost_cents ?? 0 });
   product_id?: string | null;
   price_id?: string | null;
   quantity?: number;
   discount_cents?: number;
   role?: string | null;
+}
+
+export const serializeLine = (o: OrderRow) => ({ id: o.id, productName: o.product_name, amountCents: o.amount_cents, currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1, status: o.status ?? 'paid', refundedCents: o.refunded_cents ?? 0, disputedLostCents: o.disputed_lost_cents ?? 0 });
 
 export interface CheckoutResult {
   ok: true;
@@ -112,10 +116,6 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
   }
   if (input.preview) return { ok: true, recorded: false, orders: [], declined: [] };
 
-  if (deps.config.PAYMENTS_PROVIDER === 'stripe' && !block.oneClickUpsell) {
-    return startHostedCheckout(deps, { ws, funnel, step, block, offers, email, name, visitorId: input.visitorId, utms: input.utms, allowPromotionCodes: block.allowPromotionCodes === true });
-  }
-
   // The server prices the basket: from the catalog price the blocks name (never from the request), with the quantity checked against the block.
   const offers: Offer[] = [await resolveOffer(deps, ws, block, checkQuantity(block, input.quantity))];
   for (const b of bumps) offers.push(await resolveOffer(deps, ws, b, 1));
@@ -123,6 +123,10 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
   if (offers.some((o) => o.recurring) && block.oneClickUpsell) throw badRequest('SUBSCRIPTION_UPSELL_UNSUPPORTED', 'A one-click offer cannot start a subscription');
   const recurring = offers.filter((o) => o.recurring);
   if (new Set(recurring.map((o) => `${o.recurring!.interval}/${o.recurring!.count}`)).size > 1) throw badRequest('MIXED_INTERVAL', 'Subscriptions in one order must bill on the same interval');
+
+  if (deps.config.PAYMENTS_PROVIDER === 'stripe' && !block.oneClickUpsell) {
+    return startHostedCheckout(deps, { ws, funnel, step, block, offers, email, name, visitorId: input.visitorId, utms: input.utms, allowPromotionCodes: block.allowPromotionCodes === true });
+  }
 
   const idemBase = input.submissionId ? `${block.id}:${input.submissionId}` : null;
   if (idemBase) {
@@ -196,18 +200,33 @@ function persistTx(deps: Deps, p: PersistInput): Promise<void> {
         `INSERT INTO orders (id, workspace_id, funnel_id, step_id, block_id, lead_id, email, name, product_name, amount_cents, currency, is_bump, is_upsell, parent_order_id, provider, provider_ref, payment_method_ref, idem_key, created_at, provider_customer, provider_account, product_id, price_id, quantity, discount_cents, role)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         o.id, o.workspace_id, o.funnel_id, o.step_id, o.block_id, o.lead_id, o.email, o.name, o.product_name, o.amount_cents, o.currency, o.is_bump, o.is_upsell, o.parent_order_id, o.provider, o.provider_ref, o.payment_method_ref, o.idem_key, o.created_at, o.provider_customer ?? null, o.provider_account ?? null,
+        o.product_id ?? null, o.price_id ?? null, o.quantity ?? 1, o.discount_cents ?? 0, o.role ?? null,
       );
       await insertEvents(d.db, [{
         id: newId('evt'), workspace_id: ws, funnel_id: funnel.id, step_id: step.id, type: 'order', visitor_id: p.visitorId ?? null, unique_visit: 0, lead_id: lead.id, order_id: o.id,
         external_id: `order:${o.id}`, amount_cents: o.amount_cents, currency: o.currency, utm_json: JSON.stringify(sanitizeUtms(p.utms)), url: null, created_at: o.created_at,
-        o.product_id ?? null, o.price_id ?? null, o.quantity ?? 1, o.discount_cents ?? 0, o.role ?? null,
       }]);
       await domainEvent(d, 'order.created', funnel.id, { workspaceId: ws, stepId: step.id, orderId: o.id, leadId: lead.id, amountCents: o.amount_cents, currency: o.currency });
       await notify(d, ws, { type: 'new_sale', title: 'New sale', body: `${o.email} bought ${o.product_name}`, data: { orderId: o.id, funnelId: funnel.id, amountCents: o.amount_cents, currency: o.currency } });
       await fireWebhookEvent(d, ws, 'funnel.purchase', {
         funnel: { id: funnel.id, name: funnel.name },
         step: { id: step.id, name: step.name },
-        order: { id: o.id, productName: o.product_name, amount: o.amount_cents / 100, currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1, email: o.email, name: o.name },
+        order: { id: o.id, productName: o.product_name, amount: fromMinor(o.amount_cents, o.currency), currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1, email: o.email, name: o.name, productId: o.product_id ?? null, priceId: o.price_id ?? null, quantity: o.quantity ?? 1 },
+      });
+    }
+    // Ads: stamp the orders with the visitor's first and last touch, and queue ONE server-side Purchase for the checkout (the main offer plus its bumps share a
+    // transaction). The order is persisted here only after the payment is confirmed (mock charge, or Stripe reporting the session paid), so this is the verified source.
+    const snap = await snapshotFor(d, ws, p.visitorId);
+    for (const o of created) await stampOrder(d, ws, o.id, snap);
+    const main = created[0];
+    if (main) {
+      const same = created.filter((o) => o.currency === main.currency);
+      const lead = await d.db.get<{ email: string; name: string | null; phone: string | null; data_json: string }>('SELECT email, name, phone, data_json FROM leads WHERE id = ?', main.lead_id);
+      await enqueueConversions(d, {
+        ws, funnelId: funnel.id, stepId: step.id, kind: 'Purchase', eventId: `purchase_${main.id}`, visitorId: p.visitorId, orderId: main.id, currency: main.currency,
+        value: fromMinor(same.reduce((t, o) => t + o.amount_cents, 0), main.currency),
+        items: same.map((o) => ({ id: o.block_id, name: o.product_name, quantity: o.quantity ?? 1, price: fromMinor(Math.round(o.amount_cents / (o.quantity ?? 1)), main.currency) })),
+        user: lead ? userFromLead(lead) : { email: main.email, name: main.name },
       });
     }
   });

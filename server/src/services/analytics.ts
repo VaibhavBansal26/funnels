@@ -16,16 +16,17 @@ export const AnalyticsQuery = z.object({
 export interface Metrics {
   pageViews: { all: number; unique: number };
   optIns: { all: number; conversionRate: number };
-  sales: { orders: number; conversionRate: number; gross: number };
+  sales: { orders: number; conversionRate: number; gross: number; refunded: number; disputedLost: number; net: number };
   earningsPerView: { all: number; unique: number };
 }
 
-export function computeMetrics(raw: { views: number; uniques: number; optins: number; orders: number; cents: number }): Metrics {
+export function computeMetrics(raw: { views: number; uniques: number; optins: number; orders: number; cents: number; refundedCents?: number; lostCents?: number }): Metrics {
   const gross = round2(raw.cents / 100);
   return {
     pageViews: { all: raw.views, unique: raw.uniques },
     optIns: { all: raw.optins, conversionRate: pct(raw.optins, raw.uniques) },
-    sales: { orders: raw.orders, conversionRate: pct(raw.orders, raw.uniques), gross },
+    // `gross` is unchanged; refunds and lost disputes (of the orders created in the range) are added next to it, and net = gross - refunded.
+    sales: { orders: raw.orders, conversionRate: pct(raw.orders, raw.uniques), gross, refunded: round2((raw.refundedCents ?? 0) / 100), disputedLost: round2((raw.lostCents ?? 0) / 100), net: round2(gross - (raw.refundedCents ?? 0) / 100) },
     earningsPerView: { all: ratio(raw.cents / 100, raw.views), unique: ratio(raw.cents / 100, raw.uniques) },
   };
 }
@@ -162,6 +163,18 @@ export class SqlReader implements AnalyticsReader {
   }
 }
 
+/** Refunds and lost disputes (minor units) of the orders created in the range, per step: the additive `refunded`/`disputedLost`/`net` fields. */
+async function orderAdjustments(db: Db, ws: string, funnelId: string, range: Range, stepId?: string) {
+  const rows = await db.all<{ step_id: string; r: number; l: number }>(
+    `SELECT step_id, COALESCE(SUM(refunded_cents), 0) AS r, COALESCE(SUM(disputed_lost_cents), 0) AS l FROM orders WHERE workspace_id = ? AND funnel_id = ? AND created_at >= ? AND created_at < ? ${stepId ? 'AND step_id = ?' : ''} GROUP BY step_id`,
+    ws, funnelId, range.startUtc, range.endUtc, ...(stepId ? [stepId] : []),
+  );
+  const byStep = new Map(rows.map((r) => [r.step_id, { refundedCents: Number(r.r), lostCents: Number(r.l) }]));
+  const total = { refundedCents: 0, lostCents: 0 };
+  for (const v of byStep.values()) (total.refundedCents += v.refundedCents, total.lostCents += v.lostCents);
+  return { byStep, total };
+}
+
 /** Per-process counters of which store answered analytics reads (exported as metrics). */
 export const analyticsReadStats = { postgres: 0, clickhouse: 0, fallback: 0, stale: 0 };
 
@@ -198,6 +211,7 @@ export async function funnelAnalytics(base: Deps, ws: string, funnelId: string, 
   const rdb = base.db.read(ws); // analytics tolerate replica lag (see REPLICA_MAX_LAG_MS); a recent write pins this workspace to the primary
   await requireFunnel(rdb, ws, funnelId);
   const range = resolveRange(base, q);
+  const adj = await orderAdjustments(rdb, ws, funnelId, range);
   const { perStep, totals, visitors, buckets } = await withReader(base, rdb, async (r) => {
     const perStep = new Map((await r.stepTotals(ws, funnelId, range)).map((x) => [x.step_id, x] as const));
     const totals = await r.totals(ws, funnelId, range);
@@ -206,12 +220,12 @@ export async function funnelAnalytics(base: Deps, ws: string, funnelId: string, 
   });
   const steps = (await listSteps(rdb, ws, funnelId)).map((s) => {
     const a = perStep.get(s.id);
-    return { stepId: s.id, name: s.name, path: s.base_path, position: s.position, ...computeMetrics({ views: a?.views ?? 0, uniques: a?.uniques ?? 0, optins: a?.optins ?? 0, orders: a?.orders ?? 0, cents: a?.cents ?? 0 }) };
+    return { stepId: s.id, name: s.name, path: s.base_path, position: s.position, ...computeMetrics({ views: a?.views ?? 0, uniques: a?.uniques ?? 0, optins: a?.optins ?? 0, orders: a?.orders ?? 0, cents: a?.cents ?? 0, ...adj.byStep.get(s.id) }) };
   });
   return {
     range: { from: range.from, to: range.to, tz: range.tz },
     distinct: { method: visitors.method, standardErrorPct: visitors.standardErrorPct },
-    summary: computeMetrics({ views: totals.views, uniques: visitors.value, optins: totals.optins, orders: totals.orders, cents: totals.cents }),
+    summary: computeMetrics({ views: totals.views, uniques: visitors.value, optins: totals.optins, orders: totals.orders, cents: totals.cents, ...adj.total }),
     steps,
     series: seriesFromBuckets(buckets, range),
   };
@@ -223,11 +237,12 @@ export async function stepAnalytics(base: Deps, ws: string, funnelId: string, st
   await requireFunnel(rdb, ws, funnelId);
   const step = await requireStep(rdb, ws, funnelId, stepId);
   const range = resolveRange(base, q);
+  const adj = await orderAdjustments(rdb, ws, funnelId, range, stepId);
   const { a, buckets } = await withReader(base, rdb, async (r) => ({ a: await r.totals(ws, funnelId, range, stepId), buckets: await r.buckets(ws, funnelId, range, stepId) }));
   return {
     range: { from: range.from, to: range.to, tz: range.tz },
     step: { stepId: step.id, name: step.name, path: step.base_path },
-    ...computeMetrics({ views: a.views, uniques: a.uniques, optins: a.optins, orders: a.orders, cents: a.cents }),
+    ...computeMetrics({ views: a.views, uniques: a.uniques, optins: a.optins, orders: a.orders, cents: a.cents, ...adj.total }),
     series: seriesFromBuckets(buckets, range),
   };
 }

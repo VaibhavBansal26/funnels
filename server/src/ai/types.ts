@@ -1,3 +1,4 @@
+import type { SummaryEvidence } from './summary.js';
 export const TONES = ['persuasive', 'concise', 'friendly', 'formal'] as const;
 export type Tone = (typeof TONES)[number];
 export const GOALS = ['leads', 'webinar', 'sales', 'booking'] as const;
@@ -63,4 +64,6 @@ export interface AiProvider {
   headlines(input: HeadlineInput): Promise<unknown>;
   insights(input: InsightInput): Promise<unknown>;
   altText(input: AltTextInput): Promise<unknown>;
+  /** "Summarise this period" (ai/summary.ts). Optional so existing providers keep working; without it the deterministic narrator writes the summary. */
+  summary?(input: SummaryEvidence): Promise<unknown>;
 }

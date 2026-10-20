@@ -7,6 +7,7 @@ import type { Deps } from '../deps.js';
 import { schemaDocument } from '../analyticsapi/schemas.js';
 import * as api from '../services/analyticsapi.js';
 import * as keys from '../services/apikeys.js';
+import { ApiProductsQuery, apiProducts } from '../services/analyticsproducts.js';
 import { applyKeyLayers } from '../ratelimit/http.js';
 import { clientIp } from '../ratelimit/ip.js';
 import { bodyOf, queryOf } from './util.js';
@@ -44,6 +45,9 @@ export function analyticsApiRoutes(deps: Deps): Hono<AppEnv> {
   r.get('/analytics/funnels', read, async (c) => c.json(await api.listFunnels(deps, apiOf(c), queryOf(c, api.ApiListQuery))));
   r.get('/analytics/funnels/:id/steps', read, async (c) => c.json(await api.funnelSteps(deps, apiOf(c), c.req.param('id'), queryOf(c, api.ApiRangeQuery))));
   r.get('/analytics/funnels/:id/timeseries', read, async (c) => c.json(await api.funnelTimeseries(deps, apiOf(c), c.req.param('id'), queryOf(c, api.TimeseriesQuery))));
+  r.get('/analytics/ads', read, async (c) => c.json(await api.apiAds(deps, apiOf(c), queryOf(c, api.ApiAdsQuery))));
+  r.get('/analytics/attribution', read, async (c) => c.json(await api.apiAttribution(deps, apiOf(c), queryOf(c, api.ApiAttributionQuery))));
+  r.get('/analytics/products', read, async (c) => c.json(await apiProducts(deps, apiOf(c), queryOf(c, ApiProductsQuery))));
   r.get('/analytics/schema', read, (c) => c.json(schemaDocument()));
   r.get('/analytics/export/events', exportKey, async (c) => ndjson(c, await api.exportEvents(deps, apiOf(c), queryOf(c, api.ExportQuery))));
   r.get('/analytics/export/leads', exportKey, async (c) => ndjson(c, await api.exportLeads(deps, apiOf(c), queryOf(c, api.ExportQuery))));

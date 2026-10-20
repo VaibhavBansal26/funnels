@@ -22,6 +22,9 @@ export const FunnelRow = z.looseObject({
   optin_rate: rate.describe('optins / unique_visits (0 when there are no unique visits)'),
   orders: z.number().int().min(0),
   gross: z.number().describe('Order revenue in major currency units. Refunds are not subtracted; amounts lost to lost Stripe disputes (chargebacks) are'),
+  refunded: z.number().min(0).describe('Refunds on the orders created in the range, in major units (added in v1, additive)'),
+  disputed_lost: z.number().min(0).describe('Amounts lost to lost disputes on the orders created in the range; already out of gross (added in v1, additive)'),
+  net: z.number().describe('gross - refunded (added in v1, additive)'),
   currency: z.string().nullable().describe('The single currency of the funnel orders in the range; null when there are none or they are mixed'),
   earnings_per_view: z.number().min(0).describe('gross / visits'),
   created_at: ts,
@@ -38,6 +41,9 @@ export const StepRow = z.looseObject({
   optin_rate: rate,
   orders: z.number().int().min(0),
   gross: z.number(),
+  refunded: z.number().min(0).describe('Refunds on the orders of this step created in the range (additive)'),
+  disputed_lost: z.number().min(0).describe('Amounts lost to lost disputes on those orders; already out of gross (additive)'),
+  net: z.number().describe('gross - refunded (additive)'),
   exit_rate: rate.nullable().describe('Share of this step visitors who never reached the next step; null for the last step'),
   avg_time_on_page_s: z.number().min(0).nullable().describe('Always null: time on page is not collected'),
 });
@@ -115,6 +121,101 @@ export const IdentityPepper = z.looseObject({
   rotatedAt: ts.describe('When the value last changed (rotate or set); the workspace creation time for a pepper never changed since it was first generated before this field existed'),
 });
 
+const money = z.number().describe('Major currency units, in the report currency');
+const nullableRatio = z.number().nullable().describe('null when the denominator is zero');
+export const AdsRow = z.looseObject({
+  key: z.string().describe('Stable key of the row: platform and campaign for group_by=campaign, else the platform, funnel id or day'),
+  source: z.string().nullable().describe('Platform (spend source folded to meta, google, tiktok, bing, linkedin, ... or as entered)'),
+  campaign: z.string().nullable(),
+  funnel_id: z.string().nullable(),
+  day: z.string().nullable().describe('Calendar day YYYY-MM-DD (group_by=day)'),
+  spend: money,
+  impressions: z.number().int().nullable(),
+  clicks: z.number().int().nullable(),
+  visits: z.number().int().min(0).describe('Visitors whose first (or last) touch fell in the range'),
+  leads: z.number().int().min(0),
+  orders: z.number().int().min(0).describe('Checkouts; an order bump is not counted again'),
+  revenue: money.describe('Net of refunds and of amounts lost in Stripe disputes'),
+  cpl: nullableRatio.describe('spend / leads'),
+  cpa: nullableRatio.describe('spend / orders'),
+  cpc: nullableRatio.describe('spend / clicks'),
+  ctr: nullableRatio.describe('clicks / impressions in percent'),
+  roas: nullableRatio.describe('revenue / spend'),
+  profit: z.number().describe('revenue - spend'),
+});
+export const AdsReport = z.looseObject({
+  data: z.array(AdsRow),
+  next_cursor: z.null(),
+  from: z.string(),
+  to: z.string(),
+  tz: z.string(),
+  model: z.enum(['first', 'last']),
+  group_by: z.enum(['campaign', 'source', 'funnel', 'day']),
+  currency: z.string().regex(/^[A-Z]{3}$/).describe('Every amount in the report is in this currency; currencies never mix'),
+  currencies: z.array(z.string()).describe('Currencies with spend or revenue in the range'),
+  totals: AdsRow,
+  other: z.looseObject({ visits: z.number().int(), leads: z.number().int(), orders: z.number().int(), revenue: money }).describe('Results of campaigns that have no spend recorded'),
+  unmatched_spend: z.array(z.looseObject({ source: z.string(), campaign: z.string(), spend: money })).describe('Spend whose campaign never appears in the traffic: map it to a utm_campaign'),
+});
+export const AttributionRow = z.looseObject({
+  source: z.string().nullable(),
+  medium: z.string().nullable(),
+  campaign: z.string().nullable(),
+  content: z.string().nullable(),
+  visits: z.number().int().min(0),
+  leads: z.number().int().min(0),
+  orders: z.number().int().min(0),
+  revenue: money,
+  conversion_rate: z.number().nullable().describe('orders / visits in percent'),
+});
+export const AttributionReport = z.looseObject({
+  data: z.array(AttributionRow),
+  next_cursor: z.null(),
+  from: z.string(),
+  to: z.string(),
+  tz: z.string(),
+  model: z.enum(['first', 'last']),
+  dimension: z.string(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  currencies: z.array(z.string()),
+  totals: z.looseObject({ visits: z.number().int(), leads: z.number().int(), orders: z.number().int(), revenue: money }),
+});
+
+const amount = z.number().describe('Major currency units, in the row currency (never summed across currencies)');
+const seriesPoint = z.looseObject({ t: ts, orders: z.number().int().min(0), units: z.number().int().min(0), gross: amount, refunded: amount, disputed_lost: amount, net: amount });
+const takeRate = z.looseObject({ offered: z.number().int().min(0), taken: z.number().int().min(0), rate: rate.describe('taken / offered (0 when nothing was offered)') });
+export const ProductRow = z.looseObject({
+  product_id: z.string().nullable().describe('Catalog product id; null for orders that predate the catalog and could not be matched'),
+  name: z.string(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  exponent: z.number().int().min(0).max(3).describe('Currency decimals: amounts are major units rounded to this many places'),
+  orders: z.number().int().min(0).describe('Order lines: an order bump or upsell is its own order'),
+  units: z.number().int().min(0),
+  gross: amount.describe('Booked amount after promotion codes, minus amounts lost to lost disputes (the same meaning as gross on funnels)'),
+  refunded: amount.describe('Refunds on these orders (as of now), attributed to the order date'),
+  disputed_lost: amount.describe('Amounts lost to lost disputes on these orders (already out of gross)'),
+  net: amount.describe('gross - refunded'),
+  discount: amount.describe('Promotion code discounts (already out of gross)'),
+  aov: amount.describe('gross / orders'),
+  refund_rate: rate.describe('refunded / gross'),
+  refunded_orders: z.number().int().min(0),
+  roles: z.looseObject({ main: z.number().int(), bump: z.number().int(), upsell: z.number().int(), downsell: z.number().int() }).describe('Orders by role'),
+  customers: z.looseObject({ total: z.number().int(), new: z.number().int().describe('First ever order in the workspace fell in the range'), repeat: z.number().int() }),
+  checkout: z.looseObject({ visitors: z.number().int(), orders: z.number().int(), conversion: rate.describe('main-offer orders / unique visitors of the checkout steps') }),
+  take_rates: z.looseObject({ bump: takeRate, upsell: takeRate, downsell: takeRate }),
+  top_funnels: z.array(z.looseObject({ funnel_id: z.string(), name: z.string(), orders: z.number().int(), gross: amount, refunded: amount, net: amount })),
+  series: z.array(seriesPoint).optional().describe('Zero-filled intervals; only with include=series'),
+});
+export const ProductsReport = z.looseObject({
+  data: z.array(ProductRow),
+  next_cursor: z.string().nullable(),
+  from: z.string(),
+  to: z.string(),
+  tz: z.string(),
+  interval: z.enum(['day', 'week', 'month']),
+  totals: z.array(z.looseObject({ currency: z.string().regex(/^[A-Z]{3}$/), exponent: z.number().int(), orders: z.number().int(), units: z.number().int(), gross: amount, refunded: amount, disputed_lost: amount, net: amount, discount: amount, aov: amount, refund_rate: rate, customers: z.looseObject({ total: z.number().int(), new: z.number().int(), repeat: z.number().int() }), series: z.array(seriesPoint).optional() })).describe('One row per currency: currencies are never added together'),
+});
+
 export const ErrorBody = z.looseObject({
   error: z.looseObject({
     code: z.string(),
@@ -134,6 +235,9 @@ export const DOCUMENTS = {
   'export-lead': LeadLine,
   'funnel-structure': StructureList,
   'identity-pepper': IdentityPepper,
+  ads: AdsReport,
+  attribution: AttributionReport,
+  products: ProductsReport,
   error: ErrorBody,
 } as const;
 

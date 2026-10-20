@@ -50,6 +50,20 @@
           "gross": {
             "type": "number"
           },
+          "refunded": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Refunds on the orders of this step created in the range (additive)"
+          },
+          "disputed_lost": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Amounts lost to lost disputes on those orders; already out of gross (additive)"
+          },
+          "net": {
+            "type": "number",
+            "description": "gross - refunded (additive)"
+          },
           "exit_rate": {
             "anyOf": [
               {
@@ -87,6 +101,9 @@
           "optin_rate",
           "orders",
           "gross",
+          "refunded",
+          "disputed_lost",
+          "net",
           "exit_rate",
           "avg_time_on_page_s"
         ],

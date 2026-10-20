@@ -11,6 +11,8 @@ import { assetRoutes, uploadRoutes } from './routes/assets.js';
 import { noticeRoutes, platformAdminRoutes } from './routes/admin.js';
 import { billingRoutes } from './routes/billing.js';
 import { analyticsApiRoutes } from './routes/analyticsapi.js';
+import { adsRoutes } from './routes/ads.js';
+import { publishingRoutes } from './routes/publishing.js';
 import { teamRoutes } from './routes/team.js';
 import { authRoutes } from './routes/auth.js';
 import { domainRoutes } from './routes/domains.js';
@@ -23,9 +25,9 @@ import { hostRouting, messagePage, previewRoutes, staticRoutes } from './routes/
 import { tagRoutes } from './routes/tags.js';
 import { adminTemplateRoutes, blockRoutes, templateRoutes } from './routes/templates.js';
 import { webhookRoutes } from './routes/webhooks.js';
-import type { Deps } from './deps.js';
 import { funnelPaymentRoutes, paymentRoutes, productRoutes } from './routes/products.js';
-import { paymentRoutes, productRoutes } from './routes/products.js';
+import { funnelProductAnalyticsRoutes, productAnalyticsRoutes } from './routes/productanalytics.js';
+import type { Deps } from './deps.js';
 import { AppError } from './errors.js';
 
 export function createApp(deps: Deps): Hono {
@@ -85,13 +87,19 @@ export function createApp(deps: Deps): Hono {
   api.route('/', teamRoutes(deps));
   api.route('/v1', analyticsApiRoutes(deps));
   api.route('/', billingRoutes(deps));
+  api.route('/', publishingRoutes(deps));
+  api.route('/', adsRoutes(deps)); // before /funnels: it owns /funnels/:id/pixels and /funnels/:id/steps/:sid/pixels
   api.route('/funnels', funnelRoutes(deps));
   api.route('/tags', tagRoutes(deps));
   api.route('/domains', domainRoutes(deps));
   api.route('/templates', templateRoutes(deps));
   api.route('/funnels', funnelPaymentRoutes(deps));
+  api.route('/funnels', funnelProductAnalyticsRoutes(deps));
+  api.route('/analytics', productAnalyticsRoutes(deps));
   api.route('/products', productRoutes(deps));
   api.route('/payments', paymentRoutes(deps));
+  api.route('/admin', adminTemplateRoutes(deps));
+  api.route('/admin', rateLimitAdminRoutes(deps));
   api.route('/admin', platformAdminRoutes(deps));
   api.route('/', noticeRoutes(deps));
   api.route('/blocks', blockRoutes(deps));

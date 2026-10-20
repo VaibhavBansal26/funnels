@@ -8,6 +8,7 @@ import { NodeDnsResolver } from './dns/resolver.js';
 import { type JobHandler, JobQueue, JobWorker } from './jobs/queue.js';
 import { createLogger } from './logger.js';
 import { NodeHttpClient, systemLookup } from './net/ssrf.js';
+import { guardedFetch } from './net/outbound.js';
 import { CloudflareDomainProvider, ManualDomainProvider, type DomainProvider } from './edge/domainProvider.js';
 import { CloudflareApiPurger, NoopPurger, purgeJob, type CloudflarePurger } from './edge/purger.js';
 import { EventBuffer } from './services/eventbuffer.js';
@@ -16,10 +17,12 @@ import { StripeClient } from './payments/stripe.js';
 import { ensureEventPartitions, maintenanceJob, scheduleMaintenance } from './services/maintenance.js';
 import { deliverWebhook } from './services/webhooks.js';
 import { verificationJob } from './services/domains.js';
+import { deliverConversion } from './services/conversions.js';
+import { deployJob, destroyJob, domainJob, pollJob } from './services/publishing.js';
 import { seedTemplates } from './templates/seed.js';
+import { backfillCatalog } from './services/catalogcheckout.js';
 import { migrateLegacyPages } from './services/pagemigration.js';
 import { EventBus } from './util/bus.js';
-import { backfillCatalog } from './services/catalogcheckout.js';
 import { PageCache } from './util/pagecache.js';
 import { Flights } from './util/flights.js';
 import { RefCache } from './util/refcache.js';
@@ -78,6 +81,7 @@ export async function createDeps(config: Config, overrides: Partial<Deps> = {}):
     stripe: 'stripe' in overrides ? overrides.stripe : config.STRIPE_SECRET_KEY ? new StripeClient({ secretKey: config.STRIPE_SECRET_KEY, base: config.STRIPE_API_BASE }) : undefined,
     http: new NodeHttpClient(),
     lookup: systemLookup,
+    outbound: guardedFetch(overrides.lookup ?? systemLookup),
     jobs: new JobQueue(db, () => now().getTime()),
     limiter: overrides.limiter ?? (await createLimiter(config, { db, log, now: () => now().getTime() })),
     bus: new EventBus(),
@@ -94,10 +98,10 @@ export async function createDeps(config: Config, overrides: Partial<Deps> = {}):
     ...overrides,
   };
   await migrateLegacyPages(deps);
+  await backfillCatalog(deps);
   // First run is one interval away: boot never waits for it, and exactly one pending job exists however many replicas start.
   if (config.ENABLE_WORKER) await scheduleMaintenance(deps, config.MAINTENANCE_INTERVAL_HOURS * 3_600_000);
   return deps;
-  await backfillCatalog(deps);
 }
 
 export function createWorker(deps: Deps): JobWorker {
@@ -106,6 +110,11 @@ export function createWorker(deps: Deps): JobWorker {
     'domain.verify': (payload) => verificationJob(deps, payload),
     'edge.purge': (payload) => purgeJob(deps, payload),
     'maintenance.run': () => maintenanceJob(deps),
+    'conversion.deliver': (payload, job) => deliverConversion(deps, payload, job),
+    'publish.deploy': (payload, job) => deployJob(deps, payload, job),
+    'publish.poll': (payload) => pollJob(deps, payload),
+    'publish.domain': (payload) => domainJob(deps, payload),
+    'publish.destroy': (payload) => destroyJob(deps, payload),
   };
   return new JobWorker(deps.jobs, handlers, deps.log);
 }

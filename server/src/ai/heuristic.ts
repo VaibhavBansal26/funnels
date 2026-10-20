@@ -1,4 +1,5 @@
 import type { FunnelCopy, Insights } from './schemas.js';
+import { narrate, type SummaryEvidence } from './summary.js';
 import type { AiProvider, AltTextInput, GenerateFunnelInput, HeadlineInput, InsightInput, RewriteInput, StepKind, Tone } from './types.js';
 
 /** Deterministic, offline copy generation. Also the fallback whenever a model call fails or returns invalid output. */
@@ -111,4 +112,5 @@ export class HeuristicProvider implements AiProvider {
   headlines = async (i: HeadlineInput) => ({ headlines: heuristicHeadlines(i) });
   insights = async (i: InsightInput) => heuristicInsights(i);
   altText = async (i: AltTextInput) => ({ alt: heuristicAltText(i) });
+  summary = async (e: SummaryEvidence) => narrate(e);
 }

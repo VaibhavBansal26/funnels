@@ -32,7 +32,7 @@ const today = (deps: Deps) => deps.now().toISOString().slice(0, 10);
  * Per-workspace per-minute limit (`ai.minute`) and daily cap (`ai.daily`), both from the central registry (sliding windows, plan tiers, shared across replicas
  * through the limiter store). `ai_usage` only meters what was admitted, for `/api/ai/status` and billing. AI_DAILY_CAP=0 disables AI.
  */
-async function guard(deps: Deps, ws: string): Promise<void> {
+export async function guard(deps: Deps, ws: string): Promise<void> {
   const d = await deps.limiter.check('ai.minute', { ip: 'workspace', workspaceId: ws });
   if (!d.allowed) throw denyError(d);
   const exhausted = (retryAfterMs = 3_600_000) => new AppError(429, 'AI_DAILY_CAP_REACHED', 'The daily AI request limit for this workspace has been reached', undefined, { 'Retry-After': String(Math.max(1, Math.ceil(retryAfterMs / 1000))) });
@@ -54,7 +54,7 @@ export async function usage(deps: Deps, ws: string) {
  * Calls the model, validates its output with zod (and an optional semantic check) and returns it.
  * Throwing, empty, malformed or schema-mismatching output all end in the deterministic heuristic result.
  */
-async function validated<T>(deps: Deps, feature: string, call: () => Promise<unknown>, schema: ZodType<T>, heuristic: () => T, check?: (v: T) => boolean): Promise<{ value: T; source: Source }> {
+export async function validated<T>(deps: Deps, feature: string, call: () => Promise<unknown>, schema: ZodType<T>, heuristic: () => T, check?: (v: T) => boolean): Promise<{ value: T; source: Source }> {
   if (deps.ai.name === 'heuristic') return { value: heuristic(), source: 'heuristic' };
   try {
     const parsed = schema.safeParse(await call());

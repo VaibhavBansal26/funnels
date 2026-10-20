@@ -11,6 +11,7 @@ import { addDays, dayKey, isValidTimeZone, startOfDayUtc } from '../util/time.js
 import { audit } from './audit.js';
 import { bucketOf } from './rollups.js';
 import type { ApiAuth } from './apikeys.js';
+import { adsPerformance, attributionReport } from './adsreport.js';
 
 /**
  * Analytics API v1 queries (docs/ANALYTICS-API.md). Aggregates come from the 15-minute `event_rollups` (so a range is read at 15-minute granularity: `from` is
@@ -151,13 +152,17 @@ export async function listFunnels(deps: Deps, api: ApiAuth, q: z.infer<typeof Ap
     : [];
   const byCurrency = new Map<string, string[]>();
   for (const c of currencies) byCurrency.set(c.funnel_id, [...(byCurrency.get(c.funnel_id) ?? []), c.currency]);
+  // Additive in v1: refunds and lost disputes of the orders created in the range (`gross` keeps its meaning; `net` = gross - refunded).
+  const adjusted = new Map((ids.length
+    ? await deps.db.all<{ funnel_id: string; r: number; l: number }>(`SELECT funnel_id, COALESCE(SUM(refunded_cents), 0) AS r, COALESCE(SUM(disputed_lost_cents), 0) AS l FROM orders WHERE workspace_id = ? AND funnel_id IN (${inList(ids.length)}) AND created_at >= ? AND created_at < ? GROUP BY funnel_id`, api.workspaceId, ...ids, range.startUtc, range.endUtc)
+    : []).map((a) => [a.funnel_id, a] as const));
   return {
     data: page.map((f) => {
       const t = totals.get(f.id) ?? zero();
       const cur = byCurrency.get(f.id) ?? [];
       return {
         id: f.id, name: f.name, status: f.status, steps_count: count.get(f.id) ?? 0, visits: t.views, unique_visits: t.uniques, optins: t.optins, optin_rate: fraction(t.optins, t.uniques),
-        orders: t.orders, gross: money(t.cents), currency: cur.length === 1 ? cur[0]! : null, earnings_per_view: Math.round(ratio(t.cents / 100, t.views) * 10_000) / 10_000, created_at: f.created_at,
+        orders: t.orders, gross: money(t.cents), refunded: money(num(adjusted.get(f.id)?.r)), disputed_lost: money(num(adjusted.get(f.id)?.l)), net: round2(money(t.cents) - money(num(adjusted.get(f.id)?.r))), currency: cur.length === 1 ? cur[0]! : null, earnings_per_view: Math.round(ratio(t.cents / 100, t.views) * 10_000) / 10_000, created_at: f.created_at,
       };
     }),
     next_cursor: rows.length > q.limit && page.length ? encode({ id: page[page.length - 1]!.id }) : null,
@@ -171,6 +176,7 @@ export async function funnelSteps(deps: Deps, api: ApiAuth, funnelId: string, q:
   const rolled = new Map(
     (await deps.db.all<Agg & { step_id: string }>(`SELECT step_id, ${AGG} FROM event_rollups WHERE workspace_id = ? AND funnel_id = ? AND bucket >= ? AND bucket < ? GROUP BY step_id`, api.workspaceId, funnelId, range.fromBucket, range.toBucket)).map((r) => [r.step_id, r]),
   );
+  const adjusted = new Map((await deps.db.all<{ step_id: string; r: number; l: number }>('SELECT step_id, COALESCE(SUM(refunded_cents), 0) AS r, COALESCE(SUM(disputed_lost_cents), 0) AS l FROM orders WHERE workspace_id = ? AND funnel_id = ? AND created_at >= ? AND created_at < ? GROUP BY step_id', api.workspaceId, funnelId, range.startUtc, range.endUtc)).map((a) => [a.step_id, a] as const));
   const data = [];
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i]!;
@@ -185,7 +191,7 @@ export async function funnelSteps(deps: Deps, api: ApiAuth, funnelId: string, q:
       );
       exit = num(r?.reached) > 0 ? fraction(num(r!.reached) - num(r!.onward), num(r!.reached)) : 0;
     }
-    data.push({ step_id: s.id, name: s.name, order: i + 1, visits: num(a?.views), unique_visits: uniques, optins: num(a?.optins), optin_rate: fraction(num(a?.optins), uniques), orders: num(a?.orders), gross: money(num(a?.cents)), exit_rate: exit, avg_time_on_page_s: null });
+    data.push({ step_id: s.id, name: s.name, order: i + 1, visits: num(a?.views), unique_visits: uniques, optins: num(a?.optins), optin_rate: fraction(num(a?.optins), uniques), orders: num(a?.orders), gross: money(num(a?.cents)), refunded: money(num(adjusted.get(s.id)?.r)), disputed_lost: money(num(adjusted.get(s.id)?.l)), net: round2(money(num(a?.cents)) - money(num(adjusted.get(s.id)?.r))), exit_rate: exit, avg_time_on_page_s: null });
   }
   return { data, next_cursor: null };
 }
@@ -509,5 +515,49 @@ export async function funnelStructure(deps: Deps, api: ApiAuth, q: z.infer<typeo
       return { id: f.id, name: f.name, status: f.status, steps: list, has_order_bump: list.some((s) => s.has_order_bump), has_upsell: list.some((s) => s.has_upsell), word_count: list.reduce((a, s) => a + s.word_count, 0) };
     }),
     next_cursor: rows.length > q.limit && page.length ? encode({ id: page[page.length - 1]!.id }) : null,
+  };
+}
+
+// ---- ads (additive in v1): attribution and ad performance --------------------------------------------------------------------------------------------------
+
+const DAY_PARAM = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a calendar date: YYYY-MM-DD').optional();
+export const ApiAdsQuery = z.object({
+  from: DAY_PARAM,
+  to: DAY_PARAM,
+  tz: z.string().max(64).optional(),
+  model: z.enum(['first', 'last']).default('last'),
+  group_by: z.enum(['campaign', 'source', 'funnel', 'day']).default('campaign'),
+  currency: z.string().trim().length(3).optional(),
+  funnel_id: z.string().max(64).optional(),
+});
+export const ApiAttributionQuery = z.object({
+  from: DAY_PARAM,
+  to: DAY_PARAM,
+  tz: z.string().max(64).optional(),
+  model: z.enum(['first', 'last']).default('last'),
+  dimension: z.enum(['source', 'medium', 'campaign', 'content', 'source_medium', 'source_medium_campaign']).default('source_medium'),
+  currency: z.string().trim().length(3).optional(),
+  funnel_id: z.string().max(64).optional(),
+});
+
+const perfRow = (r: Awaited<ReturnType<typeof adsPerformance>>['rows'][number]) => ({
+  key: r.key, source: r.source, campaign: r.campaign, funnel_id: r.funnelId, day: r.day, spend: r.spend, impressions: r.impressions, clicks: r.clicks, visits: r.visits, leads: r.leads, orders: r.orders,
+  revenue: r.revenue, cpl: r.cpl, cpa: r.cpa, cpc: r.cpc, ctr: r.ctr, roas: r.roas, profit: r.profit,
+});
+
+export async function apiAds(deps: Deps, api: ApiAuth, q: z.infer<typeof ApiAdsQuery>) {
+  const r = await adsPerformance(deps, api.workspaceId, { from: q.from, to: q.to, tz: q.tz, model: q.model, groupBy: q.group_by, currency: q.currency, funnelId: q.funnel_id }, { mode: api.mode });
+  return {
+    data: r.rows.map(perfRow), next_cursor: null,
+    from: r.range.from, to: r.range.to, tz: r.range.tz, model: r.model, group_by: r.groupBy, currency: r.currency, currencies: r.currencies,
+    totals: perfRow(r.totals), other: r.other, unmatched_spend: r.unmatched.map((u) => ({ source: u.source, campaign: u.campaign, spend: u.spend })),
+  };
+}
+
+export async function apiAttribution(deps: Deps, api: ApiAuth, q: z.infer<typeof ApiAttributionQuery>) {
+  const r = await attributionReport(deps, api.workspaceId, { from: q.from, to: q.to, tz: q.tz, model: q.model, dimension: q.dimension, currency: q.currency, funnelId: q.funnel_id }, { mode: api.mode });
+  return {
+    data: r.rows.map((x) => ({ source: x.source ?? null, medium: x.medium ?? null, campaign: x.campaign ?? null, content: x.content ?? null, visits: x.visits, leads: x.leads, orders: x.orders, revenue: x.revenue, conversion_rate: x.conversionRate })),
+    next_cursor: null, from: r.range.from, to: r.range.to, tz: r.range.tz, model: r.model, dimension: r.dimension, currency: r.currency, currencies: r.currencies, totals: r.totals,
   };
 }

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { altTextPrompt, funnelPrompt, headlinesPrompt, insightsPrompt, rewritePrompt, SYSTEM } from './prompts.js';
+import { summaryPrompt, type SummaryEvidence } from './summary.js';
 import type { AiProvider, AltTextInput, GenerateFunnelInput, HeadlineInput, InsightInput, RewriteInput } from './types.js';
 
 /** The small slice of the SDK this provider uses, so tests can inject a fake client. */
@@ -48,4 +49,5 @@ export class AnthropicProvider implements AiProvider {
   headlines = (i: HeadlineInput) => this.ask(headlinesPrompt(i), 600);
   insights = (i: InsightInput) => this.ask(insightsPrompt(i), 1200);
   altText = (i: AltTextInput) => this.ask(altTextPrompt(i), 200);
+  summary = (e: SummaryEvidence) => this.ask(summaryPrompt(e), 1200);
 }

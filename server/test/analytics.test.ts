@@ -23,7 +23,7 @@ async function setup() {
 describe('metric math', () => {
   it('is divide-by-zero safe', () => {
     expect(computeMetrics({ views: 0, uniques: 0, optins: 0, orders: 0, cents: 0 })).toEqual({
-      pageViews: { all: 0, unique: 0 }, optIns: { all: 0, conversionRate: 0 }, sales: { orders: 0, conversionRate: 0, gross: 0 }, earningsPerView: { all: 0, unique: 0 },
+      pageViews: { all: 0, unique: 0 }, optIns: { all: 0, conversionRate: 0 }, sales: { orders: 0, conversionRate: 0, gross: 0, refunded: 0, disputedLost: 0, net: 0 }, earningsPerView: { all: 0, unique: 0 },
     });
     // opt-ins without any unique visitors (e.g. imported data) must not produce Infinity/NaN
     const m = computeMetrics({ views: 5, uniques: 0, optins: 2, orders: 1, cents: 5000 });

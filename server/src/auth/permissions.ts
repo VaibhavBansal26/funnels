@@ -33,6 +33,10 @@ export const PERMISSIONS = {
   'analytics_identity:manage': 'View, set (import) and rotate the workspace identity pepper used by analytics exports',
   'billing:read': 'View the plan, usage and invoices',
   'billing:manage': 'Change the plan, payment method and Stripe connection',
+  'integrations:manage': 'Connect, edit and remove ad integrations (Meta, Google, TikTok conversion tokens and pixels), read their delivery log and send test events',
+  'ads:read': 'View ad performance (attribution, ad spend, ROAS) and export it',
+  'ads:write': 'Enter, import and delete ad spend and map campaigns to UTM values',
+  'publishing:manage': 'Connect a Cloudflare account, choose where funnels are published, deploy, roll back and unpublish',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

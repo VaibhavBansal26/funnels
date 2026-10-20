@@ -93,6 +93,12 @@ describe('analytics API contract (JSON Schema files vs live responses)', () => {
     expect(leads).toHaveLength(2);
     for (const l of leads) check('export-lead', l);
     check('funnel-structure', (await get('/export/funnel-structure')).json);
+    for (const q of ['', '?include=series&interval=week&tz=Pacific/Auckland', '?limit=1']) {
+      const r = await get(`/products${q}`);
+      expect(r.status, r.text).toBe(200);
+      check('products', r.json);
+    }
+    expect(((await get('/products')).json as { data: unknown[] }).data.length).toBeGreaterThan(0);
   });
 
   it('error bodies of every failure class validate against the error schema', async () => {
@@ -118,7 +124,7 @@ describe('analytics API contract (JSON Schema files vs live responses)', () => {
   });
 
   it('the schemas are not vacuous: they reject a missing field, a wrong type, a bad enum and an out-of-range rate', () => {
-    const f = { id: 'fn_1', name: 'n', status: 'live', steps_count: 1, visits: 1, unique_visits: 1, optins: 0, optin_rate: 0, orders: 0, gross: 0, currency: null, earnings_per_view: 0, created_at: '2026-03-10T00:00:00.000Z' };
+    const f = { id: 'fn_1', name: 'n', status: 'live', steps_count: 1, visits: 1, unique_visits: 1, optins: 0, optin_rate: 0, orders: 0, gross: 0, refunded: 0, disputed_lost: 0, net: 0, currency: null, earnings_per_view: 0, created_at: '2026-03-10T00:00:00.000Z' };
     check('funnels', { data: [f], next_cursor: null });
     const bad = (mut: (x: Record<string, unknown>) => void) => {
       const copy = { ...f } as Record<string, unknown>;

@@ -22,7 +22,7 @@ async function disputed() {
     w.hook('connect', `charge.dispute.${type}`, dispute(pi, { amount: total, ...over }), { account: w.acct, created: (over.created as number | undefined) ?? 1_800_000_000, ...extra }, opts);
   const list = async (token = w.owner.token, q = '') => (await w.h.call('GET', `/api/disputes${q}`, { token })).json;
   const dbOrders = () => w.orders() as Promise<{ id: string; status: string; amount_cents: number; refunded_cents: number; disputed_lost_cents: number }[]>;
-  const analytics = async () => (await w.h.call('GET', `/api/funnels/${w.t.funnelId}/analytics`, { token: w.owner.token })).json.summary.sales as { orders: number; gross: number };
+  const analytics = async () => (await w.h.call('GET', `/api/funnels/${w.t.funnelId}/analytics`, { token: w.owner.token })).json.summary.sales as { orders: number; gross: number; refunded: number; disputedLost: number; net: number };
   const refund = (id: string, body: object = {}) => w.h.call('POST', `/api/orders/${id}/refund`, { token: w.owner.token, body });
   return { ...w, pi, main: main!, bump: bump!, total, send, list, dbOrders, analytics, refund };
 }
@@ -73,7 +73,8 @@ describe('Stripe disputes', () => {
     expect((await refund(main.id, { amountCents: 1000 })).json.order.status).toBe('disputed'); // refunding during a dispute keeps it disputed
     expect((await send('closed', { status: 'won' }, { created: 1_800_000_200 })).status).toBe(200);
     expect((await dbOrders()).map((o) => [o.status, o.disputed_lost_cents])).toEqual([['partially_refunded', 0], ['paid', 0]]);
-    expect(await analytics()).toEqual(before);
+    // gross and orders are untouched; the partial refund shows in the additive refunded and net fields
+    expect(await analytics()).toEqual({ ...before, refunded: 10, net: before.gross - 10 });
     expect((await list()).data[0]).toMatchObject({ outcome: 'won', status: 'won', lostCents: 0 });
   });
 
@@ -85,7 +86,7 @@ describe('Stripe disputes', () => {
     expect((await send('closed', { status: 'lost' }, { created: 1_800_000_200 })).status).toBe(200);
     expect((await dbOrders()).map((o) => [o.status, o.disputed_lost_cents])).toEqual([['charged_back', main.amount_cents], ['charged_back', total - main.amount_cents]]);
     const after = await analytics();
-    expect(after).toEqual({ ...before, orders: 0, gross: 0 });
+    expect(after).toEqual({ ...before, orders: 0, gross: 0, disputedLost: before.gross, net: 0 }); // the loss leaves gross and is shown next to it
     const steps = (await h.call('GET', `/api/funnels/${t.funnelId}/analytics`, { token: owner.token })).json;
     expect(steps.series.reduce((a: number, p: { gross: number }) => a + p.gross, 0)).toBe(0);
     expect((await refund(main.id)).json.error.code).toBe('ORDER_CHARGED_BACK');
