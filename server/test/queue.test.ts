@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { MemoryBus, type BusEvent, type EventBus } from '../src/queue/eventbus.js';
 import { once, outboxLag, pruneOutbox, relayOutbox, TOPIC_DOMAIN, TOPIC_EVENTS_STORED, TOPIC_INGEST, writeOutbox } from '../src/queue/outbox.js';
@@ -276,7 +277,8 @@ describe('POST /internal/edge/events (batches from the edge queue consumer)', ()
     let n = 0;
     const post = (events: unknown[], opts: { secret?: string } = {}) => {
       const ts = String(Math.floor(h.clock.now().getTime() / 1000));
-      const nonce = `nonce${++n}${Math.random().toString(36).slice(2)}`;
+      const nonce = randomBytes(12).toString('hex'); // 24 hex chars: the verifier requires 16 to 64 (a variable-length random suffix was the flake)
+      void ++n;
       return h.call('POST', '/internal/edge/events', { body: { events }, headers: { 'x-edge-timestamp': ts, 'x-edge-nonce': nonce, 'x-edge-signature': signEdge(opts.secret ?? SECRET, ts, nonce, 'POST', '/internal/edge/events') } });
     };
     const ev = (id: string, visitor: string, at = h.clock.now().getTime()) => ({ id, at, ua: UA['user-agent'], body: { funnelId: f.id, stepId, type: 'page_view', visitorId: visitor } });
@@ -288,6 +290,15 @@ describe('POST /internal/edge/events (batches from the edge queue consumer)', ()
     expect((await h.call('POST', '/internal/edge/events', { body: { events: [] } })).status).toBe(401);
     expect((await post([], { secret: 'x'.repeat(40) })).status).toBe(401);
     expect((await post([])).status).toBe(200);
+  });
+
+  it('a nonce outside 16 to 64 characters is malformed even when correctly signed (the boundary the test helper once crossed at random)', async () => {
+    const { h } = await edgeWorld();
+    const ts = String(Math.floor(h.clock.now().getTime() / 1000));
+    for (const [nonce, status] of [['a'.repeat(15), 401], ['a'.repeat(16), 200], ['a'.repeat(64), 200], ['a'.repeat(65), 401]] as const) {
+      const r = await h.call('POST', '/internal/edge/events', { body: { events: [] }, headers: { 'x-edge-timestamp': ts, 'x-edge-nonce': nonce, 'x-edge-signature': signEdge(SECRET, ts, nonce, 'POST', '/internal/edge/events') } });
+      expect(r.status, nonce.length + ' chars').toBe(status);
+    }
   });
 
   it('records valid events, counts invalid ones as rejected, and a redelivered batch does not double count', async () => {
