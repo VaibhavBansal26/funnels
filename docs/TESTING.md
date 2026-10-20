@@ -89,3 +89,7 @@ Real browsers (drag and drop, the sandboxed canvas script), real DNS, real Anthr
 | expired access token | an access token the server rejects is renewed from the refresh token in the background |
 
 Not covered (yet): checkout, the AI assistant UI, webhooks UI, mobile layouts, other browsers (Firefox, WebKit are not installed), accessibility audits beyond role-based selectors.
+
+## Stripe tests
+
+`server/test/stripe.test.ts` (29 tests, all engines) runs against `server/test/support/fakestripe.ts`: signature scheme (rotation, replay), Connect onboarding and webhooks, hosted checkout parameters and fee by plan, webhook and return-URL race creating orders once, amount mismatch retry, Stripe outage, upsell success/decline/authentication/idempotency, refunds (partial, concurrent, Stripe failure, permissions, dashboard reconciliation), subscriptions and plan limits. A fake cannot prove Stripe's real behaviour: see the checklist in [STRIPE.md](STRIPE.md).

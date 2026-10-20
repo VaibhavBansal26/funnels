@@ -49,3 +49,7 @@ TLS is terminated in front (Cloudflare, a load balancer). Set `TRUST_PROXY` and 
 ## Dependencies
 
 `npm audit --omit=dev` runs in CI for the server, web and edge. Dev-only tooling (vitest, tsx, mermaid, fast-check, pglite) is not shipped.
+
+## Payments
+
+Card data never reaches Funnels (Stripe-hosted Checkout). Stripe webhooks are verified (HMAC-SHA256, timestamp tolerance, constant-time compare, separate secrets for the platform and Connect endpoints) before any state changes, events are deduped by id, and prices are always taken from stored blocks, never from the request. Refund amounts are reserved in a transaction before Stripe is called. See [STRIPE.md](STRIPE.md); the integration is unverified against real Stripe.
