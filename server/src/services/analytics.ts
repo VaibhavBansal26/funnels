@@ -89,9 +89,10 @@ export async function distinctVisitors(deps: Deps, funnelId: string, range: Rang
   return (await deps.db.get<{ n: number }>(`SELECT COUNT(DISTINCT visitor_id) AS n FROM events WHERE funnel_id = ? AND type = 'page_view' AND created_at >= ? AND created_at < ?`, funnelId, range.startUtc, range.endUtc))!.n;
 }
 
-export async function funnelAnalytics(deps: Deps, ws: string, funnelId: string, q: z.infer<typeof AnalyticsQuery>) {
+export async function funnelAnalytics(base: Deps, ws: string, funnelId: string, q: z.infer<typeof AnalyticsQuery>) {
+  await base.events.flush();
+  const deps: Deps = { ...base, db: base.db.read(ws) }; // analytics tolerate replica lag (see REPLICA_MAX_LAG_MS); a recent write pins this workspace to the primary
   await requireFunnel(deps.db, ws, funnelId);
-  await deps.events.flush();
   const range = resolveRange(deps, q);
   const [from, to] = bounds(range);
   const perStep = new Map(
@@ -112,10 +113,11 @@ export async function funnelAnalytics(deps: Deps, ws: string, funnelId: string, 
   };
 }
 
-export async function stepAnalytics(deps: Deps, ws: string, funnelId: string, stepId: string, q: z.infer<typeof AnalyticsQuery>) {
+export async function stepAnalytics(base: Deps, ws: string, funnelId: string, stepId: string, q: z.infer<typeof AnalyticsQuery>) {
+  await base.events.flush();
+  const deps: Deps = { ...base, db: base.db.read(ws) };
   await requireFunnel(deps.db, ws, funnelId);
   const step = await requireStep(deps.db, ws, funnelId, stepId);
-  await deps.events.flush();
   const range = resolveRange(deps, q);
   const [from, to] = bounds(range);
   const a = (await deps.db.get<Omit<StepAgg, 'step_id'>>(

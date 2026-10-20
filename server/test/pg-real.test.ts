@@ -138,6 +138,24 @@ describe.skipIf(!enabled)('concurrency on a real PostgreSQL pool', () => {
     expect(await h.deps.db.get('SELECT SUM(page_views) AS p, SUM(unique_views) AS u FROM event_rollups')).toEqual({ p: 900, u: 200 });
   });
 
+  it('routes reads through a replica pool and falls back to the primary when pinned (the same server stands in for a replica)', async () => {
+    const url = new URL(process.env.TEST_PG_URL!);
+    const { openDb } = await import('../src/db/index.js');
+    const dbUrl = (db as unknown as { pool: { options: { connectionString: string } } }).pool.options.connectionString;
+    const rdb = await openDb({ url: dbUrl, replicaUrls: [dbUrl], replica: { pollMs: 0, stickyMs: 60_000 } });
+    try {
+      const replica = rdb.read('ws_x');
+      expect(replica).not.toBe(rdb);
+      expect((await replica.get<{ n: number }>('SELECT 1 AS n'))!.n).toBe(1);
+      rdb.noteWrite('ws_x');
+      expect(rdb.read('ws_x')).toBe(rdb);
+      expect(rdb.read('ws_y')).not.toBe(rdb);
+    } finally {
+      await rdb.close();
+    }
+    expect(url.protocol).toMatch(/^postgres/);
+  });
+
   it('the AI daily cap is enforced atomically across parallel requests', async () => {
     const h = await harness({ env: { AI_DAILY_CAP: '5', AI_RATE_LIMIT_PER_MINUTE: '100' } });
     const u = await h.register();

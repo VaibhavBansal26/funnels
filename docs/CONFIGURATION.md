@@ -9,6 +9,10 @@ Generated from the zod schema in `server/src/config.ts` and the descriptions in 
 | `HOST` | `0.0.0.0` | no | `0.0.0.0` | Interface to bind. |
 | `DATABASE_URL` | (unset) | no | `postgres://funnels:secret@db:5432/funnels` | PostgreSQL connection URL. When set it selects PostgreSQL (a `pg` pool) and DATABASE_PATH is ignored. Unset = SQLite. **Security:** Contains credentials: pass it as a secret, never commit it. Use TLS (`?sslmode=require`) outside a private network. |
 | `DATABASE_POOL_MAX` | `10` | no | `10` | Maximum connections in the PostgreSQL pool per process. Size it so `replicas x pool` stays below the server (or PgBouncer) limit. |
+| `DATABASE_REPLICA_URLS` | (empty) | no | `postgres://funnels:secret@replica-1:5432/funnels` | Comma-separated PostgreSQL read replica URLs. History, lists, exports and analytics read through `db.read()`, which uses a healthy replica round-robin and falls back to the primary. **Security:** Credentials, like DATABASE_URL. Replicas must be read-only. |
+| `REPLICA_MAX_LAG_MS` | `2000` | no | `2000` | A replica more than this many milliseconds behind is taken out of rotation until it catches up. |
+| `REPLICA_STICKY_MS` | `5000` | no | `5000` | After a write by a workspace, its reads go to the primary for this long (read-your-writes). |
+| `DATABASE_PREPARED_STATEMENTS` | `true` | no | `true` | Use named server-side prepared statements on PostgreSQL. Set `false` behind PgBouncer in transaction pooling mode (connections are shared between clients, so a statement prepared on one is unknown on the next). |
 | `REDIS_URL` | (unset) | no | `redis://redis:6379` | Redis for the shared rate limiter. Unset = per-process in-memory limiter (fine for one replica). **Security:** May contain a password. Use `rediss://` over untrusted networks. |
 | `REDIS_KEY_PREFIX` | `funnels` | no | `funnels-prod` | Namespace for every Redis key, so deployments can share one Redis. |
 | `REDIS_TIMEOUT_MS` | `25` | no | `25` | Budget for one limiter call to Redis. Past it the call counts as a failure and the policy fails open or closed (docs/RATE-LIMITING.md). |

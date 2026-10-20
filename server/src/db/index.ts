@@ -12,6 +12,10 @@ export interface DbOptions {
   url?: string;
   sqlitePath?: string;
   poolMax?: number;
+  replicaUrls?: string[];
+  replica?: { maxLagMs?: number; stickyMs?: number; pollMs?: number };
+  /** false disables named prepared statements (PgBouncer transaction pooling). */
+  prepare?: boolean;
   log?: (msg: string, meta?: Record<string, unknown>) => void;
 }
 
@@ -22,7 +26,7 @@ export async function openDb(opts: DbOptions = {}): Promise<Db> {
   let db: Db;
   if (isPostgresUrl(opts.url)) {
     const { connectPg } = await import('./pg.js');
-    db = await connectPg(opts.url, { max: opts.poolMax ?? 10, log: opts.log });
+    db = await connectPg(opts.url, { max: opts.poolMax ?? 10, log: opts.log, replicaUrls: opts.replicaUrls, replica: opts.replica, prepare: opts.prepare });
   } else {
     db = new SqliteDb(opts.sqlitePath ?? ':memory:');
   }

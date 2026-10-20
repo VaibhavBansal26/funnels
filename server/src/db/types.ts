@@ -35,6 +35,12 @@ export interface Db {
   /** Query plan lines (EXPLAIN QUERY PLAN / EXPLAIN). On PostgreSQL sequential scans are disabled so tiny test tables still show index use. */
   explain(sql: string, ...params: Param[]): Promise<string[]>;
   close(): Promise<void>;
+  /**
+   * The handle for a read that may be slightly stale (history, lists, analytics): a healthy read replica when one is configured, else this handle.
+   * `stickyKey` (a workspace id) pins reads to the primary for a few seconds after `noteWrite(stickyKey)`, so a user sees their own writes.
+   */
+  read(stickyKey?: string): Db;
+  noteWrite(stickyKey: string): void;
 }
 
 export const normalizeParams = (params: Param[]): (string | number | bigint | null)[] =>

@@ -141,6 +141,7 @@ export async function submitForm(deps: Deps, p: { funnelId: string; stepId: stri
         lead: { id: lead.id, email, name: nameField ? (values[nameField.id] ?? null) : null, phone: phoneField ? (values[phoneField.id] ?? null) : null },
         fields: values,
       });
+      deps.db.noteWrite(ws);
       return { ok: true, recorded: true, leadId: lead.id };
     });
   } catch (e) {
@@ -185,7 +186,8 @@ const serializeLead = (l: LeadRow & { funnel_name: string | null }) => ({
   firstFunnelId: l.first_funnel_id, firstFunnelName: l.funnel_name, submissions: l.submissions, createdAt: l.created_at, updatedAt: l.updated_at,
 });
 
-export async function listLeads(deps: Deps, ws: string, q: z.infer<typeof LeadQuery>) {
+export async function listLeads(base: Deps, ws: string, q: z.infer<typeof LeadQuery>) {
+  const deps: Deps = { ...base, db: base.db.read(ws) };
   const { clause, params } = leadFilter(deps, ws, q);
   const total = (await deps.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM leads l WHERE ${clause}`, ...params))!.n;
   const rows = await deps.db.all<LeadRow & { funnel_name: string | null }>(
@@ -198,7 +200,8 @@ export async function listLeads(deps: Deps, ws: string, q: z.infer<typeof LeadQu
 const PAGE = 1000;
 
 /** Streaming export: keyset pages of 1000 rows (newest first, cursor = (created_at, id)), so exports of any size use bounded memory. */
-export function leadsCsvStream(deps: Deps, ws: string, q: z.infer<typeof LeadQuery>): ReadableStream<Uint8Array> {
+export function leadsCsvStream(base: Deps, ws: string, q: z.infer<typeof LeadQuery>): ReadableStream<Uint8Array> {
+  const deps: Deps = { ...base, db: base.db.read(ws) };
   const { clause, params } = leadFilter(deps, ws, q);
   return csvStream<{ at: string; id: string }>(['Email', 'Name', 'Phone', 'First funnel', 'Submissions', 'Created', 'Last activity'], async (cursor) => {
     const rows = await deps.db.all<LeadRow & { funnel_name: string | null }>(

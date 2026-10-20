@@ -60,6 +60,13 @@ export abstract class PgHandle implements Db {
 
   abstract transaction<T>(fn: (tx: Db) => Promise<T>, opts?: TransactionOptions): Promise<T>;
   abstract close(): Promise<void>;
+
+  /** Handles without replicas read from themselves. PgDb overrides this. */
+  read(_stickyKey?: string): Db {
+    return this;
+  }
+
+  noteWrite(_stickyKey: string): void {}
 }
 
 /** A handle bound to one open transaction. Nested `transaction` calls become savepoints. */

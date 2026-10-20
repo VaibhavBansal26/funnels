@@ -149,6 +149,7 @@ function persistOrders(
   p: { ws: string; funnel: { id: string; name: string }; step: { id: string; name: string }; created: OrderRow[]; email: string; name: string | null; visitorId?: string; utms?: unknown },
 ): Promise<void> {
   const { ws, funnel, step, created } = p;
+  deps.db.noteWrite(ws);
   return inTx(deps, async (d) => {
     const lead = await upsertLead(d, ws, { email: p.email, name: p.name, funnelId: funnel.id, countSubmission: false });
     for (const o of created) {
@@ -206,7 +207,8 @@ function filter(deps: Deps, ws: string, q: z.infer<typeof OrderQuery>) {
 type Joined = OrderRow & { funnel_name: string | null; step_name: string | null };
 const SELECT = `SELECT o.*, f.name AS funnel_name, s.name AS step_name FROM orders o LEFT JOIN funnels f ON f.id = o.funnel_id LEFT JOIN steps s ON s.id = o.step_id`;
 
-export async function listOrders(deps: Deps, ws: string, q: z.infer<typeof OrderQuery>) {
+export async function listOrders(base: Deps, ws: string, q: z.infer<typeof OrderQuery>) {
+  const deps: Deps = { ...base, db: base.db.read(ws) };
   const { clause, params } = filter(deps, ws, q);
   const total = (await deps.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM orders o WHERE ${clause}`, ...params))!.n;
   const rows = await deps.db.all<Joined>(`${SELECT} WHERE ${clause} ORDER BY o.created_at DESC, o.id DESC LIMIT ? OFFSET ?`, ...params, q.limit, (q.page - 1) * q.limit);
@@ -216,7 +218,8 @@ export async function listOrders(deps: Deps, ws: string, q: z.infer<typeof Order
   };
 }
 
-export function ordersCsvStream(deps: Deps, ws: string, q: z.infer<typeof OrderQuery>): ReadableStream<Uint8Array> {
+export function ordersCsvStream(base: Deps, ws: string, q: z.infer<typeof OrderQuery>): ReadableStream<Uint8Array> {
+  const deps: Deps = { ...base, db: base.db.read(ws) };
   const { clause, params } = filter(deps, ws, q);
   return csvStream<{ at: string; id: string }>(['Order', 'Date', 'Funnel', 'Step', 'Product', 'Amount', 'Currency', 'Bump', 'Upsell', 'Email', 'Name', 'Provider reference'], async (cursor) => {
     const rows = await deps.db.all<Joined>(

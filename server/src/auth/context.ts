@@ -46,6 +46,7 @@ export function authenticate(deps: Deps, opts: { allowTicket?: boolean } = {}): 
     if (!userId) throw unauthorized();
     const auth = await loadAuth(deps, userId);
     c.set('auth', auth);
+    if (c.req.method !== 'GET' && c.req.method !== 'HEAD') deps.db.noteWrite(auth.workspaceId); // reads right after a change must see it, even with read replicas
     // Per-user and per-workspace limits need to know who is calling, so they run here, right after authentication.
     await (c.get('rl' as never) as { afterAuth?: (a: Auth) => Promise<void> } | undefined)?.afterAuth?.(auth);
     await next();

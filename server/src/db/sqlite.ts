@@ -139,6 +139,12 @@ export class SqliteDb implements Db {
     }
   }
 
+  read(): Db {
+    return this;
+  }
+
+  noteWrite(): void {}
+
   async close(): Promise<void> {
     await this.acquire();
     this.statements.clear();
@@ -201,6 +207,12 @@ class SqliteTx implements Db {
       this.root.endSavepoint();
     }
   }
+
+  read(): Db {
+    return this;
+  }
+
+  noteWrite(): void {}
 
   async close(): Promise<void> {
     throw new Error('A transaction handle cannot close the database');

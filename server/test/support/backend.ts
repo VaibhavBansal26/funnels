@@ -17,7 +17,16 @@ export async function createPg(poolMax = 8): Promise<Db> {
   if (!url) throw new Error('TEST_DB=pg needs TEST_PG_URL (postgres://user:pass@host:5432/db)');
   const admin = await openDbNoMigrate(url);
   const name = `funnels_test_${process.pid}_${Math.random().toString(36).slice(2, 8)}`;
-  await admin.exec(`CREATE DATABASE ${name}`);
+  // Concurrent CREATE DATABASE calls from parallel workers can collide on template1 ("is being accessed by other users"); retry.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await admin.exec(`CREATE DATABASE ${name}`);
+      break;
+    } catch (e) {
+      if (attempt >= 8) throw e;
+      await new Promise((r) => setTimeout(r, 100 + Math.random() * 300));
+    }
+  }
   await admin.close();
   const u = new URL(url);
   u.pathname = `/${name}`;

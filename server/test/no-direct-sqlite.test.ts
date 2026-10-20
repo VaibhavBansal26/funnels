@@ -36,6 +36,12 @@ describe.skipIf(BACKEND !== 'sqlite')('the data layer boundary', () => {
     expect(bad).toEqual([]);
   });
 
+  it('stays PgBouncer-safe: no session-level state (session advisory locks, SET without LOCAL, LISTEN, temp tables)', () => {
+    const banned = /pg_advisory_lock\(|pg_try_advisory_lock\(|\bSET SESSION\b|\bLISTEN\b|\bCREATE (TEMP|TEMPORARY)\b|\bSET (statement_timeout|search_path|lock_timeout|application_name|work_mem|enable_\w+|default_transaction_\w+) ?(=|TO)/i; // `SET LOCAL ...` (inside a transaction) is fine
+    const bad = all.filter((f) => banned.test(f.text) && !f.path.startsWith('db/migrations')).map((f) => f.path);
+    expect(bad).toEqual([]);
+  });
+
   it('migrations exist for both dialects with the same file names', () => {
     const dir = (d: string) => readdirSync(join(SRC, 'db/migrations', d)).filter((f) => f.endsWith('.sql')).sort();
     expect(dir('pg')).toEqual(dir('sqlite'));

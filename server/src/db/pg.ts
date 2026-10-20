@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { backoff, beginSql, PgHandle, type PgExecutor, PgTx, RETRIES } from './pghandle.js';
 import { SerializationFailure } from './errors.js';
+import { ReplicaSet, type ReplicaOptions } from './replicas.js';
 import type { Db, TransactionOptions } from './types.js';
 
 const MAX_NAMED = 200;
@@ -33,9 +34,9 @@ class StatementNames {
   }
 }
 
-const executorFor = (target: Pick<Pool | PoolClient, 'query'>, names: StatementNames): PgExecutor => ({
+const executorFor = (target: Pick<Pool | PoolClient, 'query'>, names: StatementNames, named = true): PgExecutor => ({
   async run(text, values, prepare) {
-    const r = await target.query({ text, values: values as never[], name: prepare ? names.nameFor(text) : undefined });
+    const r = await target.query({ text, values: values as never[], name: prepare && named ? names.nameFor(text) : undefined });
     return { rows: r.rows, affected: r.rowCount ?? r.rows.length };
   },
   async script(sql) {
@@ -50,14 +51,27 @@ export class PgDb extends PgHandle implements Db {
   constructor(
     private pool: Pool,
     private names = new StatementNames(),
+    private opts: { replicas?: ReplicaSet<PgDb>; prepare?: boolean } = {},
   ) {
-    super(executorFor(pool, names));
+    super(executorFor(pool, names, opts.prepare !== false));
+  }
+
+  override read(stickyKey?: string): Db {
+    return this.opts.replicas?.pick(stickyKey) ?? this;
+  }
+
+  override noteWrite(stickyKey: string): void {
+    this.opts.replicas?.noteWrite(stickyKey);
+  }
+
+  get replicas(): ReplicaSet<PgDb> | undefined {
+    return this.opts.replicas;
   }
 
   async transaction<T>(fn: (tx: Db) => Promise<T>, opts?: TransactionOptions): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       const client = await this.pool.connect();
-      const tx = new PgTx('pg', executorFor(client, this.names));
+      const tx = new PgTx('pg', executorFor(client, this.names, this.opts.prepare !== false));
       let broken = false;
       try {
         await client.query(beginSql(opts));
@@ -83,14 +97,43 @@ export class PgDb extends PgHandle implements Db {
   }
 
   async close(): Promise<void> {
+    await this.opts.replicas?.close();
     await this.pool.end();
   }
 }
 
-export async function connectPg(url: string, opts: { max: number; log?: (msg: string, meta?: Record<string, unknown>) => void }): Promise<PgDb> {
+export interface PgConnectOptions {
+  max: number;
+  log?: (msg: string, meta?: Record<string, unknown>) => void;
+  /** Read replicas for `db.read()`. */
+  replicaUrls?: string[];
+  replica?: Partial<Pick<ReplicaOptions, 'maxLagMs' | 'stickyMs' | 'pollMs'>>;
+  /** false = never use named server-side prepared statements (PgBouncer in transaction pooling mode shares connections between clients, so a name prepared on one is unknown on the next). */
+  prepare?: boolean;
+}
+
+export async function connectPg(url: string, opts: PgConnectOptions): Promise<PgDb> {
   const pg = (await import('pg')).default;
-  const pool = new pg.Pool({ connectionString: url, max: opts.max, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 10_000, types: pgTypes(pg.types) as never });
-  pool.on('error', (e) => opts.log?.('pg pool error', { error: e.message })); // idle client errors must not crash the process
+  const make = (u: string, max: number) => {
+    const pool = new pg.Pool({ connectionString: u, max, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 10_000, types: pgTypes(pg.types) as never });
+    pool.on('error', (e) => opts.log?.('pg pool error', { error: e.message })); // idle client errors must not crash the process
+    return pool;
+  };
+  const pool = make(url, opts.max);
   await pool.query('SELECT 1');
-  return new PgDb(pool);
+  let replicas: ReplicaSet<PgDb> | undefined;
+  if (opts.replicaUrls?.length) {
+    const targets = opts.replicaUrls.map((u) => {
+      const rp = make(u, Math.max(2, Math.ceil(opts.max / 2)));
+      return { handle: new PgDb(rp, undefined, { prepare: opts.prepare }), pool: rp };
+    });
+    replicas = new ReplicaSet(targets, {
+      maxLagMs: opts.replica?.maxLagMs ?? 2000,
+      stickyMs: opts.replica?.stickyMs ?? 5000,
+      pollMs: opts.replica?.pollMs ?? 1000,
+      onChange: (i) => opts.log?.('read replicas', i),
+    });
+    await replicas.refresh();
+  }
+  return new PgDb(pool, undefined, { replicas, prepare: opts.prepare });
 }

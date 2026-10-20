@@ -40,7 +40,7 @@ export function createDomainProvider(config: Config): DomainProvider {
 export async function createDeps(config: Config, overrides: Partial<Deps> = {}): Promise<Deps> {
   const now = overrides.now ?? (() => new Date());
   const log = overrides.log ?? createLogger(config.LOG_LEVEL);
-  const db = overrides.db ?? (await openDb({ url: config.DATABASE_URL, sqlitePath: config.DATABASE_PATH, poolMax: config.DATABASE_POOL_MAX, log: (m, meta) => log.warn(m, meta) }));
+  const db = overrides.db ?? (await openDb({ url: config.DATABASE_URL, sqlitePath: config.DATABASE_PATH, poolMax: config.DATABASE_POOL_MAX, replicaUrls: config.DATABASE_REPLICA_URLS, replica: { maxLagMs: config.REPLICA_MAX_LAG_MS, stickyMs: config.REPLICA_STICKY_MS }, prepare: config.DATABASE_PREPARED_STATEMENTS, log: (m, meta) => log.warn(m, meta) }));
   await seedTemplates(db);
   await ensureEventPartitions(db, now(), config.PARTITION_MONTHS_AHEAD); // PostgreSQL: partitions exist before the first insert
   const deps: Deps = {

@@ -220,8 +220,10 @@ describe('AnthropicProvider (fake client, no network)', () => {
     const fenced = await setup({ text: '```json\n' + JSON.stringify(copy(2)) + '\n```' });
     const u = await fenced.h.register();
     expect((await gen(fenced.h, u.token)).json.source).toBe('model');
+    // One harness (booting a PostgreSQL instance per case is slow): the provider is swapped on the shared deps for each reply.
     for (const reply of [{ stop: 'refusal', text: JSON.stringify(copy(2)) }, { text: '' }, { text: 'I cannot help with that.' }, { throws: true }]) {
-      const s = await setup(reply);
+      fenced.h.deps.ai = new AnthropicProvider({ model: 'claude-sonnet-5-5', client: fake(reply).client });
+      const s = fenced;
       const user = await s.h.register();
       const r = await gen(s.h, user.token);
       expect([JSON.stringify(reply), r.status, r.json.source]).toEqual([JSON.stringify(reply), 201, 'fallback']);
