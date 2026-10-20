@@ -34,7 +34,7 @@ Generated from the zod schema in `server/src/config.ts` and the descriptions in 
 | `APP_PUBLIC_URL` | `http://localhost:3000` | no | `https://app.example.com` | Public base URL of the app; its host is reserved and cannot be registered as a customer domain. |
 | `APP_PUBLIC_CNAME_TARGET` | `sites.funnels.example` | no | `sites.example.com` | Hostname customers point their CNAME at. |
 | `CORS_ORIGINS` | (empty) | no | `https://app.example.com` | Comma-separated origins allowed to call /api cross-origin. |
-| `PLATFORM_ADMIN_EMAILS` | (empty) | no | `ops@example.com` | Comma-separated emails of platform administrators (global templates, rate limit operations). **Security:** Matched case-insensitively against the account email; protect those mailboxes. |
+| `PLATFORM_ADMIN_EMAILS` | (empty) | no | `ops@example.com` | Comma-separated emails that bootstrap platform administrators (admin area, global templates, rate limit operations). More administrators are added in the admin area. **Security:** Matched case-insensitively against the account email; protect those mailboxes. |
 | `TRUST_PROXY` | `false` | no | `true` | Believe X-Forwarded-For (see TRUSTED_PROXY_HOPS). Turn on only behind a proxy you control; otherwise clients can forge their address and dodge per-IP limits. **Security:** Misconfiguring it either way breaks per-IP limits: off behind a proxy throttles everyone as one client, on without a proxy lets clients choose their IP. |
 | `WEB_DIST` | `../web/dist` | no |  | Directory of the built web app to serve. Defaults to ../web/dist relative to the server. |
 | `ANTHROPIC_API_KEY` | (unset) | no |  | Enables the Anthropic provider for AI features. Unset = offline heuristic provider. **Security:** Secret. Prompts never contain it. |
@@ -70,6 +70,9 @@ Generated from the zod schema in `server/src/config.ts` and the descriptions in 
 | `STRIPE_PRICE_BUSINESS` | (unset) | no | `price_1Def` | Stripe Price id (price_...) of the Business subscription. |
 | `BILLING_ENFORCE_LIMITS` | `false` | no | `false` | Enforce plan limits (funnels, domains, members, API keys per plan, see docs/STRIPE.md). Off by default: a self-hosted install without billing has no limits. |
 | `MAX_CUSTOM_ROLES` | `50` | no | `50` | Most custom roles one workspace may define. |
+| `ADMIN_REQUIRE_2FA` | `false` | no | `true` | Platform administrators must have two-factor authentication enabled to use /api/admin. Always on when NODE_ENV=production (cannot be switched off there). **Security:** Leave on for any internet-facing installation. |
+| `IMPERSONATION_TTL_MINUTES` | `30` | no | `30` | Lifetime of an impersonation (support access) session, in minutes. It has no refresh token and cannot be extended. |
+| `ADMIN_QUEUE_PEEK` | `50` | no | `50` | Rows shown per list in the admin queue inspector (dead jobs, dead letters). |
 | `ANALYTICS_API_PER_MINUTE` | `60` | no | `60` | Requests per minute per API key on the analytics API (policy `analytics.read`; the workspace as a whole has its own, plan-tiered budget, `analytics.workspace`). |
 | `ANALYTICS_EXPORT_PER_MINUTE` | `10` | no | `10` | Export requests per minute per API key (policy `analytics.export`). Each request returns one page of up to 20,000 lines. |
 | `ANALYTICS_READ_STORE` | `postgres` | no | `postgres` | Where analytics reads come from: `postgres` (the primary database, authoritative, default) or `clickhouse` (the mirror; needs CLICKHOUSE_URL and EVENTSTORE_MIRROR=clickhouse so it has data). UNVERIFIED against a real ClickHouse server in this repository, see docs/SCALING.md. The mirror is eventually consistent, so reads fall back to the primary when it is stale or failing. |

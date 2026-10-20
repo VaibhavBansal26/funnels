@@ -19,8 +19,8 @@ async function verify(config: Config, token: string, use: TokenUse, now: Date) {
 }
 
 /** Short-lived access token. `sid` ties it to a session row, so revoking the session (logout, password change, refresh-token theft) ends it immediately. */
-export const signAccessToken = (config: Config, userId: string, sessionId: string, now: Date) =>
-  sign(config, 'access', { sid: sessionId }, config.ACCESS_TOKEN_TTL_SECONDS, now, userId);
+export const signAccessToken = (config: Config, userId: string, sessionId: string, now: Date, ttlSeconds = config.ACCESS_TOKEN_TTL_SECONDS) =>
+  sign(config, 'access', { sid: sessionId }, ttlSeconds, now, userId);
 
 export async function verifyAccessToken(config: Config, token: string, now: Date): Promise<{ userId: string; sessionId: string } | null> {
   try {

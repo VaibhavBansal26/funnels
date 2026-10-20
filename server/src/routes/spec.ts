@@ -24,6 +24,10 @@ import { ForgotInput, ResetInput } from '../services/recovery.js';
 import { RoleInput, RolePatch } from '../services/roles.js';
 import { CodeInput, ConfirmInput, VerifyLoginInput } from '../services/twofactor.js';
 import { RefreshInput } from './auth.js';
+import { AdminAddInput, DeleteWorkspaceInput, ImpersonateInput, PlatformAuditQuery, SuspendInput, WorkspaceQuery } from '../services/admin.js';
+import { AnnouncementInput, AnnouncementPatch } from '../services/announcements.js';
+import { FlagInput, OverrideInput } from '../services/flags.js';
+import { SubjectInput } from '../services/gdpr.js';
 
 /**
  * THE route declaration. One row per HTTP operation, read by:
@@ -213,6 +217,36 @@ export const OPERATIONS: Operation[] = [
   PLATFORM('POST', '/api/admin/rate-limits/allows', 'admin', 'Allow-list a client for a TTL (bypasses its limits)', { body: ListEntryInput, status: 201 }),
   PLATFORM('DELETE', '/api/admin/rate-limits/allows', 'admin', 'Remove an allow-list entry', { body: WhoInput, status: 204 }),
   PLATFORM('PUT', '/api/admin/workspaces/:id/rate-tier', 'admin', 'Override a workspace plan or rate multiplier', { body: TierInput }),
+  PLATFORM('GET', '/api/admin/stats', 'admin', 'Platform counters: workspaces, users, funnels, dead jobs', { limits: ['ip.global', 'admin.platform', 'api.workspace'] }),
+  PLATFORM('GET', '/api/admin/admins', 'admin', 'Platform administrators'),
+  PLATFORM('POST', '/api/admin/admins', 'admin', 'Make an existing user a platform administrator', { body: AdminAddInput, status: 201 }),
+  PLATFORM('DELETE', '/api/admin/admins/:userId', 'admin', 'Remove a platform administrator (not one listed in PLATFORM_ADMIN_EMAILS, not yourself)', { status: 204 }),
+  PLATFORM('GET', '/api/admin/workspaces', 'admin', 'Search workspaces (name, id, member email), filter by status, keyset pages', { query: WorkspaceQuery }),
+  PLATFORM('GET', '/api/admin/workspaces/:id', 'admin', 'One workspace: plan, usage, members, flag overrides, recent audit'),
+  PLATFORM('POST', '/api/admin/workspaces/:id/suspend', 'admin', 'Suspend a workspace: sign members out, stop serving, refuse public writes and API keys, purge the edge cache', { body: SuspendInput }),
+  PLATFORM('POST', '/api/admin/workspaces/:id/unsuspend', 'admin', 'Lift a suspension'),
+  PLATFORM('POST', '/api/admin/workspaces/:id/impersonate', 'admin', 'Open a time-limited support session as the workspace owner or a given member (reason required, audited in the workspace)', { body: ImpersonateInput, status: 201 }),
+  PLATFORM('DELETE', '/api/admin/workspaces/:id', 'admin', 'Permanently delete a suspended workspace and all its data (name must be typed)', { body: DeleteWorkspaceInput, status: 204 }),
+  PLATFORM('GET', '/api/admin/workspaces/:id/export', 'admin', 'Export a workspace as NDJSON (members, funnels, pages, leads, orders, audit; no events)', { notes: 'Streamed in keyset pages of 1000 rows; memory does not grow with the workspace.' }),
+  PLATFORM('GET', '/api/admin/queues', 'admin', 'Queue inspector: jobs by status and type, outbox backlog, event bus lag and dead letters, webhook deliveries'),
+  PLATFORM('GET', '/api/admin/queues/dead-jobs', 'admin', 'Dead jobs with their last error'),
+  PLATFORM('GET', '/api/admin/queues/dead-letters', 'admin', 'Dead letters of the event bus consumer groups this installation runs'),
+  PLATFORM('POST', '/api/admin/queues/jobs/:id/retry', 'admin', 'Re-queue a dead job'),
+  PLATFORM('DELETE', '/api/admin/queues/jobs/:id', 'admin', 'Discard a dead job', { status: 204 }),
+  PLATFORM('GET', '/api/admin/flags', 'admin', 'Feature flags (built-in and stored)'),
+  PLATFORM('PUT', '/api/admin/flags/:key', 'admin', 'Create or change a flag: description, default, rollout percentage', { body: FlagInput }),
+  PLATFORM('DELETE', '/api/admin/flags/:key', 'admin', 'Delete a stored flag and its overrides', { status: 204 }),
+  PLATFORM('PUT', '/api/admin/flags/:key/workspaces/:id', 'admin', 'Override a flag for one workspace (enabled: null removes the override)', { body: OverrideInput }),
+  PLATFORM('GET', '/api/admin/announcements', 'admin', 'All announcements'),
+  PLATFORM('POST', '/api/admin/announcements', 'admin', 'Publish an announcement (banner for every signed-in user)', { body: AnnouncementInput, status: 201 }),
+  PLATFORM('PATCH', '/api/admin/announcements/:id', 'admin', 'Edit an announcement', { body: AnnouncementPatch }),
+  PLATFORM('DELETE', '/api/admin/announcements/:id', 'admin', 'Delete an announcement', { status: 204 }),
+  PLATFORM('GET', '/api/admin/audit', 'admin', 'Platform-wide audit log with filters and keyset paging', { query: PlatformAuditQuery }),
+  PLATFORM('POST', '/api/admin/gdpr/export', 'admin', 'Everything held about one email address (leads, orders, checkout sessions)', { body: SubjectInput }),
+  PLATFORM('POST', '/api/admin/gdpr/erase', 'admin', 'Erase one email address: delete leads, anonymise orders and checkout sessions, scrub notifications and webhook payloads', { body: SubjectInput }),
+  A('GET', '/api/announcements', 'any', 'notices', 'Active announcements you have not dismissed'),
+  A('POST', '/api/announcements/:id/dismiss', 'any', 'notices', 'Dismiss an announcement (critical ones cannot be dismissed)', { status: 204 }),
+  A('GET', '/api/workspace/flags', 'any', 'notices', 'Evaluated feature flags for your workspace'),
   // analytics API v1 (docs/ANALYTICS-API.md): API-key authenticated
   K('/api/v1/analytics/funnels', 'analytics:read', 'Funnels with totals for a range (cursor pagination)', { query: ApiListQuery }),
   K('/api/v1/analytics/funnels/:id/steps', 'analytics:read', 'Per-step totals, rates and exit rate for a funnel', { query: ApiRangeQuery }),

@@ -1,6 +1,7 @@
+import { isSuspended } from './suspension.js';
 import { findBlock, type Block, type CheckoutBlock, type FormBlock, type PageDocument } from '../blocks/index.js';
 import type { Deps } from '../deps.js';
-import { notFound } from '../errors.js';
+import { AppError, notFound } from '../errors.js';
 import type { FunnelRow, StepRow } from '../repos/types.js';
 
 export interface PublicTarget<B extends Block> {
@@ -26,6 +27,7 @@ export async function resolvePublicBlock<T extends 'form' | 'checkout'>(
   const step = funnel ? await deps.db.get<StepRow>('SELECT * FROM steps WHERE id = ? AND funnel_id = ?', stepId, funnelId) : undefined;
   const page = step ? await deps.db.get<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE step_id = ?', stepId) : undefined;
   if (!funnel || !step || !page) throw notFound('Form');
+  if (await isSuspended(deps, funnel.workspace_id)) throw new AppError(503, 'SITE_UNAVAILABLE', 'This site is currently unavailable');
   const doc = JSON.parse(page.doc_json) as PageDocument;
   const block = findBlock(doc.blocks, blockId);
   if (!block || block.type !== type) throw notFound('Form');

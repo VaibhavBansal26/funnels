@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { isPlatformAdmin, type Auth } from '../auth/context.js';
+import type { Auth } from '../auth/context.js';
+import { isPlatformAdmin } from '../auth/platform.js';
 import { BlockSchema, firstHeading, type PageDocument } from '../blocks/index.js';
 import type { Deps } from '../deps.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -83,8 +84,8 @@ export async function useTemplate(deps: Deps, auth: Auth, id: string) {
 
 // ----- platform admin (guarded by PLATFORM_ADMIN_EMAILS) -----
 
-export function assertPlatformAdmin(deps: Deps, auth: Auth): void {
-  if (!isPlatformAdmin(deps, auth)) throw forbidden('Only platform administrators can manage templates');
+export async function assertPlatformAdmin(deps: Deps, auth: Auth): Promise<void> {
+  if (!(await isPlatformAdmin(deps, auth))) throw forbidden('Only platform administrators can manage templates');
 }
 
 export const TemplateCreate = z.object({
@@ -106,7 +107,7 @@ async function requireCategory(deps: Deps, id: string | null | undefined): Promi
 
 /** Publishes one of the caller's funnels as a global template (copies its step documents). */
 export async function createTemplate(deps: Deps, auth: Auth, input: z.infer<typeof TemplateCreate>) {
-  assertPlatformAdmin(deps, auth);
+  await assertPlatformAdmin(deps, auth);
   const id = await inTx(deps, async (d) => {
     const funnel = await requireFunnel(d.db, auth.workspaceId, input.funnelId);
     const steps = await listSteps(d.db, auth.workspaceId, funnel.id);
@@ -129,7 +130,7 @@ export async function createTemplate(deps: Deps, auth: Auth, input: z.infer<type
 }
 
 export async function updateTemplate(deps: Deps, auth: Auth, id: string, patch: z.infer<typeof TemplatePatch>) {
-  assertPlatformAdmin(deps, auth);
+  await assertPlatformAdmin(deps, auth);
   const t = await requireTemplate(deps, id);
   const category = patch.categoryId === undefined ? t.category_id : await requireCategory(deps, patch.categoryId);
   await deps.db.run('UPDATE templates SET name = ?, description = ?, category_id = ?, updated_at = ? WHERE id = ?', patch.name ?? t.name, patch.description ?? t.description, category, deps.now().toISOString(), t.id);
@@ -137,12 +138,12 @@ export async function updateTemplate(deps: Deps, auth: Auth, id: string, patch: 
 }
 
 export async function deleteTemplate(deps: Deps, auth: Auth, id: string): Promise<void> {
-  assertPlatformAdmin(deps, auth);
+  await assertPlatformAdmin(deps, auth);
   await deps.db.run('DELETE FROM templates WHERE id = ?', (await requireTemplate(deps, id)).id);
 }
 
 export async function createCategory(deps: Deps, auth: Auth, input: z.infer<typeof CategoryInput>) {
-  assertPlatformAdmin(deps, auth);
+  await assertPlatformAdmin(deps, auth);
   const slug = slugOf(input.name);
   if (await deps.db.get('SELECT 1 FROM template_categories WHERE slug = ?', slug)) throw conflict('CATEGORY_EXISTS', 'A category with this name already exists');
   const id = newId('cat');
@@ -156,7 +157,7 @@ export async function createCategory(deps: Deps, auth: Auth, input: z.infer<type
 }
 
 export async function deleteCategory(deps: Deps, auth: Auth, id: string): Promise<void> {
-  assertPlatformAdmin(deps, auth);
+  await assertPlatformAdmin(deps, auth);
   await requireCategory(deps, id);
   await deps.db.run('DELETE FROM template_categories WHERE id = ?', id);
 }

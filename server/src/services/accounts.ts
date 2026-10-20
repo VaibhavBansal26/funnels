@@ -11,6 +11,7 @@ import { badRequest, conflict, notFound, unauthorized } from '../errors.js';
 import { newId } from '../util/ids.js';
 import { denyError } from '../ratelimit/response.js';
 import { hashId } from '../ratelimit/subject.js';
+import { isPlatformAdmin } from '../auth/platform.js';
 import { audit } from './audit.js';
 import { regenerateWorkspace } from './pages.js';
 import { assertCanGrant, findRole } from './roles.js';
@@ -131,7 +132,16 @@ export async function completeLogin(deps: Deps, userId: string, meta: SessionMet
 
 export async function me(deps: Deps, auth: Auth) {
   const u = (await deps.db.get<UserRow>('SELECT * FROM users WHERE id = ?', auth.userId))!;
-  return { user: await publicUser(deps, u, true), workspace: await workspaceOf(deps, auth.workspaceId), sessionId: auth.sessionId };
+  const w = (await deps.db.get<{ suspended_at: string | null; suspended_reason: string | null }>('SELECT suspended_at, suspended_reason FROM workspaces WHERE id = ?', auth.workspaceId))!;
+  const session = auth.impersonatorId ? await deps.db.get<{ expires_at: string }>('SELECT expires_at FROM sessions WHERE id = ?', auth.sessionId) : undefined;
+  const by = auth.impersonatorId ? await deps.db.get<{ email: string }>('SELECT email FROM users WHERE id = ?', auth.impersonatorId) : undefined;
+  return {
+    user: await publicUser(deps, u, true),
+    workspace: { ...(await workspaceOf(deps, auth.workspaceId)), suspended: !!w.suspended_at, suspendedReason: w.suspended_reason },
+    sessionId: auth.sessionId,
+    platformAdmin: !auth.impersonatorId && (await isPlatformAdmin(deps, auth)),
+    impersonation: auth.impersonatorId ? { by: by?.email ?? auth.impersonatorId, expiresAt: session?.expires_at ?? null } : null,
+  };
 }
 
 export async function changePassword(deps: Deps, auth: Auth, input: z.infer<typeof PasswordChange>, ip: string) {

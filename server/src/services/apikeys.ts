@@ -1,9 +1,10 @@
+import { isSuspended } from './suspension.js';
 import { createHash, randomBytes } from 'node:crypto';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import type { Auth } from '../auth/context.js';
 import type { Deps } from '../deps.js';
-import { badRequest, conflict, forbidden, notFound, unauthorized } from '../errors.js';
+import { AppError, badRequest, conflict, forbidden, notFound, unauthorized } from '../errors.js';
 import { clientIp, inCidr } from '../ratelimit/ip.js';
 import { isIP } from 'node:net';
 import { newId } from '../util/ids.js';
@@ -137,6 +138,7 @@ export async function authenticateKey(deps: Deps, c: Context, requiredScope: Sco
     const ip = clientIp(c, deps.config);
     if (!allow.some((a) => (a.includes('/') ? inCidr(ip, a) : ip === a || inCidr(ip, `${a}/${a.includes(':') ? 128 : 32}`)))) throw forbidden('This API key may not be used from this address');
   }
+  if (await isSuspended(deps, r.workspace_id)) throw new AppError(403, 'WORKSPACE_SUSPENDED', 'This account is suspended');
   const scopes = JSON.parse(r.scopes_json) as Scope[];
   if (!scopes.includes(requiredScope)) throw forbidden(`This API key lacks the "${requiredScope}" scope`);
   if (!r.last_used_at || now.getTime() - Date.parse(r.last_used_at) > TOUCH_MS) await deps.db.run('UPDATE api_keys SET last_used_at = ? WHERE id = ?', now.toISOString(), r.id);

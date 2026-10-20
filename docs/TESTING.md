@@ -93,3 +93,7 @@ Not covered (yet): checkout, the AI assistant UI, webhooks UI, mobile layouts, o
 ## Stripe tests
 
 `server/test/stripe.test.ts` (29 tests, all engines) runs against `server/test/support/fakestripe.ts`: signature scheme (rotation, replay), Connect onboarding and webhooks, hosted checkout parameters and fee by plan, webhook and return-URL race creating orders once, amount mismatch retry, Stripe outage, upsell success/decline/authentication/idempotency, refunds (partial, concurrent, Stripe failure, permissions, dashboard reconciliation), subscriptions and plan limits. A fake cannot prove Stripe's real behaviour: see the checklist in [STRIPE.md](STRIPE.md).
+
+## Admin tests
+
+`server/test/admin.test.ts` (20 tests, all engines): every platform route refuses anonymous callers and ordinary owners (generated from the route declaration), administrator bootstrap and removal rules, mandatory 2FA (and the production forcing in `loadConfig`), workspace search and paging, suspension across every surface (serving, sessions, API keys, public writes, previews, edge purge job, reversal, other workspaces unaffected), impersonation (expiry on the fake clock, forbidden routes, audit in the workspace's log, no admin targets), flags (overrides, stable monotone rollout over 400 sample workspaces), queue inspector, GDPR export and erasure (books still add up, no address left in scrubbed tables or audit), workspace export (2300 rows across pages), deletion guard rails and cascade, announcements, platform audit.

@@ -1,3 +1,4 @@
+import { isSuspended } from './suspension.js';
 import { z } from 'zod';
 import type { Deps } from '../deps.js';
 import { denyError } from '../ratelimit/response.js';
@@ -40,7 +41,7 @@ export const isBot = (ua: string | undefined): boolean => !ua || ua.length < 8 |
 export interface EventResult {
   ok: true;
   recorded: boolean;
-  reason?: 'bot' | 'unknown_funnel' | 'duplicate' | 'preview' | 'no_visitor';
+  reason?: 'bot' | 'unknown_funnel' | 'duplicate' | 'preview' | 'no_visitor' | 'suspended';
 }
 
 /**
@@ -59,6 +60,7 @@ export async function recordPublicEvent(deps: Deps, input: z.infer<typeof Public
     workspaceId = funnel.workspace_id;
     deps.eventRefs.set(input.funnelId, input.stepId, workspaceId);
   }
+  if (await isSuspended(deps, workspaceId)) return { ok: true, recorded: false, reason: 'suspended' };
   // Per-workspace admission: one tenant's flood is refused here (429 + Retry-After) before it can fill the queue or the buffer, and costs nobody else anything.
   const admit = await deps.limiter.check('ingest.workspace', { ip: 'workspace', workspaceId });
   if (!admit.allowed) throw denyError(admit);

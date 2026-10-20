@@ -26,7 +26,7 @@ describe('central route policy', () => {
   it("the routes open to every signed-in member ('any') are exactly this list; adding one is a deliberate edit here", () => {
     const any = OPERATIONS.filter((o) => o.permission === 'any').map((o) => `${o.method} ${o.path}`).sort();
     expect(any).toEqual([
-      'DELETE /api/auth/sessions/:id', 'GET /api/auth/me', 'GET /api/auth/sessions', 'GET /api/events/stream', 'GET /api/notifications', 'GET /api/permissions', 'GET /api/workspace',
+      'DELETE /api/auth/sessions/:id', 'GET /api/auth/me', 'GET /api/auth/sessions', 'GET /api/events/stream', 'GET /api/notifications', 'GET /api/permissions', 'GET /api/workspace', 'GET /api/workspace/flags', 'GET /api/announcements', 'POST /api/announcements/:id/dismiss',
       'POST /api/auth/2fa/disable', 'POST /api/auth/2fa/enable', 'POST /api/auth/2fa/recovery-codes', 'POST /api/auth/2fa/setup', 'POST /api/auth/logout', 'POST /api/auth/password',
       'POST /api/auth/sessions/revoke-others', 'POST /api/events/ticket', 'POST /api/notifications/:id/read', 'POST /api/notifications/read-all',
     ].sort());

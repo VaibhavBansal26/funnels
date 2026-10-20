@@ -91,3 +91,10 @@ Extra signals when the scale features are on: `funnels_ingest_queue_lag` (alert:
 **ClickHouse mirror behind.** The `clickhouse` consumer group retries with backoff and dead-letters after 8 attempts per batch; the primary is unaffected. Fix ClickHouse, then replay the dead letters or run `scripts/backfill-clickhouse.ts --from <day>` (idempotent).
 
 **Reconnect storms.** Not applicable to Funnels (no long-lived connections other than the SSE stream, which clients retry with backoff).
+
+## Admin area
+
+* **An administrator lost their authenticator (production).** Admin routes need 2FA in production, so nobody can bypass it from the app. Another administrator cannot reset a colleague's 2FA. With database access: `DELETE FROM user_totp WHERE user_id = '<id>'; DELETE FROM recovery_codes WHERE user_id = '<id>';` (record why in your ticket), then the user enrols again at their next sign-in. Do this only after verifying their identity out of band.
+* **No administrator can sign in.** Set `PLATFORM_ADMIN_EMAILS` to an existing user's email and restart: the row is created on their next admin request. Insert into `platform_admins (user_id, source, created_at)` with source `admin` if you cannot restart.
+* **A suspension did not reach the edge.** Check the `edge.purge` job in the queue inspector (dead jobs) and Cloudflare credentials; retry the job. The origin already refuses the pages; only cached copies at the edge can linger until their TTL.
+* **Impersonation is ending too soon or not at all.** It is a normal session row with `impersonator_id`; end it with `UPDATE sessions SET revoked_at = now WHERE impersonator_id IS NOT NULL`.

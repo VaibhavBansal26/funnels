@@ -1,3 +1,4 @@
+import { isSuspended } from '../services/suspension.js';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
@@ -64,6 +65,7 @@ async function sendPage(deps: Deps, c: Context, step: StepRow, status = 200): Pr
 export type Resolution =
   | { kind: 'none' }
   | { kind: 'inactive' }
+  | { kind: 'suspended' }
   | { kind: 'redirect'; location: string }
   | { kind: 'page'; status: 200 | 404; step: StepRow }
   | { kind: 'missing' };
@@ -80,6 +82,7 @@ async function resolveUncached(deps: Deps, host: string, pathname: string): Prom
   if (!domain) return { kind: 'none' };
   // A registered hostname never falls through to the app (which would serve the admin UI on a customer's domain).
   if (domain.status !== 'active') return { kind: 'inactive' };
+  if (await isSuspended(deps, domain.workspace_id)) return { kind: 'suspended' };
   const key = pathKey(pathname);
   const step = await deps.db.get<StepRow>(
     `SELECT s.* FROM steps s JOIN funnels f ON f.id = s.funnel_id
@@ -118,6 +121,8 @@ export function hostRouting(deps: Deps): MiddlewareHandler {
         return sendPage(deps, c, r.step, r.status);
       case 'inactive':
         return messagePage(404, 'Domain not connected', 'This domain has not been connected yet.');
+      case 'suspended':
+        return messagePage(503, 'Site unavailable', 'This site is currently unavailable.');
       default:
         return messagePage(404, 'Page not found', 'The page you are looking for does not exist.');
     }
@@ -135,6 +140,7 @@ export function previewRoutes(deps: Deps): Hono {
     if (!claims) return messagePage(401, 'Preview link expired', 'Open the preview again from the builder to get a fresh link.');
     const funnel = await deps.db.get<FunnelRow>('SELECT * FROM funnels WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL', funnelId, claims.workspaceId);
     if (!funnel) return messagePage(404, 'Funnel not found', 'This funnel no longer exists.');
+    if (await isSuspended(deps, funnel.workspace_id)) return messagePage(503, 'Site unavailable', 'This site is currently unavailable.');
     const steps = await listSteps(deps.db, funnel.workspace_id, funnel.id);
     const prefix = `/preview/${encodeURIComponent(funnel.id)}`;
     const rest = new URL(c.req.url).pathname.slice(prefix.length) || '/';

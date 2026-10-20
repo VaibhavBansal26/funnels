@@ -1,3 +1,4 @@
+import { requireFlag } from '../services/flags.js';
 import { promisify } from 'node:util';
 import { gzip } from 'node:zlib';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
@@ -22,6 +23,7 @@ export function analyticsApiRoutes(deps: Deps): Hono<AppEnv> {
   const key = (scope: keys.Scope): MiddlewareHandler => async (c, next) => {
     const who = await keys.authenticateKey(deps, c, scope);
     c.set(API as never, who as never);
+    await requireFlag(deps, who.workspaceId, 'analytics_api');
     await applyKeyLayers(deps, c, who);
     await next();
   };

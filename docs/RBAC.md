@@ -63,7 +63,7 @@ Generated from `server/src/routes/spec.ts`.
 
 | Permission | Routes |
 |---|---|
-| any signed-in member | `GET /api/auth/me`<br>`POST /api/auth/logout`<br>`GET /api/auth/sessions`<br>`DELETE /api/auth/sessions/:id`<br>`POST /api/auth/sessions/revoke-others`<br>`POST /api/auth/password`<br>`POST /api/auth/2fa/setup`<br>`POST /api/auth/2fa/enable`<br>`POST /api/auth/2fa/disable`<br>`POST /api/auth/2fa/recovery-codes`<br>`POST /api/events/ticket`<br>`GET /api/events/stream`<br>`GET /api/workspace`<br>`GET /api/permissions`<br>`GET /api/notifications`<br>`POST /api/notifications/read-all`<br>`POST /api/notifications/:id/read` |
+| any signed-in member | `GET /api/auth/me`<br>`POST /api/auth/logout`<br>`GET /api/auth/sessions`<br>`DELETE /api/auth/sessions/:id`<br>`POST /api/auth/sessions/revoke-others`<br>`POST /api/auth/password`<br>`POST /api/auth/2fa/setup`<br>`POST /api/auth/2fa/enable`<br>`POST /api/auth/2fa/disable`<br>`POST /api/auth/2fa/recovery-codes`<br>`POST /api/events/ticket`<br>`GET /api/events/stream`<br>`GET /api/workspace`<br>`GET /api/permissions`<br>`GET /api/notifications`<br>`POST /api/notifications/read-all`<br>`POST /api/notifications/:id/read`<br>`GET /api/announcements`<br>`POST /api/announcements/:id/dismiss`<br>`GET /api/workspace/flags` |
 | `ai:use` | `GET /api/ai/status`<br>`POST /api/ai/funnel`<br>`POST /api/ai/rewrite`<br>`POST /api/ai/headlines`<br>`POST /api/ai/insights`<br>`POST /api/ai/alt-text` |
 | `analytics:read` | `GET /api/funnels/:id/analytics`<br>`GET /api/funnels/:id/steps/:sid/analytics` |
 | `analytics_identity:manage` | `GET /api/v1/analytics/identity-pepper`<br>`POST /api/v1/analytics/identity-pepper/rotate` |
@@ -158,6 +158,9 @@ Failed sign-ins (wrong password, wrong second-factor code, wrong current passwor
 
 IP addresses are stored (they are personal data in many jurisdictions): trim `audit_log` and `sessions.ip` to your retention policy.
 
+## Platform administration
+
+Platform administrators, suspension and support access are not workspace roles; see [ADMIN.md](ADMIN.md).
 ## What this does not do
 
 * No SSO (SAML/OIDC), SCIM, per-resource permissions (a role applies to the whole workspace) or approval workflows.

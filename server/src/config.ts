@@ -92,6 +92,9 @@ export const EnvSchema = z.object({
   STRIPE_PRICE_BUSINESS: z.string().regex(/^price_/).optional(),
   BILLING_ENFORCE_LIMITS: bool(false),
   MAX_CUSTOM_ROLES: int(50, 1, 1000),
+  ADMIN_REQUIRE_2FA: bool(false),
+  IMPERSONATION_TTL_MINUTES: int(30, 5, 240),
+  ADMIN_QUEUE_PEEK: int(50, 1, 500),
   ANALYTICS_API_PER_MINUTE: int(60, 1),
   ANALYTICS_EXPORT_PER_MINUTE: int(10, 1),
   ANALYTICS_READ_STORE: z.enum(['postgres', 'clickhouse']).default('postgres'),
@@ -148,6 +151,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   if (rest.INGEST_QUEUE && rest.NODE_ENV === 'production' && rest.EVENT_BUS !== 'redis' && !rest.REDIS_URL) throw new Error('Invalid environment: INGEST_QUEUE in production needs a durable bus (set REDIS_URL)');
   return {
     ...rest,
+    ADMIN_REQUIRE_2FA: rest.ADMIN_REQUIRE_2FA || rest.NODE_ENV === 'production', // in production it cannot be switched off
     JWT_SECRET: JWT_SECRET ?? randomBytes(48).toString('base64url'),
     JWT_SECRET_GENERATED: !JWT_SECRET,
   };
