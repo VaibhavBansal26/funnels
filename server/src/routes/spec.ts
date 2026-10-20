@@ -7,6 +7,7 @@ import { BulkTagInput, CreateFunnelInput, ListQuery, UpdateFunnelInput } from '.
 import { LeadQuery, SubmitInput } from '../services/leads.js';
 import { CheckoutInput, OrderQuery } from '../services/orders.js';
 import { SaveInput } from '../services/pages.js';
+import { LimitedQuery, ListEntryInput, TierInput, WhoInput } from './ratelimits.js';
 import { ReorderInput, StepInput, StepPatch, ValidatePathInput } from '../services/steps.js';
 import { TagInput } from '../services/tags.js';
 import { CategoryInput, CustomBlockInput, TemplateCreate, TemplatePatch, TemplateQuery } from '../services/templates.js';
@@ -159,6 +160,12 @@ export const OPERATIONS: Operation[] = [
   PLATFORM('DELETE', '/api/admin/templates/:id', 'admin', 'Delete a template', { status: 204 }),
   PLATFORM('POST', '/api/admin/template-categories', 'admin', 'Create a template category', { body: CategoryInput, status: 201 }),
   PLATFORM('DELETE', '/api/admin/template-categories/:id', 'admin', 'Delete a template category', { status: 204 }),
+  PLATFORM('GET', '/api/admin/rate-limits', 'admin', 'Recently limited subjects, block/allow lists and the policy table', { query: LimitedQuery }),
+  PLATFORM('POST', '/api/admin/rate-limits/blocks', 'admin', 'Block an ip, workspace or user for a TTL', { body: ListEntryInput, status: 201 }),
+  PLATFORM('DELETE', '/api/admin/rate-limits/blocks', 'admin', 'Lift a block (and clear its penalty box)', { body: WhoInput, status: 204 }),
+  PLATFORM('POST', '/api/admin/rate-limits/allows', 'admin', 'Allow-list a client for a TTL (bypasses its limits)', { body: ListEntryInput, status: 201 }),
+  PLATFORM('DELETE', '/api/admin/rate-limits/allows', 'admin', 'Remove an allow-list entry', { body: WhoInput, status: 204 }),
+  PLATFORM('PUT', '/api/admin/workspaces/:id/rate-tier', 'admin', 'Override a workspace plan or rate multiplier', { body: TierInput }),
   // AI
   A('GET', '/api/ai/status', 'ai', 'Provider and daily usage'),
   A('POST', '/api/ai/funnel', 'ai', 'Generate a funnel', { body: ai.FunnelRequest, status: 201, limits: ['ip.global', 'api.write', 'api.workspace'], inHandler: ['ai.minute'] }),

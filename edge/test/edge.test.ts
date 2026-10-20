@@ -40,7 +40,7 @@ function world(over: Partial<Env> = {}) {
       if (page.kind === 'redirect') return Response.json(page);
       return Response.json(headers.get('x-edge-checksum') === page.checksum ? { ...page, html: undefined, notModified: true } : page);
     }
-    origin.proxied.push(new Request(url, init as RequestInit));
+    origin.proxied.push(new Request(url, { ...init, duplex: 'half' } as RequestInit));
     return new Response('{"ok":true}', { status: 202 });
   });
   const cache = new FakeCache();
@@ -218,5 +218,69 @@ describe('forwarding to the origin', () => {
     expect(noSecret.origin.proxied[0]!.headers.get('cf-connecting-ip')).toBeNull();
     expect(noSecret.origin.proxied[0]!.headers.get('x-cf-origin-secret')).toBeNull();
     expect((await w.get('/beacon.js')).status).toBe(202);
+  });
+});
+
+describe('edge rate limiting', () => {
+  const post = (w: ReturnType<typeof world>, path: string, ip = '203.0.113.9') =>
+    handle(new Request(`https://shop.example.com${path}`, { method: 'POST', headers: { 'cf-connecting-ip': ip, 'content-type': 'application/json' }, body: '{}' }), w.env, w.ctx, w.rt);
+  const binding = (allow: number) => {
+    const seen: string[] = [];
+    return { seen, limit: async ({ key }: { key: string }) => ({ success: seen.push(key) <= allow }) };
+  };
+
+  it('refuses a flood at the edge with the same 429 contract as the origin, keyed by client IP and kind', async () => {
+    const events = binding(3);
+    const w = world({ RL_EVENTS: events });
+    const codes = [];
+    for (let i = 0; i < 5; i++) codes.push((await post(w, '/api/public/events')).status);
+    expect(codes).toEqual([202, 202, 202, 429, 429]);
+    const refused = await post(w, '/api/public/events');
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get('retry-after')).toBe('10');
+    expect(await refused.json()).toEqual({ error: { code: 'RATE_LIMITED', message: expect.any(String), retry_after_s: 10, policy: 'edge.events' } });
+    expect(new Set(events.seen)).toEqual(new Set(['events:203.0.113.9']));
+    expect(w.origin.proxied).toHaveLength(3); // refused requests never reached the origin
+  });
+
+  it('forms and checkout share one budget; unrelated paths and methods are not counted', async () => {
+    const forms = binding(1);
+    const w = world({ RL_FORMS: forms });
+    expect((await post(w, '/api/public/forms/f/s/b')).status).toBe(202);
+    expect((await post(w, '/api/public/checkout/f/s/b')).status).toBe(429);
+    await w.get('/promo');
+    await handle(new Request('https://shop.example.com/api/public/events', { method: 'OPTIONS' }), w.env, w.ctx, w.rt);
+    expect(forms.seen).toHaveLength(2);
+  });
+
+  it('fails open when the binding throws', async () => {
+    const w = world({ RL_EVENTS: { limit: async () => { throw new Error('down'); } } });
+    expect((await post(w, '/api/public/events')).status).toBe(202);
+  });
+
+  it('Durable Object GCRA gives exact global counts and the origin arithmetic', async () => {
+    const { RateLimiterDO, gcra } = await import('../src/ratelimit.js');
+    const { gcra: originGcra } = await import('../../server/src/ratelimit/math.js');
+    const storage = new Map<string, unknown>();
+    let now = 1_800_000_000_000;
+    const objects = new Map<string, InstanceType<typeof RateLimiterDO>>();
+    const ns = {
+      idFromName: (n: string) => n,
+      get: (id: unknown) => {
+        if (!objects.has(id as string)) objects.set(id as string, new RateLimiterDO({ storage: { get: async (k: string) => storage.get(`${id}:${k}`) as never, put: async (k: string, v: unknown) => void storage.set(`${id}:${k}`, v) } }, () => now));
+        const o = objects.get(id as string)!;
+        return { fetch: (_u: string, init?: RequestInit) => o.fetch(new Request('https://do/limit', init)) };
+      },
+    };
+    const w = world({ RL_DO: ns, EDGE_FORMS_PER_MINUTE: '60', EDGE_FORMS_BURST: '5' });
+    const codes = [];
+    for (let i = 0; i < 8; i++) codes.push((await post(w, '/api/public/forms/f/s/b')).status);
+    expect(codes).toEqual([202, 202, 202, 202, 202, 429, 429, 429]);
+    expect((await post(w, '/api/public/forms/f/s/b', '198.51.100.1')).status).toBe(202); // another client has its own object
+    now += 1000; // one token (60/min) has refilled
+    expect((await post(w, '/api/public/forms/f/s/b')).status).toBe(202);
+    for (const [tat, t, cost] of [[undefined, 100, 1], [5000, 100, 2], [100, 5000, 1], [10_000, 4000, 3]] as const) {
+      expect(gcra(tat, t, 1000, 5, cost)).toMatchObject({ allowed: originGcra(tat, t, 1000, 5, cost).allowed, retryAfterMs: originGcra(tat, t, 1000, 5, cost).retryAfterMs });
+    }
   });
 });

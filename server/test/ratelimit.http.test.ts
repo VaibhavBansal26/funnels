@@ -271,6 +271,29 @@ describe('admin hooks', () => {
   });
 });
 
+describe('admin routes (platform admins only)', () => {
+  it('list, block, allow and override tiers over HTTP, refusing everyone else', async () => {
+    const h = await makeHarness({ env: { PLATFORM_ADMIN_EMAILS: 'ops@platform.test' } });
+    const ops = await h.register('ops@platform.test');
+    const user = await h.register('user@platform.test');
+    expect((await h.call('GET', '/api/admin/rate-limits', { token: user.token })).status).toBe(403);
+    expect((await h.call('POST', '/api/admin/rate-limits/blocks', { token: user.token, body: { kind: 'ip', value: '1.2.3.4' } })).status).toBe(403);
+    const listed = await h.call('GET', '/api/admin/rate-limits', { token: ops.token });
+    expect(listed.status).toBe(200);
+    expect(listed.json.policies.map((p: { id: string }) => p.id)).toEqual(expect.arrayContaining(['ip.global', 'public.events', 'auth.attempts']));
+    expect((await h.call('POST', '/api/admin/rate-limits/blocks', { token: ops.token, body: { kind: 'ip', value: '192.0.2.77', ttlSeconds: 120 } })).status).toBe(201);
+    const blocked = await h.call('GET', '/beacon.js', { headers: { 'x-forwarded-for': '192.0.2.77' } });
+    expect(blocked.status).toBe(429);
+    expect((await h.call('GET', '/api/admin/rate-limits', { token: ops.token })).json.lists).toEqual([expect.objectContaining({ kind: 'deny', subject: 'ip:192.0.2.77' })]);
+    expect((await h.call('DELETE', '/api/admin/rate-limits/blocks', { token: ops.token, body: { kind: 'ip', value: '192.0.2.77' } })).status).toBe(204);
+    expect((await h.call('GET', '/beacon.js', { headers: { 'x-forwarded-for': '192.0.2.77' } })).status).toBe(200);
+    const tier = await h.call('PUT', `/api/admin/workspaces/${user.wsId}/rate-tier`, { token: ops.token, body: { plan: 'pro', multiplier: 2 } });
+    expect(tier.json).toEqual({ plan: 'pro', multiplier: 2 });
+    expect((await h.call('PUT', `/api/admin/workspaces/${user.wsId}/rate-tier`, { token: ops.token, body: { plan: 'gold' } })).status).toBe(400);
+    expect((await h.call('POST', '/api/admin/rate-limits/blocks', { token: ops.token, body: { kind: 'ip', value: '1.2.3.4', ttlSeconds: 0 } })).status).toBe(400);
+  });
+});
+
 describe('penalty box and account lockout', () => {
   it('repeated violations on a fail-closed auth policy escalate to a timed block that outlasts the minute budget', async () => {
     const h = await makeHarness({ env: { AUTH_ATTEMPTS_PER_MINUTE: '3' } });

@@ -5,6 +5,7 @@ import { compress } from 'hono/compress';
 import { cors } from 'hono/cors';
 import { createMetrics } from './metrics.js';
 import { rateLimitMiddleware } from './ratelimit/http.js';
+import { rateLimitAdminRoutes } from './routes/ratelimits.js';
 import { aiRoutes } from './routes/ai.js';
 import { authRoutes } from './routes/auth.js';
 import { domainRoutes } from './routes/domains.js';
@@ -78,6 +79,7 @@ export function createApp(deps: Deps): Hono {
   api.route('/domains', domainRoutes(deps));
   api.route('/templates', templateRoutes(deps));
   api.route('/admin', adminTemplateRoutes(deps));
+  api.route('/admin', rateLimitAdminRoutes(deps));
   api.route('/blocks', blockRoutes(deps));
   api.route('/leads', leadRoutes(deps));
   api.route('/orders', orderRoutes(deps));

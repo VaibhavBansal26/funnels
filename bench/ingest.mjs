@@ -19,7 +19,7 @@ const dir = mkdtempSync(join(tmpdir(), 'funnels-ingest-'));
 const dbPath = join(dir, 'db.sqlite');
 const PORT = 3960 + Math.floor(Math.random() * 30);
 const base = `http://127.0.0.1:${PORT}`;
-const env = { ...process.env, NODE_ENV: 'production', JWT_SECRET: 'bench-secret-bench-secret-bench-secret-1', PORT: String(PORT), DATABASE_PATH: dbPath, LOG_LEVEL: 'error', TRUST_PROXY: 'true', PUBLIC_EVENTS_PER_MINUTE: '100000000' };
+const env = { ...process.env, NODE_ENV: 'production', JWT_SECRET: 'bench-secret-bench-secret-bench-secret-1', PORT: String(PORT), DATABASE_PATH: dbPath, LOG_LEVEL: 'error', TRUST_PROXY: 'true', PUBLIC_EVENTS_PER_MINUTE: '100000000', IP_GUARD_PER_MINUTE: '100000000' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const boot = async () => {
   const s = spawn('node', [join(root, 'server/dist/index.js')], { env, stdio: ['ignore', 'ignore', 'inherit'] });

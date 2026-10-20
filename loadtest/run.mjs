@@ -14,7 +14,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'funnels-load-'));
 const PORT = 3955;
 const base = `http://127.0.0.1:${PORT}`;
-const env = { ...process.env, NODE_ENV: 'production', JWT_SECRET: 'load-test-secret-load-test-secret-123', PORT: String(PORT), DATABASE_PATH: join(dir, 'db.sqlite'), LOG_LEVEL: 'error', TRUST_PROXY: 'true', PUBLIC_EVENTS_PER_MINUTE: '100000000', PUBLIC_FORMS_PER_MINUTE: '100000000', ...(process.env.LOAD_ENV ? JSON.parse(process.env.LOAD_ENV) : {}) };
+const env = { ...process.env, NODE_ENV: 'production', JWT_SECRET: 'load-test-secret-load-test-secret-123', PORT: String(PORT), DATABASE_PATH: join(dir, 'db.sqlite'), LOG_LEVEL: 'error', TRUST_PROXY: 'true', PUBLIC_EVENTS_PER_MINUTE: '100000000', PUBLIC_FORMS_PER_MINUTE: '100000000', IP_GUARD_PER_MINUTE: '100000000', PUBLIC_PAGES_PER_MINUTE: '100000000', API_USER_PER_MINUTE: '100000000', API_WORKSPACE_PER_MINUTE: '100000000', ...(process.env.LOAD_ENV ? JSON.parse(process.env.LOAD_ENV) : {}) };
 const server = spawn('node', [join(root, 'server/dist/index.js')], { env, stdio: ['ignore', 'ignore', 'inherit'] });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rss = () => Number(execSync(`ps -o rss= -p ${server.pid}`).toString().trim()) / 1024;

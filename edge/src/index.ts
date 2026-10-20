@@ -14,7 +14,11 @@ export interface KVLike {
   put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void>;
 }
 
-export interface Env {
+import { edgeLimit, RateLimiterDO, type RateEnv } from './ratelimit.js';
+
+export { RateLimiterDO };
+
+export interface Env extends RateEnv {
   ORIGIN_URL: string;
   EDGE_SHARED_SECRET?: string;
   CF_ORIGIN_SECRET?: string;
@@ -147,6 +151,8 @@ export async function handle(request: Request, env: Env, ctx: Ctx, rt: Runtime):
   if (!env.EDGE_SHARED_SECRET) return errorPage(503, 'Service unavailable', 'This site is not configured correctly.');
   const url = new URL(request.url);
   if (PROXIED.test(url.pathname)) {
+    const limited = await edgeLimit(env, request, request.headers.get('cf-connecting-ip') ?? 'unknown');
+    if (limited) return limited;
     try {
       return await proxyToOrigin(env, request, rt);
     } catch {

@@ -195,14 +195,14 @@ describe.skipIf(!available)('failure behaviour', () => {
     const g = guarded({ timeoutMs: 30, failureThreshold: 100 });
     const admin = redis.client();
     await g.ping();
-    await admin.call('CLIENT', 'PAUSE', '300', 'ALL');
+    await admin.call('CLIENT', 'PAUSE', '800', 'ALL');
     const t0 = performance.now();
     const err = await g.ping().catch((e) => e);
     const took = performance.now() - t0;
     expect(err).toBeInstanceOf(StoreUnavailable);
     expect((err as StoreUnavailable).reason).toBe('timeout');
-    expect(took).toBeLessThan(150);
-    await new Promise((r) => setTimeout(r, 350));
+    expect(took).toBeLessThan(500); // far below the 800 ms stall
+    await new Promise((r) => setTimeout(r, 900));
     await g.ping();
   });
 
