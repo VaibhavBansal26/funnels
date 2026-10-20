@@ -15,6 +15,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - Benchmarks: `bench/ingest.mjs`, `ingest-db.mjs`, `ingest-engines.mjs`, `ratelimit.mjs`.
 
 ### Changed
+- PostgreSQL: `events` is partitioned by month; opt-in/order idempotency keys moved to `event_dedupe` (30-day window) and first views to `visitor_steps`; a maintenance job creates partitions ahead and prunes keys (migration 006). First-view uniqueness is now exact across replicas.
 - The data layer is asynchronous (`Db` interface, `inTx` transactions with post-commit side effects); ids are time-sortable; keyset cursors use `(created_at, id)` instead of `rowid`.
 - Analytics rollups are written by the application, once per event batch, instead of by a SQLite trigger per row (3.3x cheaper writes). Funnel-level distinct visitors scan raw events again.
 - `X-Forwarded-For` is read from the right (`TRUSTED_PROXY_HOPS`) instead of the left, which clients could forge.
