@@ -34,7 +34,7 @@ export const ENV_DOCS: Record<keyof typeof EnvSchema.shape, EnvDoc> = {
   WEB_DIST: { desc: 'Directory of the built web app to serve. Defaults to ../web/dist relative to the server.' },
   ANTHROPIC_API_KEY: { desc: 'Enables the Anthropic provider for AI features. Unset = offline heuristic provider.', security: 'Secret. Prompts never contain it.' },
   ANTHROPIC_MODEL: { desc: 'Model used by the Anthropic provider.' },
-  AI_DAILY_CAP: { desc: 'AI calls per workspace per UTC day (0 disables AI). Durable (database).', example: '50' },
+  AI_DAILY_CAP: { desc: 'AI calls per workspace per UTC day (0 disables AI). Enforced by the `ai.daily` sliding-window policy (shared across replicas with REDIS_URL, scaled by plan tier); `ai_usage` meters.', example: '50' },
   AI_RATE_LIMIT_PER_MINUTE: { desc: 'AI calls per workspace per minute (policy `ai.minute`, each call costs 10 units).', example: '10' },
   RATELIMIT_ENABLED: { desc: 'Master switch for the rate limiter. `false` admits everything (emergency use, benchmarks).', example: 'true', security: 'Disabling removes flood and credential-stuffing protection.' },
   RATELIMIT_LEASE_FRACTION: { desc: 'Fraction of a token bucket a process pre-pays from Redis and spends locally (0 disables the local tier; max 0.5). Error bound in docs/RATE-LIMITING.md.', example: '0.1' },

@@ -23,6 +23,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - Benchmarks: `bench/ingest.mjs`, `ingest-db.mjs`, `ingest-engines.mjs`, `ratelimit.mjs`.
 
 ### Changed
+- The AI daily cap is now the registry policy `ai.daily` (sliding window, plan-tier scaled, shared across replicas through the limiter store) instead of a database counter; `ai_usage` only meters. Calendar-day reset became a sliding 24 h window.
 - Fixed: two replicas booting together on an empty PostgreSQL database could crash with a duplicate key on `schema_migrations` (the table was created before the migration lock was taken).
 - The public events endpoint caches "this funnel and step exist" for `EVENT_REF_CACHE_SECONDS` (default 5) instead of two database reads per beacon.
 - Fixed: the same event id twice in one batch was counted twice in the rollups (the row was inserted once); it is now counted once.

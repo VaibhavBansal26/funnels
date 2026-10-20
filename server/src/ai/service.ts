@@ -28,20 +28,21 @@ export const AltTextRequest = z.object({ src: z.string().min(1).max(5000), conte
 
 const today = (deps: Deps) => deps.now().toISOString().slice(0, 10);
 
-/** Per-workspace per-minute rate limit plus a daily cap (AI_DAILY_CAP, 0 disables AI). The request is counted before the call. */
+/**
+ * Per-workspace per-minute limit (`ai.minute`) and daily cap (`ai.daily`), both from the central registry (sliding windows, plan tiers, shared across replicas
+ * through the limiter store). `ai_usage` only meters what was admitted, for `/api/ai/status` and billing. AI_DAILY_CAP=0 disables AI.
+ */
 async function guard(deps: Deps, ws: string): Promise<void> {
   const d = await deps.limiter.check('ai.minute', { ip: 'workspace', workspaceId: ws });
   if (!d.allowed) throw denyError(d);
-  const cap = deps.config.AI_DAILY_CAP;
-  // One atomic conditional upsert: the cap check and the increment cannot be split by a concurrent request.
-  const day = today(deps);
-  const exhausted = () => new AppError(429, 'AI_DAILY_CAP_REACHED', 'The daily AI request limit for this workspace has been reached', undefined, { 'Retry-After': '3600' });
-  if (cap <= 0) throw exhausted();
-  const { changes } = await deps.db.run(
-    `INSERT INTO ai_usage (workspace_id, day, count) VALUES (?, ?, 1)${deps.db.dialect.upsert(['workspace_id', 'day'], 'count = ai_usage.count + 1')} WHERE ai_usage.count < ?`,
-    ws, day, cap,
-  );
-  if (changes === 0) throw exhausted();
+  const exhausted = (retryAfterMs = 3_600_000) => new AppError(429, 'AI_DAILY_CAP_REACHED', 'The daily AI request limit for this workspace has been reached', undefined, { 'Retry-After': String(Math.max(1, Math.ceil(retryAfterMs / 1000))) });
+  if (deps.config.AI_DAILY_CAP <= 0) throw exhausted();
+  const day = await deps.limiter.check('ai.daily', { ip: 'workspace', workspaceId: ws });
+  if (!day.allowed) {
+    if (day.status === 503) throw denyError(day); // limiter store down on a fail-closed policy: not a cap decision
+    throw exhausted(day.retryAfterMs);
+  }
+  await deps.db.run(`INSERT INTO ai_usage (workspace_id, day, count) VALUES (?, ?, 1)${deps.db.dialect.upsert(['workspace_id', 'day'], 'count = ai_usage.count + 1')}`, ws, today(deps));
 }
 
 export async function usage(deps: Deps, ws: string) {

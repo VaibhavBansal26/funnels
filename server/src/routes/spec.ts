@@ -169,11 +169,11 @@ export const OPERATIONS: Operation[] = [
   PLATFORM('PUT', '/api/admin/workspaces/:id/rate-tier', 'admin', 'Override a workspace plan or rate multiplier', { body: TierInput }),
   // AI
   A('GET', '/api/ai/status', 'ai', 'Provider and daily usage'),
-  A('POST', '/api/ai/funnel', 'ai', 'Generate a funnel', { body: ai.FunnelRequest, status: 201, limits: ['ip.global', 'api.write', 'api.workspace'], inHandler: ['ai.minute'] }),
-  A('POST', '/api/ai/rewrite', 'ai', 'Rewrite copy', { body: ai.RewriteRequest, inHandler: ['ai.minute'] }),
-  A('POST', '/api/ai/headlines', 'ai', 'Headline variants', { body: ai.HeadlineRequest, inHandler: ['ai.minute'] }),
-  A('POST', '/api/ai/insights', 'ai', 'Analytics insights', { body: ai.InsightRequest, inHandler: ['ai.minute'] }),
-  A('POST', '/api/ai/alt-text', 'ai', 'Alt text for an image', { body: ai.AltTextRequest, inHandler: ['ai.minute'] }),
+  A('POST', '/api/ai/funnel', 'ai', 'Generate a funnel', { body: ai.FunnelRequest, status: 201, limits: ['ip.global', 'api.write', 'api.workspace'], inHandler: ['ai.minute', 'ai.daily'] }),
+  A('POST', '/api/ai/rewrite', 'ai', 'Rewrite copy', { body: ai.RewriteRequest, inHandler: ['ai.minute', 'ai.daily'] }),
+  A('POST', '/api/ai/headlines', 'ai', 'Headline variants', { body: ai.HeadlineRequest, inHandler: ['ai.minute', 'ai.daily'] }),
+  A('POST', '/api/ai/insights', 'ai', 'Analytics insights', { body: ai.InsightRequest, inHandler: ['ai.minute', 'ai.daily'] }),
+  A('POST', '/api/ai/alt-text', 'ai', 'Alt text for an image', { body: ai.AltTextRequest, inHandler: ['ai.minute', 'ai.daily'] }),
 ];
 
 const key = (m: string, p: string) => `${m} ${p}`;

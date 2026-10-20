@@ -28,7 +28,7 @@ Generated from the zod schema in `server/src/config.ts` and the descriptions in 
 | `WEB_DIST` | `../web/dist` | no |  | Directory of the built web app to serve. Defaults to ../web/dist relative to the server. |
 | `ANTHROPIC_API_KEY` | (unset) | no |  | Enables the Anthropic provider for AI features. Unset = offline heuristic provider. **Security:** Secret. Prompts never contain it. |
 | `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | no |  | Model used by the Anthropic provider. |
-| `AI_DAILY_CAP` | `50` | no | `50` | AI calls per workspace per UTC day (0 disables AI). Durable (database). |
+| `AI_DAILY_CAP` | `50` | no | `50` | AI calls per workspace per UTC day (0 disables AI). Enforced by the `ai.daily` sliding-window policy (shared across replicas with REDIS_URL, scaled by plan tier); `ai_usage` meters. |
 | `AI_RATE_LIMIT_PER_MINUTE` | `10` | no | `10` | AI calls per workspace per minute (policy `ai.minute`, each call costs 10 units). |
 | `RATELIMIT_ENABLED` | `true` | no | `true` | Master switch for the rate limiter. `false` admits everything (emergency use, benchmarks). **Security:** Disabling removes flood and credential-stuffing protection. |
 | `RATELIMIT_LEASE_FRACTION` | `0.1` | no | `0.1` | Fraction of a token bucket a process pre-pays from Redis and spends locally (0 disables the local tier; max 0.5). Error bound in docs/RATE-LIMITING.md. |

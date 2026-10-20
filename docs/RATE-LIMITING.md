@@ -124,7 +124,8 @@ Defaults, before environment overrides and plan multipliers (this table is gener
 | `api.workspace` | workspace | workspace | gcra | 600 / 1 min, burst 200 | open | free x1, pro x5, business x20 | lease | Workspace quota across all its users, tiered by plan (free x1, pro x5, business x20, overridable per workspace). |
 | `api.export` | concurrency | workspace | concurrency | 2 in flight | open | free x1, pro x2, business x4 |  | Concurrent CSV exports per workspace (in-flight cap, lease with TTL, released in finally). |
 | `api.stream` | concurrency | user | concurrency | 5 in flight | open |  |  | Open SSE streams per user. |
-| `ai.minute` | workspace | workspace | gcra | 100 / 1 min, burst 100, cost 10 | open | free x1, pro x5, business x20 |  | AI calls per workspace per minute; each call costs 10 units. The daily cap lives in ai_usage (durable). |
+| `ai.minute` | workspace | workspace | gcra | 100 / 1 min, burst 100, cost 10 | open | free x1, pro x5, business x20 |  | AI calls per workspace per minute; each call costs 10 units. The daily cap is `ai.daily`; ai_usage only meters. |
+| `ai.daily` | workspace | workspace | window | 50 / 24 h | open | free x1, pro x5, business x20 |  | AI calls per workspace per day (sliding window over two adjacent UTC days, AI_DAILY_CAP, scaled by plan tier). Refusals answer AI_DAILY_CAP_REACHED. A cap of 0 disables AI. |
 | `edge.resolve` | class | ip | gcra | 120000 / 1 min, burst 12000 | open |  | lease | Signed requests from the Cloudflare worker (all traffic arrives from few IPs, so the limit is high). |
 | `admin.platform` | principal | user | gcra | 120 / 1 min, burst 30 | closed |  |  | Platform admin routes, per user. |
 | `webhook.inbound` | class | ip | gcra | 6000 / 1 min, burst 1000 | open |  | lease | Reserved for inbound provider webhooks (Stripe, later). High limit, fails open so a limiter outage never drops payment events. |
