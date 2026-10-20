@@ -218,6 +218,9 @@ describe('forwarding to the origin', () => {
     expect(noSecret.origin.proxied[0]!.headers.get('cf-connecting-ip')).toBeNull();
     expect(noSecret.origin.proxied[0]!.headers.get('x-cf-origin-secret')).toBeNull();
     expect((await w.get('/beacon.js')).status).toBe(202);
+    // images uploaded in the page builder are served by the origin on customer domains too
+    expect((await w.get('/uploads/ast_1/photo.png')).status).toBe(202);
+    expect(w.origin.proxied.at(-1)!.url).toBe('https://origin.test/uploads/ast_1/photo.png');
   });
 });
 

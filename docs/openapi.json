@@ -152,6 +152,91 @@
         ]
       }
     },
+    "/uploads/{id}/{name}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "An image uploaded in the page builder (immutable, cacheable)",
+        "description": "Also served on customer domains (passthrough and edge worker).",
+        "operationId": "get_uploads_id_name",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "public.page"
+        ]
+      }
+    },
+    "/uploads/{id}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "An uploaded image without a file name",
+        "operationId": "get_uploads_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "public.page"
+        ]
+      }
+    },
     "/preview/{funnelId}": {
       "get": {
         "tags": [
@@ -6445,6 +6530,134 @@
         ],
         "x-auth": "user",
         "x-permission": "blocks:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/assets": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Uploaded images of the workspace and the upload limits",
+        "operationId": "get_api_assets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "funnels:read",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      },
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Upload an image (multipart field `file`, or the raw image as the body with ?name=). PNG, JPEG, GIF or WebP, decided by content, at most 1.5 MB",
+        "operationId": "post_api_assets",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "funnels:write",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ],
+        "x-rate-limit-cost": 2
+      }
+    },
+    "/api/assets/{id}": {
+      "delete": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Delete an uploaded image",
+        "operationId": "delete_api_assets_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",

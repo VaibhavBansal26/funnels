@@ -86,7 +86,7 @@ interface Resolved {
   notModified?: boolean;
 }
 
-const PROXIED = /^\/(api\/public\/|beacon\.js$)/;
+const PROXIED = /^\/(api\/public\/|uploads\/|beacon\.js$)/;
 
 export const errorPage = (status: number, title: string, message: string): Response =>
   new Response(

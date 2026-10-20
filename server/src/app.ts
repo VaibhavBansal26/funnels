@@ -7,6 +7,7 @@ import { createMetrics } from './metrics.js';
 import { rateLimitMiddleware } from './ratelimit/http.js';
 import { rateLimitAdminRoutes } from './routes/ratelimits.js';
 import { aiRoutes } from './routes/ai.js';
+import { assetRoutes, uploadRoutes } from './routes/assets.js';
 import { noticeRoutes, platformAdminRoutes } from './routes/admin.js';
 import { billingRoutes } from './routes/billing.js';
 import { analyticsApiRoutes } from './routes/analyticsapi.js';
@@ -71,6 +72,7 @@ export function createApp(deps: Deps): Hono {
   app.route('/', edgeRoutes(deps));
   app.route('/', publicRoutes(deps));
   app.route('/', previewRoutes(deps));
+  app.route('/', uploadRoutes(deps));
 
   const api = new Hono();
   if (deps.config.CORS_ORIGINS.length) {
@@ -90,6 +92,7 @@ export function createApp(deps: Deps): Hono {
   api.route('/admin', platformAdminRoutes(deps));
   api.route('/', noticeRoutes(deps));
   api.route('/blocks', blockRoutes(deps));
+  api.route('/assets', assetRoutes(deps));
   api.route('/leads', leadRoutes(deps));
   api.route('/orders', orderRoutes(deps));
   api.route('/webhooks', webhookRoutes(deps));

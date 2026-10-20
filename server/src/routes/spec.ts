@@ -95,6 +95,8 @@ export const OPERATIONS: Operation[] = [
   { method: 'GET', path: '/beacon.js', auth: 'public', tag: 'public', summary: 'Tracking beacon script (cacheable)', limits: ['ip.global'] },
   { method: 'GET', path: '/internal/edge/resolve', auth: 'edge', tag: 'edge', summary: 'Signed resolve call from the Cloudflare worker', limits: ['edge.resolve'], notes: 'HMAC over timestamp, nonce, method and path; fails closed without EDGE_SHARED_SECRET.' },
   { method: 'POST', path: '/internal/edge/events', auth: 'edge', tag: 'edge', summary: 'Batch of beacon events forwarded by the edge queue consumer (up to 500)', limits: ['edge.resolve'], inHandler: ['ingest.workspace'], status: 200, notes: 'Events of a workspace over its ingest quota are counted in `limited` and dropped; the rest of the batch is unaffected. Signed like /internal/edge/resolve. Body `{events:[{id,at,ua,body}]}`; each `body` is validated as a public event. Replays of the same `id`/`at` are dropped. 503 INGEST_BACKPRESSURE tells the queue to retry later.' },
+  { method: 'GET', path: '/uploads/:id/:name', auth: 'public', tag: 'public', summary: 'An image uploaded in the page builder (immutable, cacheable)', limits: ['ip.global', 'public.page'], notes: 'Also served on customer domains (passthrough and edge worker).' },
+  { method: 'GET', path: '/uploads/:id', auth: 'public', tag: 'public', summary: 'An uploaded image without a file name', limits: ['ip.global', 'public.page'] },
   { method: 'GET', path: '/preview/:funnelId', auth: 'public', tag: 'public', summary: 'Signed preview of a funnel (first step)', limits: ['ip.global', 'public.preview'], notes: 'Authorised by a short-lived token in ?token=.' },
   { method: 'GET', path: '/preview/:funnelId/*', auth: 'public', tag: 'public', summary: 'Signed preview of a funnel step', limits: ['ip.global', 'public.preview'] },
   // public ingestion
@@ -207,6 +209,9 @@ export const OPERATIONS: Operation[] = [
   A('GET', '/api/blocks', 'funnels:read', 'blocks', 'Saved custom blocks'),
   A('POST', '/api/blocks', 'blocks:manage', 'blocks', 'Save a custom block', { body: CustomBlockInput, status: 201 }),
   A('DELETE', '/api/blocks/:id', 'blocks:manage', 'blocks', 'Delete a custom block', { status: 204 }),
+  A('GET', '/api/assets', 'funnels:read', 'assets', 'Uploaded images of the workspace and the upload limits'),
+  A('POST', '/api/assets', 'funnels:write', 'assets', 'Upload an image (multipart field `file`, or the raw image as the body with ?name=). PNG, JPEG, GIF or WebP, decided by content, at most 1.5 MB', { status: 201, cost: 2 }),
+  A('DELETE', '/api/assets/:id', 'funnels:write', 'assets', 'Delete an uploaded image', { status: 204 }),
   PLATFORM('POST', '/api/admin/templates', 'admin', 'Publish a funnel as a global template (PLATFORM_ADMIN_EMAILS)', { body: TemplateCreate, status: 201 }),
   PLATFORM('PATCH', '/api/admin/templates/:id', 'admin', 'Edit a template', { body: TemplatePatch }),
   PLATFORM('DELETE', '/api/admin/templates/:id', 'admin', 'Delete a template', { status: 204 }),
