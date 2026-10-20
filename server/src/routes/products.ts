@@ -5,6 +5,7 @@ import { clientIp } from '../ratelimit/ip.js';
 import * as catalog from '../services/catalog.js';
 import { syncAll, syncProduct } from '../services/catalogsync.js';
 import { paymentsStatus } from '../services/payments.js';
+import { addPayments, WizardInput } from '../services/paymentswizard.js';
 import { PaymentSettingsPatch, updatePaymentSettings } from '../services/paymentsettings.js';
 import { bodyOf, queryOf } from './util.js';
 
@@ -38,5 +39,13 @@ export function paymentRoutes(deps: Deps): Hono<AppEnv> {
   r.use('*', authenticate(deps));
   r.get('/status', async (c) => c.json(await paymentsStatus(deps, authOf(c).workspaceId)));
   r.patch('/settings', async (c) => c.json(await updatePaymentSettings(deps, authOf(c), await bodyOf(c, PaymentSettingsPatch), clientIp(c, deps.config))));
+  return r;
+}
+
+/** "Add payments to this funnel" (mounted under /funnels). */
+export function funnelPaymentRoutes(deps: Deps): Hono<AppEnv> {
+  const r = new Hono<AppEnv>();
+  r.use('*', authenticate(deps));
+  r.post('/:id/payments', async (c) => c.json(await addPayments(deps, authOf(c), c.req.param('id'), await bodyOf(c, WizardInput), clientIp(c, deps.config)), 201));
   return r;
 }

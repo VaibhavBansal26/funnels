@@ -149,6 +149,15 @@ export function remapStepRefs(doc: ProjectDoc, idMap: Map<string, string>): Proj
       const target = a.stepId ? idMap.get(a.stepId) : undefined;
       n.fnAction = target ? { type: 'step', stepId: target } : { type: 'next_step' };
     }
+    const prod = n.fnProduct as { acceptStepId?: string; declineStepId?: string } | undefined;
+    if (prod) {
+      for (const k of ['acceptStepId', 'declineStepId'] as const) {
+        if (!prod[k]) continue;
+        const target = idMap.get(prod[k]!);
+        if (target) prod[k] = target;
+        else delete prod[k]; // unknown step: back to the default (the next step)
+      }
+    }
   });
   return copy;
 }

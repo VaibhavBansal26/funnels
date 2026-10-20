@@ -21,6 +21,7 @@ import { SubscribeInput } from '../services/billing.js';
 import { RefundInput } from '../services/stripepay.js';
 import { PriceInput, PricePatch, ProductInput, ProductPatch, ProductQuery } from '../services/catalog.js';
 import { PaymentSettingsPatch } from '../services/paymentsettings.js';
+import { WizardInput } from '../services/paymentswizard.js';
 import { DisputeQuery } from '../services/disputes.js';
 import { AuditQuery } from '../services/audit.js';
 import { AcceptInput, InvitationInput, LookupQuery } from '../services/invitations.js';
@@ -298,6 +299,7 @@ export const OPERATIONS: Operation[] = [
   A('POST', '/api/products/:id/prices', 'products:write', 'products', 'Add a price (prices are immutable: change an amount with .../replace)', { body: PriceInput, status: 201 }),
   A('POST', '/api/products/:id/prices/:priceId/replace', 'products:write', 'products', 'Change a price: creates the new price, archives the old one and points it at the new one (pages and checkouts naming the old price use the new one; past orders keep theirs)', { body: PriceInput }),
   A('PATCH', '/api/products/:id/prices/:priceId', 'products:write', 'products', 'Rename a price (nickname)', { body: PricePatch }),
+  A('POST', '/api/funnels/:id/payments', 'funnels:write', 'payments', 'Add payments to a funnel (the wizard): picks or creates the products, builds the checkout (one-step or offer plus checkout), order bump, one-click upsell and downsell and thank-you steps, and wires the flow', { also: ['products:write'], body: WizardInput, status: 201, cost: 3 }),
   A('POST', '/api/products/:id/prices/:priceId/archive', 'products:write', 'products', 'Archive a price (a product keeps at least one active price)'),
   A('GET', '/api/payments/status', 'products:read', 'payments', 'Payments overview: test or live mode, connection state, charges and payouts, payment methods, currency, statement descriptor, Stripe Tax availability, checkout settings and the Stripe test cards'),
   A('PATCH', '/api/payments/settings', 'billing:manage', 'payments', 'Checkout settings: statement descriptor suffix, receipt emails, Stripe Tax', { body: PaymentSettingsPatch }),

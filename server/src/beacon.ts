@@ -38,7 +38,7 @@ if(f.hasAttribute('data-fn-form')){ev.preventDefault();var hp=f.elements._hp,c=f
 send(f,f.getAttribute('action'),base({fields:fields(f),_hp:hp?hp.value:'',consent:c?c.checked:undefined,submissionId:rid()}),function(){f.reset()})}
 else if(f.hasAttribute('data-fn-checkout')){ev.preventDefault();var bumps=[],n=document.querySelectorAll('input[name="bump"]'),k;
 for(k=0;k<n.length;k++)if(n[k].checked&&n[k].getAttribute('form')===f.id)bumps.push(n[k].value);
-send(f,f.getAttribute('action'),base({email:f.elements.email.value,name:f.elements.name?f.elements.name.value:'',bumpBlockIds:bumps,_hp:f.elements._hp?f.elements._hp.value:'',submissionId:rid()}),function(j){if(j&&j.orderId)setCookie('funnels_order',j.orderId)})}});
+send(f,f.getAttribute('action'),base({email:f.elements.email.value,name:f.elements.name?f.elements.name.value:'',bumpBlockIds:bumps,quantity:f.elements.quantity?parseInt(f.elements.quantity.value,10)||1:undefined,_hp:f.elements._hp?f.elements._hp.value:'',submissionId:rid()}),function(j){if(j&&j.orderId){setCookie('funnels_order',j.orderId);fire('fn:purchase',{orderId:j.orderId,eventId:'purchase_'+j.orderId,orders:j.orders})}})}});
 document.addEventListener('click',function(ev){var b=ev.target;while(b&&b.hasAttribute&&!b.hasAttribute('data-fn-upsell'))b=b.parentNode;if(!b||!b.hasAttribute)return;ev.preventDefault();
 var prev=cookie('funnels_order');if(!prev&&!preview){say(b,'Please complete your first purchase before adding this offer.',false);return}
 send(b,b.getAttribute('data-action'),base({previousOrderId:prev||'preview',submissionId:rid()}),function(){})});

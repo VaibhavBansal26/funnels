@@ -24,6 +24,7 @@ import { tagRoutes } from './routes/tags.js';
 import { adminTemplateRoutes, blockRoutes, templateRoutes } from './routes/templates.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import type { Deps } from './deps.js';
+import { funnelPaymentRoutes, paymentRoutes, productRoutes } from './routes/products.js';
 import { paymentRoutes, productRoutes } from './routes/products.js';
 import { AppError } from './errors.js';
 
@@ -88,8 +89,7 @@ export function createApp(deps: Deps): Hono {
   api.route('/tags', tagRoutes(deps));
   api.route('/domains', domainRoutes(deps));
   api.route('/templates', templateRoutes(deps));
-  api.route('/admin', adminTemplateRoutes(deps));
-  api.route('/admin', rateLimitAdminRoutes(deps));
+  api.route('/funnels', funnelPaymentRoutes(deps));
   api.route('/products', productRoutes(deps));
   api.route('/payments', paymentRoutes(deps));
   api.route('/admin', platformAdminRoutes(deps));

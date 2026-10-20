@@ -235,7 +235,7 @@ export function renderProject(rawProject: unknown, ctx: PageRenderContext): Rend
   const main = products.find((p) => !p.orderBump && !p.oneClickUpsell);
   const st: State = {
     ctx,
-    markup: { mode, funnelId: ctx.funnelId, stepId: ctx.stepId, apiBase: ctx.apiBase, nextHref: idx >= 0 && steps[idx + 1] ? steps[idx + 1]!.href : '#', mainCheckoutId: main?.id ?? null },
+    markup: { mode, funnelId: ctx.funnelId, stepId: ctx.stepId, apiBase: ctx.apiBase, nextHref: idx >= 0 && steps[idx + 1] ? steps[idx + 1]!.href : '#', mainCheckoutId: main?.id ?? null, stepHref: (id) => steps.find((s) => s.id === id)?.href },
     count: 0,
     hrefs: new Map(steps.map((s) => [s.id, s.href])),
     hasRuntime: false,

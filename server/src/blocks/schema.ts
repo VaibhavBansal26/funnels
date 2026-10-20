@@ -145,6 +145,9 @@ export const CheckoutCatalogFields = {
   /** Display snapshot of the catalog price's billing (refreshed on save): the offer shows "$29.00 / month" and the trial. */
   interval: z.enum(['day', 'week', 'month', 'year']).optional(),
   trialDays: z.number().int().min(0).max(730).optional(),
+  /** One-click offers only: where the buyer goes after accepting and after declining (step ids; default: the next step). Lets a downsell be skipped when the upsell is accepted. */
+  acceptStepId: z.string().min(1).max(64).optional(),
+  declineStepId: z.string().min(1).max(64).optional(),
 };
 export const CheckoutSchema = z.object({
   id: blockId,

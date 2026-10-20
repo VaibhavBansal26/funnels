@@ -16,6 +16,8 @@ export interface MarkupCtx {
   nextHref: string;
   /** Block id of the main (non-bump, non-upsell) checkout of the page, which order bumps attach to. */
   mainCheckoutId?: string | null;
+  /** Link of a step by id (one-click offers can accept or decline to a chosen step). */
+  stepHref?: (stepId: string) => string | undefined;
 }
 
 const str = (v: unknown, max: number): string => (typeof v === 'string' ? v.slice(0, max) : '');
@@ -86,22 +88,39 @@ export function formInner(blockId: string, p: FormProps, ctx: MarkupCtx): string
   return `<form class="fn-form" method="post" action="${esc(publicEndpoint(ctx, 'forms', bid))}" data-fn-form aria-label="${esc(p.name || 'Form')}"${successAttrs(ctx, p.success)}>${fields}${consent}${hp}<button class="fn-btn fn-btn-primary fn-btn-block" type="submit">${esc(p.submitLabel || 'Submit')}</button><p class="fn-status" role="status" aria-live="polite"></p></form>`;
 }
 
+const EVERY: Record<string, string> = { day: 'day', week: 'week', month: 'month', year: 'year' };
+
+/** "$29.00 / month", "$29.00 every 3 months" or just "$38.00". */
+function priceLabel(p: ProductProps): string {
+  const money = formatMoney(p.price, p.currency);
+  return p.interval ? `${money} / ${EVERY[p.interval] ?? 'month'}` : money;
+}
+
 export function checkoutInner(blockId: string, p: ProductProps, ctx: MarkupCtx): string {
   const bid = safeId(blockId);
-  const money = esc(formatMoney(p.price, p.currency));
+  const money = esc(priceLabel(p));
   const name = esc(p.productName);
   const desc = p.description ? `<p>${inline(p.description)}</p>` : '';
   const action = esc(publicEndpoint(ctx, 'checkout', bid));
   const test = '<p class="fn-note">Test mode: no real payment is taken.</p>';
+  const trial = p.interval && p.trialDays ? `<p class="fn-note">${Math.round(p.trialDays)}-day free trial, then ${esc(priceLabel(p))}.</p>` : '';
   if (p.orderBump) {
     const form = ctx.mainCheckoutId ? ` form="co-${esc(ctx.mainCheckoutId)}"` : ' disabled';
     return `<label class="fn-bump"><input type="checkbox" name="bump" value="${esc(bid)}"${form}> <span><strong>Yes, add ${name} for ${money}</strong>${p.description ? `<br>${inline(p.description)}` : ''}</span></label>`;
   }
   if (p.oneClickUpsell) {
-    const decline = ctx.mode === 'builder' ? '#' : ctx.nextHref;
-    return `<div class="fn-offer" data-fn-upsell-box><h3>${name}</h3><p class="fn-price">${money}</p>${desc}<button type="button" class="fn-btn fn-btn-primary fn-btn-block" data-fn-upsell data-action="${action}"${successAttrs(ctx, p.success)}>${esc(p.buttonLabel || 'Yes, add to my order')}</button><p class="fn-status" role="status" aria-live="polite"></p><p class="fn-note"><a href="${esc(decline)}">No thanks</a></p>${test}</div>`;
+    const builder = ctx.mode === 'builder';
+    const at = (id: string | undefined) => (id && !builder ? ctx.stepHref?.(id) : undefined);
+    const decline = builder ? '#' : (at(p.declineStepId) ?? ctx.nextHref);
+    const accept = at(p.acceptStepId);
+    const done = accept ? ` data-success="next_step" data-href="${esc(accept)}"` : successAttrs(ctx, p.success);
+    return `<div class="fn-offer" data-fn-upsell-box><h3>${name}</h3><p class="fn-price">${money}</p>${desc}<button type="button" class="fn-btn fn-btn-primary fn-btn-block" data-fn-upsell data-action="${action}"${done}>${esc(p.buttonLabel || 'Yes, add to my order')}</button><p class="fn-status" role="status" aria-live="polite"></p><p class="fn-note"><a href="${esc(decline)}">No thanks</a></p>${test}</div>`;
   }
-  return `<form class="fn-offer" id="co-${esc(bid)}" method="post" action="${action}" data-fn-checkout${successAttrs(ctx, p.success)}><h3>${name}</h3><p class="fn-price">${money}</p>${desc}<div class="fn-field"><label for="co-${esc(bid)}-email">Email<span class="fn-req" aria-hidden="true">*</span></label><input type="email" id="co-${esc(bid)}-email" name="email" autocomplete="email" maxlength="255" required aria-required="true"></div><div class="fn-field"><label for="co-${esc(bid)}-name">Name</label><input type="text" id="co-${esc(bid)}-name" name="name" autocomplete="name" maxlength="120"></div><div class="fn-hp" aria-hidden="true"><label>Leave this field empty<input type="text" name="_hp" tabindex="-1" autocomplete="off"></label></div><button class="fn-btn fn-btn-primary fn-btn-block fn-btn-lg" type="submit">${esc(p.buttonLabel || 'Buy now')} · ${money}</button><p class="fn-status" role="status" aria-live="polite"></p>${test}</form>`;
+  const q = p.quantity?.enabled ? p.quantity : null;
+  const qty = q
+    ? `<div class="fn-field"><label for="co-${esc(bid)}-qty">Quantity</label><select id="co-${esc(bid)}-qty" name="quantity">${Array.from({ length: Math.max(0, Math.min(q.max, 99) - q.min + 1) }, (_, i) => q.min + i).map((n) => `<option value="${n}"${n === Math.min(Math.max(q.default, q.min), q.max) ? ' selected' : ''}>${n}</option>`).join('')}</select></div>`
+    : '';
+  return `<form class="fn-offer" id="co-${esc(bid)}" method="post" action="${action}" data-fn-checkout${successAttrs(ctx, p.success)}><h3>${name}</h3><p class="fn-price">${money}</p>${desc}${trial}<div class="fn-field"><label for="co-${esc(bid)}-email">Email<span class="fn-req" aria-hidden="true">*</span></label><input type="email" id="co-${esc(bid)}-email" name="email" autocomplete="email" maxlength="255" required aria-required="true"></div><div class="fn-field"><label for="co-${esc(bid)}-name">Name</label><input type="text" id="co-${esc(bid)}-name" name="name" autocomplete="name" maxlength="120"></div>${qty}<div class="fn-hp" aria-hidden="true"><label>Leave this field empty<input type="text" name="_hp" tabindex="-1" autocomplete="off"></label></div><button class="fn-btn fn-btn-primary fn-btn-block fn-btn-lg" type="submit">${esc(p.buttonLabel || 'Buy now')} · ${money}</button><p class="fn-status" role="status" aria-live="polite"></p>${p.allowPromotionCodes ? '<p class="fn-note">Have a promotion code? You can enter it on the next screen.</p>' : ''}${test}</form>`;
 }
 
 export function videoInner(p: VideoProps, ctx: MarkupCtx): string {
