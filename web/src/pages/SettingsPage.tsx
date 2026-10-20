@@ -8,6 +8,7 @@ import { Link } from 'react-router';
 import { SecurityCard } from './settings/SecurityCard';
 import { TeamSection } from './settings/TeamSection';
 import { ApiAccess } from './settings/ApiAccess';
+import { Billing } from './settings/Billing';
 import { useToast } from '../components/Toasts';
 
 function WorkspaceCard() {
@@ -57,6 +58,7 @@ export function SettingsPage() {
       <WorkspaceCard />
       <SecurityCard />
       {can('members:read') ? <TeamSection /> : null}
+      {can('billing:read') ? <Billing /> : null}
       <ApiAccess />
       {can('ai:use') ? <AiUsage /> : null}
     </div>

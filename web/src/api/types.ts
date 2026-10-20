@@ -39,7 +39,16 @@ export interface VerifyResult { domain: Domain; checks: { cname: { ok: boolean; 
 export interface DomainRoute { stepId: string; stepName: string; funnelId: string; funnelName: string; path: string }
 
 export interface Lead { id: string; email: string; name: string | null; phone: string | null; data: Record<string, string>; firstFunnelName: string | null; submissions: number; createdAt: string; updatedAt: string }
-export interface Order { id: string; productName: string; amount: number; amountCents: number; currency: string; isBump: boolean; isUpsell: boolean; funnelName: string | null; stepName: string | null; email: string; name: string | null; createdAt: string }
+export interface Order { id: string; productName: string; amount: number; amountCents: number; currency: string; isBump: boolean; isUpsell: boolean; funnelName: string | null; stepName: string | null; email: string; name: string | null; createdAt: string; status: 'paid' | 'partially_refunded' | 'refunded'; refundedCents: number; provider: string }
+
+export interface BillingOverview {
+  plan: string; planName: string; status: string; periodEnd: string | null; enforced: boolean;
+  limits: Record<'funnels' | 'domains' | 'members' | 'apiKeys', number>; usage: Record<'funnels' | 'domains' | 'members' | 'apiKeys', number>;
+  applicationFeePercent: number;
+  plans: { id: string; name: string; funnels: number; domains: number; members: number; apiKeys: number; applicationFeePercent: number; purchasable: boolean }[];
+  subscription: { hasCustomer: boolean; hasSubscription: boolean };
+  stripe: { configured: boolean; provider: string; connect: { accountId: string; chargesEnabled: boolean; payoutsEnabled: boolean; detailsSubmitted: boolean } | null };
+}
 
 export interface Webhook { id: string; url: string; events: string[]; active: boolean; secretPreview: string; createdAt: string; secret?: string }
 export interface Delivery { id: string; event: string; status: 'queued' | 'delivered' | 'failed' | 'dead'; attempts: number; responseStatus: number | null; error: string | null; createdAt: string; updatedAt: string }

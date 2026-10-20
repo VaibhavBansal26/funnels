@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { downloadFile } from '../api/client';
-import { useLeads, useOrders } from '../api/hooks';
+import { api } from '../api/client';
+import { useMutate, useLeads, useOrders } from '../api/hooks';
+import { useAuth } from '../auth/AuthContext';
+import type { Order } from '../api/types';
 import { useToast } from '../components/Toasts';
-import { Empty, ErrorBanner, fmtDate, fmtMoney, Loading, Pager } from '../components/ui';
+import { Empty, ErrorBanner, fmtDate, fmtMoney, Loading, Modal, Pager, TextField } from '../components/ui';
 import { errorMessage } from '../api/client';
 
 function Filters({ state, onChange, onExport, exporting, label }: { state: { search: string; from: string; to: string }; onChange: (s: { search: string; from: string; to: string }) => void; onExport: () => void; exporting: boolean; label: string }) {
@@ -74,12 +77,36 @@ export function OrdersTab({ funnelId }: { funnelId: string }) {
       {q.data?.data.length ? (
         <div className="card flush table-wrap">
           <table className="table"><caption className="sr-only">Orders</caption>
-            <thead><tr><th scope="col">Date</th><th scope="col">Product</th><th scope="col">Customer</th><th scope="col">Type</th><th scope="col" className="num">Amount</th></tr></thead>
-            <tbody>{q.data.data.map((o) => <tr key={o.id}><td className="small muted">{fmtDate(o.createdAt)}</td><td>{o.productName}</td><td>{o.email}</td><td>{o.isBump ? <span className="badge">Bump</span> : o.isUpsell ? <span className="badge primary">Upsell</span> : <span className="badge ok">Offer</span>}</td><td className="num">{fmtMoney(o.amount, o.currency)}</td></tr>)}</tbody>
+            <thead><tr><th scope="col">Date</th><th scope="col">Product</th><th scope="col">Customer</th><th scope="col">Type</th><th scope="col" className="num">Amount</th><th scope="col">Status</th></tr></thead>
+            <tbody>{q.data.data.map((o) => <tr key={o.id}><td className="small muted">{fmtDate(o.createdAt)}</td><td>{o.productName}</td><td>{o.email}</td><td>{o.isBump ? <span className="badge">Bump</span> : o.isUpsell ? <span className="badge primary">Upsell</span> : <span className="badge ok">Offer</span>}</td><td className="num">{fmtMoney(o.amount, o.currency)}</td><td><RefundCell order={o} /></td></tr>)}</tbody>
           </table>
           <Pager p={q.data.pagination} onPage={setPage} />
         </div>
       ) : null}
     </div>
+  );
+}
+
+function RefundCell({ order }: { order: Order }) {
+  const { can } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState('');
+  const left = order.amountCents - order.refundedCents;
+  const refund = useMutate(() => api.post(`/api/orders/${order.id}/refund`, amount.trim() ? { amountCents: Math.round(Number(amount) * 100) } : {}), [['orders']]);
+  const cents = amount.trim() ? Math.round(Number(amount) * 100) : left;
+  const invalid = !Number.isFinite(cents) || cents <= 0 || cents > left;
+  return (
+    <>
+      {order.status === 'refunded' ? <span className="badge">Refunded</span> : order.status === 'partially_refunded' ? <span className="badge warn">Refunded {fmtMoney(order.refundedCents / 100, order.currency)}</span> : <span className="badge ok">Paid</span>}
+      {order.status !== 'refunded' && can('orders:refund') ? <> <button type="button" className="btn small" onClick={() => setOpen(true)}>Refund</button></> : null}
+      {open ? (
+        <Modal title="Refund order" onClose={() => setOpen(false)}
+          footer={<><button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button><button type="button" className="btn danger" disabled={refund.isPending || invalid} onClick={() => refund.mutate(undefined, { onSuccess: () => setOpen(false) })}>Refund {fmtMoney(invalid ? 0 : cents / 100, order.currency)}</button></>}>
+          <ErrorBanner error={refund.error} />
+          <p>{order.productName} for {order.email}. Up to {fmtMoney(left / 100, order.currency)} can still be refunded.{order.provider === 'stripe' ? ' The money goes back to the customer through Stripe.' : ''}</p>
+          <TextField label="Amount (empty refunds everything left)" value={amount} onChange={setAmount} error={amount.trim() && invalid ? 'Enter an amount between 0 and what is left' : undefined} />
+        </Modal>
+      ) : null}
+    </>
   );
 }
