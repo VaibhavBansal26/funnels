@@ -85,9 +85,25 @@ So with the default `ANALYTICS_EXACT_DISTINCT_MAX` (200,000 page views) this fun
 
 A recovery drill: the first load put September in `events_default` because only July and August partitions had been created by my script. The procedure in RUNBOOK.md (detach default, create the month, move the rows, re-attach) moved 3.3M rows in 44 s and queries then pruned correctly.
 
+### 30-minute soak
+
+`node loadtest/scale.mjs --nodes 2 --queue on --seconds 1800 --conc 16 --rate 300 --sample 60` (2 nodes, ingest queue, 300 req/s per node, one sample per minute; the machine was quieter this time, load average 3 to 12). Raw: `loadtest/results/soak-30min.json`.
+
+| Result | Value |
+|---|---|
+| Accepted / rows in DB / lost / duplicated / rollup mismatch | 1,077,710 / 1,077,726 / 0 / 0 / 0 |
+| Accept latency p99 | 57 ms at about 600 req/s total |
+| RSS per node over 30 min | 167 to 286 MB, a sawtooth with no upward trend (first 5 minutes 186 to 255 MB, last 5 minutes 245 to 271 MB) |
+| V8 heap used (sampled) | 81 to 161 MB, no upward trend |
+| Event-loop lag p99 (prom-client default metric) | 12 to 16 ms |
+| Ingest queue lag | 11 to 41 events throughout |
+| Server CPU per 1,000 accepted events | 700 and 803 ms |
+
+GC pause distribution was not collected (the sampled GC metric name did not match, so the field is empty); only heap and RSS trends are claimed. 600 req/s is a fraction of capacity, so this shows boundedness and correctness over time, not behaviour near saturation.
+
 ### Not measured (no number exists)
 
-30+ minute soak (see below if the run finished), reconnect behaviour of the beacon under load, GC pause distribution, cloud-scale anything, ClickHouse (no server was available and downloading one was not authorised), the HTTP suite behind PgBouncer, Postgres failover, Redis failover, a noisy-neighbour run (the limiter keys per IP and funnel and the design is described, but no 100x test was run), more than 4 server processes, more than 10M events.
+GC pause distribution, reconnect behaviour of the beacon under load, GC pause distribution, cloud-scale anything, ClickHouse (no server was available and downloading one was not authorised), the HTTP suite behind PgBouncer, Postgres failover, Redis failover, a noisy-neighbour run (the limiter keys per IP and funnel and the design is described, but no 100x test was run), more than 4 server processes, more than 10M events.
 
 ## Capacity model
 
@@ -147,7 +163,7 @@ Defined and implemented: per-IP and per-funnel limits at the edge and origin (42
 * The ClickHouse path is implemented to the HTTP and SQL level described in ADR 0016 but was never run against a ClickHouse server; the analytics API does not read from it.
 * Kafka and NATS adapters are stubs that fail loudly.
 * Single region. Multi-region design hooks are in the Conversations app (home region routing); for Funnels the edge is global and the origin is one region.
-* No noisy-neighbour measurement; no 100M-event measurement; no soak figure unless stated below.
+* No noisy-neighbour measurement; no 100M-event measurement; the soak ran at a low rate (about 600 req/s).
 
 ## Measured vs extrapolated
 
@@ -158,6 +174,7 @@ Defined and implemented: per-IP and per-funnel limits at the edge and origin (42
 | Bus semantics (order, takeover, retry, DLQ, SIGKILL redelivery) | **Measured** (tests) | `eventbus.test.ts` |
 | CPU per 1,000 events: 369 ms (buffer), 762 to 832 ms (queue) | **Measured, noisy** (load average 20 to 43) | `scale-*.json` |
 | Linear throughput scale-out 1 to 2 to 4 nodes | **Not demonstrated**: 746 to 1,495 to 609 events/s tracks machine load, not node count | `scale-*.json` |
+| 30-minute soak: zero loss, bounded RSS and heap, 12 to 16 ms loop lag p99 (at about 600 req/s) | **Measured** | `soak-30min.json` |
 | 274 B per event with indexes; partition pruning; analytics query latencies at 10M events | **Measured** | `volume-10m.json` |
 | 100M events, 1B events, analytics at that size | **Extrapolated** (linear in rows for exact scans; rollup and sketch cost is independent of event count) | |
 | 20,000 events/s sustained, 100,000/s peak | **Extrapolated** | |

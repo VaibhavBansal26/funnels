@@ -306,9 +306,11 @@ describe('POST /internal/edge/events (batches from the edge queue consumer)', ()
   it('uses the edge timestamp as the event time (within 48 h), otherwise now', async () => {
     const { h, post, ev } = await edgeWorld();
     const now = h.clock.now().getTime();
-    await post([ev('bbbbbbbb1', 'v1', now - 3_600_000), ev('bbbbbbbb2', 'v2', now - 10 * 86_400_000), ev('bbbbbbbb3', 'v3', now + 3_600_000)]);
+    const resp = await post([ev('bbbbbbbb1', 'v1', now - 3_600_000), ev('bbbbbbbb2', 'v2', now - 10 * 86_400_000), ev('bbbbbbbb3', 'v3', now + 3_600_000)]);
+    expect(resp.json, JSON.stringify(resp.json)).toEqual({ accepted: 3, rejected: 0 });
     await h.deps.events.flush();
     const times = Object.fromEntries((await h.deps.db.all<{ id: string; created_at: string }>('SELECT id, created_at FROM events')).map((r) => [r.id, r.created_at]));
+    expect(Object.keys(times).sort(), `dropped=${h.deps.events.dropped}`).toEqual(['evt_bbbbbbbb1', 'evt_bbbbbbbb2', 'evt_bbbbbbbb3']);
     expect(times['evt_bbbbbbbb1']).toBe(new Date(now - 3_600_000).toISOString());
     expect(times['evt_bbbbbbbb2']).toBe(new Date(now).toISOString());
     expect(times['evt_bbbbbbbb3']).toBe(new Date(now).toISOString());

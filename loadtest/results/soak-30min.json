@@ -1,0 +1,371 @@
+{
+  "when": "2026-10-20T13:06:15.623Z",
+  "nodes": 2,
+  "queue": true,
+  "tenants": 8,
+  "conc": 16,
+  "seconds": 1800,
+  "kill": null,
+  "accepted_2xx": 1077710,
+  "non2xx": 0,
+  "connection_errors": 0,
+  "accepted_per_s": 599,
+  "p50_ms": 4,
+  "p99_ms": 57,
+  "rows_in_db": 1077726,
+  "distinct_visitors": 1077726,
+  "rollup_page_views": 1077726,
+  "lost": 0,
+  "rows_beyond_acked": 16,
+  "duplicated": 0,
+  "rollup_mismatch": 0,
+  "drain_s_after_load": 0.1,
+  "db_write_per_s_overall": 599,
+  "server_cpu_ms_per_1k_accepted": [
+    803,
+    700
+  ],
+  "rss_mb": [
+    247,
+    255
+  ],
+  "ingest_queue_lag_end": 24,
+  "load_average_at_start": [
+    3.1,
+    4.6,
+    11.6
+  ],
+  "rss_series": [
+    {
+      "t_s": 60,
+      "rss_mb": [
+        186,
+        208
+      ],
+      "heap_mb": 96,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 41
+    },
+    {
+      "t_s": 120,
+      "rss_mb": [
+        276,
+        270
+      ],
+      "heap_mb": 116,
+      "loop_lag_p99_ms": 27,
+      "gc_s_total": null,
+      "queue_lag": 10
+    },
+    {
+      "t_s": 180,
+      "rss_mb": [
+        242,
+        244
+      ],
+      "heap_mb": 89,
+      "loop_lag_p99_ms": 12,
+      "gc_s_total": null,
+      "queue_lag": 6
+    },
+    {
+      "t_s": 240,
+      "rss_mb": [
+        235,
+        255
+      ],
+      "heap_mb": 131,
+      "loop_lag_p99_ms": 12,
+      "gc_s_total": null,
+      "queue_lag": 17
+    },
+    {
+      "t_s": 300,
+      "rss_mb": [
+        167,
+        232
+      ],
+      "heap_mb": 126,
+      "loop_lag_p99_ms": 12,
+      "gc_s_total": null,
+      "queue_lag": 34
+    },
+    {
+      "t_s": 360,
+      "rss_mb": [
+        191,
+        249
+      ],
+      "heap_mb": 100,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 15
+    },
+    {
+      "t_s": 420,
+      "rss_mb": [
+        217,
+        199
+      ],
+      "heap_mb": 161,
+      "loop_lag_p99_ms": 12,
+      "gc_s_total": null,
+      "queue_lag": 19
+    },
+    {
+      "t_s": 480,
+      "rss_mb": [
+        257,
+        191
+      ],
+      "heap_mb": 61,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 24
+    },
+    {
+      "t_s": 540,
+      "rss_mb": [
+        250,
+        191
+      ],
+      "heap_mb": 70,
+      "loop_lag_p99_ms": 12,
+      "gc_s_total": null,
+      "queue_lag": 26
+    },
+    {
+      "t_s": 600,
+      "rss_mb": [
+        196,
+        201
+      ],
+      "heap_mb": 90,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 11
+    },
+    {
+      "t_s": 660,
+      "rss_mb": [
+        190,
+        214
+      ],
+      "heap_mb": 110,
+      "loop_lag_p99_ms": 12,
+      "gc_s_total": null,
+      "queue_lag": 25
+    },
+    {
+      "t_s": 720,
+      "rss_mb": [
+        269,
+        261
+      ],
+      "heap_mb": 119,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 17
+    },
+    {
+      "t_s": 780,
+      "rss_mb": [
+        169,
+        167
+      ],
+      "heap_mb": 81,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 34
+    },
+    {
+      "t_s": 840,
+      "rss_mb": [
+        278,
+        258
+      ],
+      "heap_mb": 119,
+      "loop_lag_p99_ms": 22,
+      "gc_s_total": null,
+      "queue_lag": 17
+    },
+    {
+      "t_s": 900,
+      "rss_mb": [
+        268,
+        241
+      ],
+      "heap_mb": 75,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 28
+    },
+    {
+      "t_s": 960,
+      "rss_mb": [
+        217,
+        198
+      ],
+      "heap_mb": 142,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 21
+    },
+    {
+      "t_s": 1020,
+      "rss_mb": [
+        249,
+        231
+      ],
+      "heap_mb": 114,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 21
+    },
+    {
+      "t_s": 1080,
+      "rss_mb": [
+        210,
+        172
+      ],
+      "heap_mb": 122,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 23
+    },
+    {
+      "t_s": 1140,
+      "rss_mb": [
+        255,
+        253
+      ],
+      "heap_mb": 109,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 24
+    },
+    {
+      "t_s": 1200,
+      "rss_mb": [
+        281,
+        268
+      ],
+      "heap_mb": 55,
+      "loop_lag_p99_ms": 14,
+      "gc_s_total": null,
+      "queue_lag": 16
+    },
+    {
+      "t_s": 1260,
+      "rss_mb": [
+        292,
+        273
+      ],
+      "heap_mb": 136,
+      "loop_lag_p99_ms": 15,
+      "gc_s_total": null,
+      "queue_lag": 18
+    },
+    {
+      "t_s": 1320,
+      "rss_mb": [
+        286,
+        271
+      ],
+      "heap_mb": 108,
+      "loop_lag_p99_ms": 16,
+      "gc_s_total": null,
+      "queue_lag": 20
+    },
+    {
+      "t_s": 1380,
+      "rss_mb": [
+        261,
+        269
+      ],
+      "heap_mb": 102,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 16
+    },
+    {
+      "t_s": 1440,
+      "rss_mb": [
+        228,
+        230
+      ],
+      "heap_mb": 82,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 24
+    },
+    {
+      "t_s": 1500,
+      "rss_mb": [
+        261,
+        203
+      ],
+      "heap_mb": 87,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 29
+    },
+    {
+      "t_s": 1560,
+      "rss_mb": [
+        181,
+        176
+      ],
+      "heap_mb": 139,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 32
+    },
+    {
+      "t_s": 1620,
+      "rss_mb": [
+        285,
+        274
+      ],
+      "heap_mb": 151,
+      "loop_lag_p99_ms": 22,
+      "gc_s_total": null,
+      "queue_lag": 21
+    },
+    {
+      "t_s": 1680,
+      "rss_mb": [
+        265,
+        258
+      ],
+      "heap_mb": 85,
+      "loop_lag_p99_ms": 13,
+      "gc_s_total": null,
+      "queue_lag": 11
+    },
+    {
+      "t_s": 1740,
+      "rss_mb": [
+        177,
+        181
+      ],
+      "heap_mb": 120,
+      "loop_lag_p99_ms": 23,
+      "gc_s_total": null,
+      "queue_lag": 29
+    },
+    {
+      "t_s": 1800,
+      "rss_mb": [
+        245,
+        253
+      ],
+      "heap_mb": 149,
+      "loop_lag_p99_ms": 15,
+      "gc_s_total": null,
+      "queue_lag": 24
+    }
+  ],
+  "machine": "Apple M1, 8 cores (load generator, servers, Redis and PostgreSQL share them)"
+}
