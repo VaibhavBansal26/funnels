@@ -41,6 +41,17 @@ function cleanContainer(parent: Container, out: Container): void {
   });
 }
 
+/** Compact, canonical serialisation (the output must not depend on how the author formatted the input). */
+function serialize(n: ChildNode): string {
+  if (n.type === 'rule') {
+    const r = n as Rule;
+    return `${r.selector.replace(/\s+/g, ' ').trim()}{${(r.nodes ?? []).map((d) => (d.type === 'decl' ? `${d.prop}:${d.value}` : '')).filter(Boolean).join(';')}}`;
+  }
+  const a = n as AtRule;
+  if (a.name === 'import') return `@import ${a.params};`;
+  return `@media ${a.params}{${(a.nodes ?? []).map(serialize).join('')}}`;
+}
+
 export function sanitizeCss(input: string, maxLength = 20_000): string {
   const text = String(input ?? '').slice(0, maxLength);
   if (!text.trim()) return '';
@@ -51,7 +62,7 @@ export function sanitizeCss(input: string, maxLength = 20_000): string {
     // @import statements must come first in a stylesheet.
     const imports = out.nodes.filter((n) => n.type === 'atrule' && (n as AtRule).name === 'import');
     const rest = out.nodes.filter((n) => !imports.includes(n));
-    return [...imports, ...rest].map((n) => n.toString()).join('').replace(/\s*\n\s*/g, '').replace(/<\/?style/gi, '');
+    return [...imports, ...rest].map(serialize).join('').replace(/<\/?style/gi, '');
   } catch {
     return '';
   }

@@ -19,30 +19,38 @@ export interface NodeOpts {
   name?: string;
 }
 
-/** Relative luminance based dark/light decision for a CSS colour (hex, rgb()). Unknown colours count as light. */
-export function isDarkColor(color: string): boolean {
+/** Parses #rgb, #rrggbb, #rrggbbaa and rgb()/rgba() colours to [r,g,b]; anything else (names, gradients, var()) is unknown. */
+export function parseColor(color: string): [number, number, number] | null {
   const c = color.trim().toLowerCase();
-  let r: number, g: number, b: number;
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(c);
   if (hex) {
     let h = hex[1]!;
     if (h.length === 3) h = [...h].map((x) => x + x).join('');
-    r = parseInt(h.slice(0, 2), 16);
-    g = parseInt(h.slice(2, 4), 16);
-    b = parseInt(h.slice(4, 6), 16);
-  } else {
-    const m = /^rgba?\(\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})/.exec(c);
-    if (!m) return false;
-    r = +m[1]!;
-    g = +m[2]!;
-    b = +m[3]!;
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
   }
-  const lin = (v: number) => {
-    const s = v / 255;
-    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  };
-  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-  return L < 0.3;
+  const m = /^rgba?\(\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})/.exec(c);
+  return m ? [+m[1]!, +m[2]!, +m[3]!] : null;
+}
+
+const lin = (v: number) => {
+  const s = v / 255;
+  return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+};
+export const luminance = ([r, g, b]: [number, number, number]): number => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+
+/** WCAG contrast ratio of two colours, or null when either cannot be parsed. */
+export function contrastRatio(a: string, b: string): number | null {
+  const pa = parseColor(a);
+  const pb = parseColor(b);
+  if (!pa || !pb) return null;
+  const [hi, lo] = [luminance(pa), luminance(pb)].sort((x, y) => y - x);
+  return (hi! + 0.05) / (lo! + 0.05);
+}
+
+/** Dark/light decision for a background colour. Unknown colours count as light. */
+export function isDarkColor(color: string): boolean {
+  const p = parseColor(color);
+  return p ? luminance(p) < 0.3 : false;
 }
 
 export type InlineNode = GjsNode;

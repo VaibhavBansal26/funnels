@@ -86,8 +86,8 @@ export function sanitizePageBody(html: string, opts: { apiBase?: string } = {}):
       button: ['type', 'disabled'],
       iframe: ['src', 'title', 'loading', 'allow', 'allowfullscreen', 'referrerpolicy'],
       video: ['controls', 'preload', 'src', 'aria-label'],
-      div: GLOBAL_ATTRS,
-      '*': GLOBAL_ATTRS,
+      // `style` survives only as width:N% (the progress bar), see allowedStyles below.
+      '*': [...GLOBAL_ATTRS, 'style'],
     },
     allowedIframeHostnames: VIDEO_HOSTS,
     allowedIframeDomains: [],
@@ -105,7 +105,7 @@ export function sanitizePageBody(html: string, opts: { apiBase?: string } = {}):
       video: (tagName, attribs) => ({ tagName, attribs: { ...attribs, src: /^https:\/\/[^\s"'<>]+\.mp4(\?[^\s"'<>]*)?$/i.test(attribs.src ?? '') ? attribs.src! : '' } }),
       input: (tagName, attribs) => ({ tagName, attribs: /^(text|email|tel|checkbox)$/.test(attribs.type ?? 'text') ? attribs : { ...attribs, type: 'text' } }),
     },
-    exclusiveFilter: (frame) => frame.tag === 'video' && !frame.attribs.src,
+    exclusiveFilter: (frame) => (frame.tag === 'video' || frame.tag === 'iframe') && !frame.attribs.src,
   };
   return dropBadImages(sanitizeHtmlLib(html, options));
 }

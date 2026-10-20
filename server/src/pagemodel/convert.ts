@@ -1,5 +1,5 @@
 import type { Block, PageDocument } from '../blocks/index.js';
-import { createPageBuilder, isDarkColor, type PageBuilder, type Pad, type Width } from './shared/build.js';
+import { contrastRatio, createPageBuilder, isDarkColor, type PageBuilder, type Pad, type Width } from './shared/build.js';
 import type { GjsNode, GjsProject } from './shared/clean.js';
 import type { ButtonActionProps } from './shared/props.js';
 import { FONT_STACKS } from './shared/css.js';
@@ -47,14 +47,28 @@ function action(a: L | undefined): ButtonActionProps {
   }
 }
 
+/** The colour copy sits on in the section being converted (set by `convertDocument`): explicit text colours that would be unreadable on it are dropped. */
+let surface = '#ffffff';
+
+/** An explicit text colour is kept only when it has AA contrast (4.5:1) on the section it sits in; otherwise the element inherits the theme's text colour. */
+function readable(color: string | undefined, notes: string[]): string | undefined {
+  if (!color) return undefined;
+  const ratio = contrastRatio(color, surface);
+  if (ratio !== null && ratio < 4.5) {
+    notes.push(`Dropped text colour ${color}: contrast ${ratio.toFixed(1)}:1 on ${surface} is below 4.5:1`);
+    return undefined;
+  }
+  return color;
+}
+
 function leaf(b: L, pm: PageBuilder, notes: string[]): GjsNode | null {
   const bid = idOf(b.id, pm.nextId());
   const al = align(b.align);
   switch (b.type) {
     case 'heading':
-      return pm.heading(str(b.text, 500), { level: Number(b.level) || 2, align: al, color: str(b.color) || undefined, anchor: b.anchor ? str(b.anchor, 40) : undefined });
+      return pm.heading(str(b.text, 500), { level: Number(b.level) || 2, align: al, color: readable(str(b.color) || undefined, notes), anchor: b.anchor ? str(b.anchor, 40) : undefined });
     case 'paragraph':
-      return pm.text(str(b.text), { align: al, color: str(b.color) || undefined, anchor: b.anchor ? str(b.anchor, 40) : undefined });
+      return pm.text(str(b.text), { align: al, color: readable(str(b.color) || undefined, notes), anchor: b.anchor ? str(b.anchor, 40) : undefined });
     case 'image': {
       const img = pm.image(str(b.src, 400_100), str(b.alt, 300), { width: b.width ? Number(b.width) : undefined, align: al });
       if (!b.href) return img;
@@ -163,6 +177,7 @@ export function convertDocument(input: unknown): ConvertResult {
   const pm = createPageBuilder('c');
   const blocks: L[] = Array.isArray(doc.blocks) ? doc.blocks : [];
   const top: GjsNode[] = [];
+  surface = '#ffffff';
   let loose: GjsNode[] = [];
   const flushLoose = () => {
     if (loose.length) top.push(pm.section([pm.stack(loose)], { width: 'medium', padding: 'sm' }));
@@ -172,6 +187,7 @@ export function convertDocument(input: unknown): ConvertResult {
     if (b?.type === 'section') {
       flushLoose();
       const bg = typeof b.background === 'string' ? b.background : undefined;
+      surface = bg && contrastRatio(bg, '#ffffff') !== null ? bg : '#ffffff';
       top.push(
         pm.section(sectionRows(b.children, pm, notes), {
           width: SECTION_WIDTH[b.width] ?? 'medium',

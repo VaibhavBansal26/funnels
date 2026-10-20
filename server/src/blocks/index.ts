@@ -1,6 +1,6 @@
-// Pure block model: shared by the server and by the web builder (via a Vite alias). Only imports zod.
+// Legacy block document model (version 1): the schema that guards the old input path (API clients, the AI generator, templates exported
+// before the GrapesJS builder) plus its builders. Pages are rendered from GrapesJS project data (src/pagemodel); a block document is only
+// ever converted (src/pagemodel/convert.ts), never rendered.
 export * from './schema.js';
-export * from './render.js';
 export * from './defaults.js';
-export { sanitizeHtml } from './sanitize.js';
 export { safeUrl, safeColor, parseVideoUrl, esc } from './safe.js';
