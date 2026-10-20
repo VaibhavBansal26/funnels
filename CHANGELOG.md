@@ -5,6 +5,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 ## [Unreleased]
 
 ### Added
+- Distinct visitors by HyperLogLog: per funnel-day sketches (`visitor_sketches`, migration 007, 1.6% standard error) maintained in the event-batch transaction; ranges above `ANALYTICS_EXACT_DISTINCT_MAX` page views use them (`ANALYTICS_DISTINCT_MODE=auto|exact|sketch`), smaller ranges stay exact. The analytics response reports `distinct.method` and `distinct.standardErrorPct`.
 - PostgreSQL support: `DATABASE_URL=postgres://...` runs the same code on a `pg` pool; SQLite stays the zero-config default. Per-dialect migrations with a shared runner (advisory lock), schema equivalence test, whole test suite on SQLite, PGlite and real PostgreSQL.
 - Layered distributed rate limiter (GCRA, sliding window, concurrency leases, penalty box, manual block/allow lists) on Redis Lua scripts or in memory, local lease tier, circuit breaker, fail-open/closed per policy, plan tiers, IETF `RateLimit` headers, `429`/`503` body contract, Prometheus metrics. See docs/RATE-LIMITING.md.
 - `routes/spec.ts`: one declaration of every route (auth, roles, schemas, limiter policies); `docs/openapi.json` is generated from it.

@@ -68,6 +68,8 @@ export const EnvSchema = z.object({
   AUTH_ATTEMPTS_PER_MINUTE: int(10, 1),
   WEBHOOK_MAX_ATTEMPTS: int(6, 1, 20),
   DOMAIN_VERIFY_TIMEOUT_HOURS: int(72, 1),
+  ANALYTICS_DISTINCT_MODE: z.enum(['auto', 'exact', 'sketch']).default('auto'),
+  ANALYTICS_EXACT_DISTINCT_MAX: int(200_000, 0),
   EVENT_DEDUPE_DAYS: int(30, 1, 3650),
   PARTITION_MONTHS_AHEAD: int(3, 1, 24),
   MAINTENANCE_INTERVAL_HOURS: int(6, 1, 168),

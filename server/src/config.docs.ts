@@ -52,6 +52,8 @@ export const ENV_DOCS: Record<keyof typeof EnvSchema.shape, EnvDoc> = {
   AUTH_ATTEMPTS_PER_MINUTE: { desc: 'Policy `auth.attempts`: register and login requests per IP per minute.', example: '10' },
   WEBHOOK_MAX_ATTEMPTS: { desc: 'Delivery attempts before a webhook delivery is dead-lettered (30 s x 2^n backoff).', example: '6' },
   DOMAIN_VERIFY_TIMEOUT_HOURS: { desc: 'Hours a pending domain keeps being re-checked before it is marked failed.', example: '72' },
+  ANALYTICS_DISTINCT_MODE: { desc: 'Funnel-level distinct visitors: `auto` (exact scan for small ranges, HyperLogLog sketches above ANALYTICS_EXACT_DISTINCT_MAX page views), `exact` (always scan) or `sketch` (always sketches, for tests and very large funnels).', example: 'auto' },
+  ANALYTICS_EXACT_DISTINCT_MAX: { desc: 'Page views in a range above which `auto` switches to sketches (1.6% standard error). The response says which method was used.', example: '200000' },
   EVENT_DEDUPE_DAYS: { desc: 'How long opt-in and order idempotency keys are remembered (`event_dedupe`); a retry with the same key after this window is a new event.', example: '30' },
   PARTITION_MONTHS_AHEAD: { desc: 'PostgreSQL: monthly partitions of `events` created ahead of time by the maintenance job.', example: '3' },
   MAINTENANCE_INTERVAL_HOURS: { desc: 'Interval of the maintenance job (partition creation, idempotency key pruning).', example: '6' },

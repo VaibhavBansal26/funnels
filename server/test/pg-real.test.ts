@@ -156,6 +156,19 @@ describe.skipIf(!enabled)('concurrency on a real PostgreSQL pool', () => {
     expect(url.protocol).toMatch(/^postgres/);
   });
 
+  it('distinct-visitor sketches lose no additions when many batches update the same funnel-day at once', async () => {
+    const h = await harness({ env: { ANALYTICS_DISTINCT_MODE: 'sketch' } });
+    const u = await h.register();
+    const f = await makeFunnel(h, u.token);
+    const buffers = Array.from({ length: 10 }, () => new EventBuffer(db, silentLogger, { flushMs: 60_000, maxQueue: 100_000 }));
+    const row = (v: string) => ({ id: `e_${v}_${Math.random()}`, workspace_id: u.wsId, funnel_id: f.id, step_id: f.steps[0].id, type: 'page_view' as const, visitor_id: v, unique_visit: 0, lead_id: null, order_id: null, external_id: null, amount_cents: 0, currency: null, utm_json: null, url: null, created_at: '2026-03-10T12:00:00.000Z' });
+    for (const [i, b] of buffers.entries()) for (let v = 0; v < 1000; v++) await b.add(row(`b${i}v${v}`)); // 10 disjoint sets of 1,000 visitors
+    await Promise.all(buffers.map((b) => b.flush()));
+    const r = (await h.call('GET', `/api/funnels/${f.id}/analytics?from=2026-03-10&to=2026-03-10`, { token: u.token })).json;
+    expect(r.distinct.method).toBe('hll');
+    expect(Math.abs(r.summary.pageViews.unique - 10_000) / 10_000, `estimate ${r.summary.pageViews.unique}`).toBeLessThan(0.055); // a lost update would drop whole thousands
+  });
+
   it('the AI daily cap is enforced atomically across parallel requests', async () => {
     const h = await harness({ env: { AI_DAILY_CAP: '5', AI_RATE_LIMIT_PER_MINUTE: '100' } });
     const u = await h.register();

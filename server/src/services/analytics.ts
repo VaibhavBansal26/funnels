@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Deps } from '../deps.js';
 import { badRequest } from '../errors.js';
 import { listSteps, requireFunnel, requireStep } from '../repos/funnels.js';
+import { HyperLogLog, STANDARD_ERROR_PCT } from '../util/hll.js';
 import { addDays, dayKey, eachDay, isDay, isValidTimeZone, pct, ratio, round2, startOfDayUtc } from '../util/time.js';
 
 export const AnalyticsQuery = z.object({
@@ -81,12 +82,42 @@ async function series(deps: Deps, ws: string, funnelId: string, range: Range, st
   return [...days.values()].map(({ cents, ...d }) => ({ ...d, gross: round2(cents / 100) }));
 }
 
+export interface Distinct {
+  value: number;
+  method: 'exact' | 'hll';
+  /** Standard error of the estimate in percent (0 for exact). About 95% of estimates are within twice this. */
+  standardErrorPct: number;
+}
+
+const exactDistinct = async (deps: Deps, funnelId: string, from: string, to: string): Promise<number> =>
+  (await deps.db.get<{ n: number }>(`SELECT COUNT(DISTINCT visitor_id) AS n FROM events WHERE funnel_id = ? AND type = 'page_view' AND created_at >= ? AND created_at < ?`, funnelId, from, to))!.n;
+
 /**
- * Exact distinct page-view visitors for [start, end) by a scan of the funnel's raw events (`idx_events_funnel_time`).
- * A per-day distinct table was tried and removed: see docs/PERFORMANCE.md.
+ * Distinct page-view visitors for [start, end). Exact (a scan of the funnel's events in the range, which prunes to the months involved) when the range
+ * has at most `ANALYTICS_EXACT_DISTINCT_MAX` page views or the mode says so. Above that it unions the per-day HyperLogLog sketches of the whole UTC days
+ * in the range (1.6% standard error) and adds the visitors of the partial days at either edge (zone offsets) exactly; the result says which it was.
+ * `totalViews` comes from the rollups, so choosing costs nothing.
  */
-export async function distinctVisitors(deps: Deps, funnelId: string, range: Range): Promise<number> {
-  return (await deps.db.get<{ n: number }>(`SELECT COUNT(DISTINCT visitor_id) AS n FROM events WHERE funnel_id = ? AND type = 'page_view' AND created_at >= ? AND created_at < ?`, funnelId, range.startUtc, range.endUtc))!.n;
+export async function distinctVisitors(deps: Deps, funnelId: string, range: Range, totalViews = 0): Promise<Distinct> {
+  const mode = deps.config.ANALYTICS_DISTINCT_MODE;
+  const day = (iso: string) => iso.slice(0, 10);
+  const startsAtMidnight = range.startUtc.endsWith('T00:00:00.000Z');
+  const endsAtMidnight = range.endUtc.endsWith('T00:00:00.000Z');
+  const firstWhole = startsAtMidnight ? day(range.startUtc) : addDays(day(range.startUtc), 1);
+  const lastWholeExclusive = day(range.endUtc);
+  const useSketch = mode === 'sketch' || (mode === 'auto' && totalViews > deps.config.ANALYTICS_EXACT_DISTINCT_MAX);
+  if (!useSketch || firstWhole >= lastWholeExclusive) return { value: await exactDistinct(deps, funnelId, range.startUtc, range.endUtc), method: 'exact', standardErrorPct: 0 };
+  const merged = new HyperLogLog();
+  for (const r of await deps.db.all<{ regs: string }>('SELECT regs FROM visitor_sketches WHERE funnel_id = ? AND day >= ? AND day < ?', funnelId, firstWhole, lastWholeExclusive)) {
+    if (r.regs) merged.merge(HyperLogLog.deserialize(r.regs));
+  }
+  const edges: [string, string][] = [];
+  if (!startsAtMidnight) edges.push([range.startUtc, `${firstWhole}T00:00:00.000Z`]);
+  if (!endsAtMidnight) edges.push([`${lastWholeExclusive}T00:00:00.000Z`, range.endUtc]);
+  for (const [from, to] of edges) {
+    for (const r of await deps.db.all<{ visitor_id: string }>(`SELECT DISTINCT visitor_id FROM events WHERE funnel_id = ? AND type = 'page_view' AND visitor_id IS NOT NULL AND created_at >= ? AND created_at < ?`, funnelId, from, to)) merged.add(r.visitor_id);
+  }
+  return { value: merged.estimate(), method: 'hll', standardErrorPct: Math.round(STANDARD_ERROR_PCT * 100) / 100 };
 }
 
 export async function funnelAnalytics(base: Deps, ws: string, funnelId: string, q: z.infer<typeof AnalyticsQuery>) {
@@ -100,14 +131,15 @@ export async function funnelAnalytics(base: Deps, ws: string, funnelId: string, 
   );
   const totals = (await deps.db.get<Omit<StepAgg, 'step_id'>>(`SELECT ${AGG} FROM event_rollups WHERE funnel_id = ? AND workspace_id = ? AND bucket >= ? AND bucket < ?`, funnelId, ws, from, to))!;
   // Funnel-level uniques are distinct visitors, so someone who sees three steps is one visitor. This is the one query that needs raw events.
-  const visitors = await distinctVisitors(deps, funnelId, range);
+  const visitors = await distinctVisitors(deps, funnelId, range, totals.views);
   const steps = (await listSteps(deps.db, ws, funnelId)).map((s) => {
     const a = perStep.get(s.id);
     return { stepId: s.id, name: s.name, path: s.base_path, position: s.position, ...computeMetrics({ views: a?.views ?? 0, uniques: a?.uniques ?? 0, optins: a?.optins ?? 0, orders: a?.orders ?? 0, cents: a?.cents ?? 0 }) };
   });
   return {
     range: { from: range.from, to: range.to, tz: range.tz },
-    summary: computeMetrics({ views: totals.views, uniques: visitors, optins: totals.optins, orders: totals.orders, cents: totals.cents }),
+    distinct: { method: visitors.method, standardErrorPct: visitors.standardErrorPct },
+    summary: computeMetrics({ views: totals.views, uniques: visitors.value, optins: totals.optins, orders: totals.orders, cents: totals.cents }),
     steps,
     series: await series(deps, ws, funnelId, range),
   };

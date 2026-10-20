@@ -46,6 +46,8 @@ Generated from the zod schema in `server/src/config.ts` and the descriptions in 
 | `AUTH_ATTEMPTS_PER_MINUTE` | `10` | no | `10` | Policy `auth.attempts`: register and login requests per IP per minute. |
 | `WEBHOOK_MAX_ATTEMPTS` | `6` | no | `6` | Delivery attempts before a webhook delivery is dead-lettered (30 s x 2^n backoff). |
 | `DOMAIN_VERIFY_TIMEOUT_HOURS` | `72` | no | `72` | Hours a pending domain keeps being re-checked before it is marked failed. |
+| `ANALYTICS_DISTINCT_MODE` | `auto` | no | `auto` | Funnel-level distinct visitors: `auto` (exact scan for small ranges, HyperLogLog sketches above ANALYTICS_EXACT_DISTINCT_MAX page views), `exact` (always scan) or `sketch` (always sketches, for tests and very large funnels). |
+| `ANALYTICS_EXACT_DISTINCT_MAX` | `200000` | no | `200000` | Page views in a range above which `auto` switches to sketches (1.6% standard error). The response says which method was used. |
 | `EVENT_DEDUPE_DAYS` | `30` | no | `30` | How long opt-in and order idempotency keys are remembered (`event_dedupe`); a retry with the same key after this window is a new event. |
 | `PARTITION_MONTHS_AHEAD` | `3` | no | `3` | PostgreSQL: monthly partitions of `events` created ahead of time by the maintenance job. |
 | `MAINTENANCE_INTERVAL_HOURS` | `6` | no | `6` | Interval of the maintenance job (partition creation, idempotency key pruning). |

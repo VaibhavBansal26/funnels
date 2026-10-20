@@ -1,4 +1,5 @@
 import type { Db } from '../db/index.js';
+import { HyperLogLog } from '../util/hll.js';
 
 export interface EventInsert {
   id: string;
@@ -121,7 +122,9 @@ export async function insertEvents(tx: Db, rows: EventInsert[], opts: { decideUn
     );
     for (const g of got) inserted.add(g.id);
   }
-  const deltas = aggregate(work.filter((r) => inserted.has(r.id)));
+  const stored = work.filter((r) => inserted.has(r.id));
+  await updateSketches(tx, stored);
+  const deltas = aggregate(stored);
   for (let i = 0; i < deltas.length; i += CHUNK) {
     const chunk = deltas.slice(i, i + CHUNK);
     const set = ['page_views', 'unique_views', 'optins', 'orders', 'cents'].map((c) => `${c} = event_rollups.${c} + excluded.${c}`).join(', ');
@@ -131,4 +134,34 @@ export async function insertEvents(tx: Db, rows: EventInsert[], opts: { decideUn
     );
   }
   return inserted;
+}
+
+/**
+ * Adds the page-view visitors of a batch to the per-funnel, per-UTC-day HyperLogLog sketches. Rows are created empty first (`DO NOTHING`), then
+ * locked in key order and rewritten, so concurrent batches serialise on a sketch instead of overwriting each other's additions.
+ */
+async function updateSketches(tx: Db, rows: EventInsert[]): Promise<void> {
+  const groups = new Map<string, { funnel: string; day: string; ids: Set<string> }>();
+  for (const r of rows) {
+    if (r.type !== 'page_view' || !r.visitor_id) continue;
+    const day = r.created_at.slice(0, 10);
+    const k = `${r.funnel_id}\u0000${day}`;
+    let g = groups.get(k);
+    if (!g) groups.set(k, (g = { funnel: r.funnel_id, day, ids: new Set() }));
+    g.ids.add(r.visitor_id);
+  }
+  const keys = [...groups.values()].sort((a, b) => (a.funnel + a.day < b.funnel + b.day ? -1 : 1));
+  for (let i = 0; i < keys.length; i += 100) {
+    const chunk = keys.slice(i, i + 100);
+    const pairs = chunk.map(() => '(?, ?)').join(', ');
+    const flat = chunk.flatMap((g) => [g.funnel, g.day]);
+    await tx.run(`INSERT INTO visitor_sketches (funnel_id, day, regs) VALUES ${chunk.map(() => "(?, ?, '')").join(', ')}${tx.dialect.onConflictDoNothing()}`, ...flat);
+    const existing = await tx.all<{ funnel_id: string; day: string; regs: string }>(`SELECT funnel_id, day, regs FROM visitor_sketches WHERE (funnel_id, day) IN (${pairs}) ORDER BY funnel_id, day${tx.dialect.forUpdate()}`, ...flat);
+    for (const e of existing) {
+      const g = groups.get(`${e.funnel_id}\u0000${e.day}`)!;
+      const h = e.regs ? HyperLogLog.deserialize(e.regs) : new HyperLogLog();
+      for (const id of g.ids) h.add(id);
+      await tx.run('UPDATE visitor_sketches SET regs = ? WHERE funnel_id = ? AND day = ?', h.serialize(), e.funnel_id, e.day);
+    }
+  }
 }
