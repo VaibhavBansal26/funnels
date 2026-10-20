@@ -97,9 +97,9 @@ describe('templates API', () => {
 describe('template administration (PLATFORM_ADMIN_EMAILS)', () => {
   it('is closed by default: nobody is a platform admin, whatever the host or role', async () => {
     const h = await makeHarness();
-    const owner = await h.register('boss@dashclicks.com');
+    const owner = await h.register('boss@example.test');
     const f = await makeFunnel(h, owner.token);
-    for (const host of ['app.dashclicks.com', 'localhost', 'app.funnels.test']) {
+    for (const host of ['app.example.test', 'localhost', 'app.funnels.test']) {
       const r = await h.call('POST', '/api/admin/templates', { token: owner.token, body: { funnelId: f.id, name: 'T' }, headers: { host } });
       expect(r.status).toBe(403);
     }
