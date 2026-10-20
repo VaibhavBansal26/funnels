@@ -224,7 +224,7 @@ function Editor({ funnel, step, page, reload }: { funnel: FunnelDetail; step: St
         </aside>
       </div>
 
-      {settingsOpen ? <PageSettingsDialog funnelId={funnel.id} domainId={funnel.domain?.id} step={step} settings={state.doc.settings} isAdmin={can('admin')} onClose={() => setSettingsOpen(false)} onApplyDoc={(patch) => dispatch({ type: 'settings', patch })} /> : null}
+      {settingsOpen ? <PageSettingsDialog funnelId={funnel.id} domainId={funnel.domain?.id} step={step} settings={state.doc.settings} isAdmin={can('funnels:tracking')} onClose={() => setSettingsOpen(false)} onApplyDoc={(patch) => dispatch({ type: 'settings', patch })} /> : null}
       {historyOpen ? <HistoryDrawer funnelId={funnel.id} stepId={step.id} stepName={step.name} dirty={dirty} onClose={() => setHistoryOpen(false)} onRestored={() => { setHistoryOpen(false); toast.push('Version restored', 'ok'); reload(); }} /> : null}
       {namingBlock ? (
         <Modal title="Save as my block" onClose={() => setNamingBlock(null)} footer={<><button type="button" className="btn" onClick={() => setNamingBlock(null)}>Cancel</button><button type="button" className="btn primary" disabled={!blockName.trim() || saveCustom.isPending} onClick={() => saveCustom.mutate({ name: blockName.trim(), block: namingBlock }, { onSuccess: () => { toast.push('Block saved', 'ok'); setNamingBlock(null); } })}>Save</button></>}>

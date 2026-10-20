@@ -60,7 +60,7 @@ export function WebhooksPage() {
   const test = useMutate((id: string) => api.post(`/api/webhooks/${id}/test`), [keys.webhooks]);
   const rotate = useMutate((id: string) => api.post<Webhook>(`/api/webhooks/${id}/rotate-secret`), [keys.webhooks]);
 
-  if (!can('admin')) return <div className="stack"><h1>Webhooks</h1><div className="alert">Only admins and owners can manage webhooks.</div></div>;
+  if (!can('webhooks:manage')) return <div className="stack"><h1>Webhooks</h1><div className="alert">You need the webhooks:manage permission to manage webhooks.</div></div>;
 
   return (
     <div className="stack">

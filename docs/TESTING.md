@@ -27,6 +27,8 @@ Rate limiter tests: `ratelimit.algo.test.ts` (GCRA/window/lease/penalty on an in
 
 Scale tests: `eventbus.test.ts` (one contract suite against the in-memory bus and Redis Streams on a real `redis-server`: order per key, consumer groups, late subscribers, competing consumers, retry, dead letters, batch handlers, lag, takeover, and a child process killed with SIGKILL whose unacknowledged entries are redelivered; Kafka/NATS stubs fail loudly), `queue.test.ts` (ingest queue, outbox, mirror, ClickHouse wire format against a fake HTTP server, the signed `/internal/edge/events` endpoint), `hll.test.ts` (sketch accuracy and merge), the concurrency case in `pg-real.test.ts`. Run the PostgreSQL ones with `TEST_PG_URL=postgres://... TEST_DB=pg npx vitest run --project pg`. Load and failure harnesses (not part of `npm test`): `loadtest/scale.mjs`, `loadtest/suite-scale.sh`, `bench/volume.mjs`, k6 scripts in `loadtest/k6/`; results and how to read them in [SCALING.md](SCALING.md).
 
+Access-control tests: `rbac.policy.test.ts` (the central policy: every route declares a permission, no dead permissions, the pinned list of `any` routes, and a generated matrix that calls every authenticated route with a role holding everything except its permission and with a role holding only it), `rbac.test.ts` (custom roles, escalation rules, last owner, tenancy of roles), `sessions.test.ts` (rotation, theft detection, the two-tab race, expiry and session cap, revocation everywhere), `invitations.test.ts` (invitations and password reset), `twofactor.test.ts` (RFC 6238 and 4226 vectors, enrolment, replay, recovery codes, lockout, admin recovery), `audit.test.ts`.
+
 Docs tests: `docs.test.ts` (`npm run docs:check`): links and anchors, index, config coverage, stale generated files, OpenAPI coverage of every route, Mermaid parse, changelog, runnable examples in API.md.
 
 Data-layer tests: `db.test.ts` (migrations, constraints and error mapping, transactions, savepoints, handle misuse, queueing behind a transaction, every dialect helper executed on the live engine), `schema-equivalence.test.ts` (introspects SQLite and PostgreSQL and diffs tables, columns, indexes), `pg-driver.test.ts` (the `pg` Pool code path on a scripted pool: SQL text, isolation level, COMMIT/ROLLBACK, savepoints, retry on 40001/40P01, statement naming, connection release), `no-direct-sqlite.test.ts` (no driver import, `.raw`, or SQLite-only SQL outside `src/db/`).
@@ -67,7 +69,7 @@ Real browsers (drag and drop, the sandboxed canvas script), real DNS, real Anthr
 
 ## Browser smoke tests (Playwright)
 
-`e2e/` drives real Chromium against the **built** server serving the **built** web app (`npm run build` first), with an in-memory SQLite database and a fake DNS resolver (`e2e/server.mjs`, so `*.e2e.test` domains can be verified; the browser maps that suffix to 127.0.0.1). Run: `npm run e2e:install` once (downloads Chromium, about 100 MB), then `npm run e2e` (about 35 s). One worker, no retries (a retry would hide flakiness); traces and screenshots are kept for failures (`npx playwright show-trace e2e/test-results/.../trace.zip`). CI job `e2e` runs it and uploads the report on failure.
+`e2e/` drives real Chromium against the **built** server serving the **built** web app (`npm run build` first), with an in-memory SQLite database and a fake DNS resolver (`e2e/server.mjs`, so `*.e2e.test` domains can be verified; the browser maps that suffix to 127.0.0.1). Run: `npm run e2e:install` once (downloads Chromium, about 100 MB), then `npm run e2e` (about 40 s). One worker, no retries (a retry would hide flakiness); traces and screenshots are kept for failures (`npx playwright show-trace e2e/test-results/.../trace.zip`). CI job `e2e` runs it and uploads the report on failure.
 
 | Test | What it proves |
 |---|---|
@@ -80,5 +82,10 @@ Real browsers (drag and drop, the sandboxed canvas script), real DNS, real Anthr
 | signed preview and form submit | preview rendering; preview submissions are intentionally not recorded |
 | live funnel on a verified domain, visitor submits the form | domain add and verify, go live, public serving by Host header, form submit, lead in the Leads tab, analytics tab |
 | analytics tab renders | no console or page errors |
+| invite a viewer by email (`access.spec.ts`) | the permission picker-free invite flow, accept page, the signed-in role in the UI, UI gating (no "Add domain", no "Invite member") **and** the server refusing the same action sent directly (403 naming the permission), the audit log page |
+| custom role | build a role with the permission picker, assign it through an invitation, and the member can exactly what the role grants |
+| two-factor authentication | enrol with a code computed from the setup key, recovery codes shown once, sign-in needs the code (wrong code refused), a recovery code works once |
+| forgotten password | the emailed link (read from the e2e server's capture mailer), new password works, old one does not, another browser's session ends |
+| expired access token | an access token the server rejects is renewed from the refresh token in the background |
 
 Not covered (yet): checkout, the AI assistant UI, webhooks UI, mobile layouts, other browsers (Firefox, WebKit are not installed), accessibility audits beyond role-based selectors.

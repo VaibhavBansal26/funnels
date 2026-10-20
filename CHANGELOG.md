@@ -5,8 +5,9 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 ## [Unreleased]
 
 ### Added
+- Access control (docs/RBAC.md, ADR 0018): permission-based roles (built-in owner, admin, member, viewer; custom roles per workspace) enforced centrally from the route declaration with a generated policy-matrix test; no privilege escalation (grant only what you hold; last owner protected); sessions with 15-minute access tokens and rotating refresh tokens with reuse detection; invitations by one-time link; password reset; TOTP two-factor authentication with recovery codes (RFC 6238 vectors tested, secrets encrypted at rest); failed-login lockout covering passwords and second factors; audit log API (`GET /api/audit`); mail transport abstraction (`MAIL_TRANSPORT`).
 - Optional ClickHouse analytics read path behind the `AnalyticsReader` interface (`ANALYTICS_READ_STORE`, off by default; falls back to the primary on error or when the mirror is stale; metric `funnels_analytics_reads_total`). Tested against a fake HTTP server only: unverified against a real ClickHouse.
-- `e2e/`: Playwright browser smoke suite (9 tests) against the built server and web app, `npm run e2e`, CI job `e2e`.
+- `e2e/`: Playwright browser smoke suite (14 tests) against the built server and web app, `npm run e2e`, CI job `e2e`.
 - Per-workspace fairness: `ingest.workspace` admission policy (`INGEST_WORKSPACE_PER_MINUTE`, plan tiers, `onFail: local`), ingest partitions keyed by workspace, round-robin per-workspace claims for the outbox relay and the job queue (`jobs.group_key`, migration 009), `loadtest/noisy.mjs` and `test/fairness.test.ts`. Rate-limit policies gain `onFail: local` and the `fallback` outcome.
 - `docs/SCALING.md`, `docs/CLOUD-LOADTEST.md`, capacity playbooks in the runbook; `loadtest/scale.mjs` (N nodes + Redis + PostgreSQL with loss/duplicate verification and node kill), `loadtest/k6/*` and `deploy/k6/testrun.yaml`, `deploy/k8s-scale/` overlay, `bench/volume.mjs`.
 - Durable `EventBus` (Redis Streams with partition leases, consumer groups, retry with jitter, dead letters, batch handlers, lag; in-memory implementation; Kafka and NATS stubs) with one contract suite, including a SIGKILL test.
@@ -26,6 +27,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - Benchmarks: `bench/ingest.mjs`, `ingest-db.mjs`, `ingest-engines.mjs`, `ratelimit.mjs`.
 
 ### Changed
+- **Breaking:** `POST /api/members` (temporary password) removed in favour of invitations; `PATCH /api/members/{id}` takes `{ roleId }`; access tokens are 15 minutes by default and carry a session id (everyone signs in once after the upgrade); a workspace may have several owners. See MIGRATION-NOTES.md.
 - Fixed: clicking a block in the builder canvas did nothing when the app was served with its own Content-Security-Policy (`script-src 'self'` blocked the canvas's inline editor script). The script is now the static file `/editor-bridge.js`. Found by the new browser suite; jsdom tests cannot see CSP.
 - The AI daily cap is now the registry policy `ai.daily` (sliding window, plan-tier scaled, shared across replicas through the limiter store) instead of a database counter; `ai_usage` only meters. Calendar-day reset became a sliding 24 h window.
 - Fixed: two replicas booting together on an empty PostgreSQL database could crash with a duplicate key on `schema_migrations` (the table was created before the migration lock was taken).

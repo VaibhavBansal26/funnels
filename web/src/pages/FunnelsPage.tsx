@@ -180,7 +180,7 @@ export function FunnelsPage() {
                   <td>
                     <span className="row" style={{ flexWrap: 'nowrap' }}>
                       <button type="button" className="btn sm" onClick={() => dup.mutate(f.id, { onSuccess: (n) => { toast.push(`Created "${n.name}"`, 'ok'); }, onError: (e) => toast.push(errorMessage(e), 'error') })}>Duplicate</button>
-                      {can('admin') ? <button type="button" className="btn sm danger" aria-label={`Delete ${f.name}`} onClick={() => setDeleting(f)}>Delete</button> : null}
+                      {can('funnels:delete') ? <button type="button" className="btn sm danger" aria-label={`Delete ${f.name}`} onClick={() => setDeleting(f)}>Delete</button> : null}
                     </span>
                   </td>
                 </tr>

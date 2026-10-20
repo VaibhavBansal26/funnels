@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const PORT = Number(process.env.E2E_PORT ?? 4180);
 const BASE = `http://127.0.0.1:${PORT}`;
+export const MAIL = `http://127.0.0.1:${PORT + 1}`;
 
 // The suite drives the BUILT server (server/dist) serving the BUILT web app (web/dist), the way it is deployed, with an in-memory SQLite database
 // (nothing to clean up). Build first: `npm run build` (the root script `npm run e2e` does). One worker: the tests share one server and register their own users.
@@ -39,6 +40,7 @@ export default defineConfig({
       API_USER_PER_MINUTE: '1000000',
       API_WORKSPACE_PER_MINUTE: '1000000',
       EVENT_BUFFER_MS: '0',
+      MAIL_PORT: String(PORT + 1),
     },
   },
 });

@@ -1,12 +1,12 @@
 import { Hono, type Context } from 'hono';
-import { authenticate, authOf, requireRole, type AppEnv } from '../auth/context.js';
+import { authenticate, authOf, type AppEnv } from '../auth/context.js';
 import type { Deps } from '../deps.js';
 import * as hooks from '../services/webhooks.js';
 import { bodyOf } from './util.js';
 
 export function webhookRoutes(deps: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
-  r.use('*', authenticate(deps), requireRole('admin'));
+  r.use('*', authenticate(deps));
   const ws = (c: Context<AppEnv>) => authOf(c).workspaceId;
   r.get('/', async (c) => c.json(await hooks.listWebhooks(deps, ws(c))));
   r.post('/', async (c) => c.json(await hooks.createWebhook(deps, ws(c), await bodyOf(c, hooks.WebhookInput)), 201));

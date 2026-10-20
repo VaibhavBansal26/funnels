@@ -1,7 +1,7 @@
 import { jwtVerify, SignJWT } from 'jose';
 import type { Config } from '../config.js';
 
-export type TokenUse = 'access' | 'preview' | 'sse';
+export type TokenUse = 'access' | 'preview' | 'sse' | '2fa';
 
 const key = (config: Config) => new TextEncoder().encode(config.JWT_SECRET);
 
@@ -18,13 +18,26 @@ async function verify(config: Config, token: string, use: TokenUse, now: Date) {
   return payload;
 }
 
-export const signAccessToken = (config: Config, userId: string, now: Date) =>
-  sign(config, 'access', {}, config.ACCESS_TOKEN_TTL_SECONDS, now, userId);
+/** Short-lived access token. `sid` ties it to a session row, so revoking the session (logout, password change, refresh-token theft) ends it immediately. */
+export const signAccessToken = (config: Config, userId: string, sessionId: string, now: Date) =>
+  sign(config, 'access', { sid: sessionId }, config.ACCESS_TOKEN_TTL_SECONDS, now, userId);
 
-export async function verifyAccessToken(config: Config, token: string, now: Date): Promise<{ userId: string } | null> {
+export async function verifyAccessToken(config: Config, token: string, now: Date): Promise<{ userId: string; sessionId: string } | null> {
   try {
     const p = await verify(config, token, 'access', now);
-    return typeof p.sub === 'string' ? { userId: p.sub } : null;
+    return typeof p.sub === 'string' && typeof p.sid === 'string' ? { userId: p.sub, sessionId: p.sid } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Proof that the password step of a login passed, valid for five minutes, redeemable only together with a TOTP or recovery code. */
+export const signChallengeToken = (config: Config, userId: string, now: Date) => sign(config, '2fa', {}, 300, now, userId);
+
+export async function verifyChallengeToken(config: Config, token: string, now: Date): Promise<string | null> {
+  try {
+    const p = await verify(config, token, '2fa', now);
+    return typeof p.sub === 'string' ? p.sub : null;
   } catch {
     return null;
   }
@@ -43,13 +56,13 @@ export async function verifyPreviewToken(config: Config, token: string, funnelId
   }
 }
 
-/** Ticket for EventSource, which cannot send an Authorization header. */
-export const signStreamTicket = (config: Config, userId: string, now: Date) => sign(config, 'sse', {}, 60, now, userId);
+/** Ticket for EventSource, which cannot send an Authorization header. Bound to the session it was minted for. */
+export const signStreamTicket = (config: Config, userId: string, sessionId: string, now: Date) => sign(config, 'sse', { sid: sessionId }, 60, now, userId);
 
-export async function verifyStreamTicket(config: Config, token: string, now: Date): Promise<string | null> {
+export async function verifyStreamTicket(config: Config, token: string, now: Date): Promise<{ userId: string; sessionId: string } | null> {
   try {
     const p = await verify(config, token, 'sse', now);
-    return typeof p.sub === 'string' ? p.sub : null;
+    return typeof p.sub === 'string' && typeof p.sid === 'string' ? { userId: p.sub, sessionId: p.sid } : null;
   } catch {
     return null;
   }

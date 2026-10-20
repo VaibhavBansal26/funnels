@@ -9,6 +9,7 @@ import type { Deps } from '../src/deps.js';
 import type { DnsResolver } from '../src/dns/resolver.js';
 import type { HttpClient, HttpPost } from '../src/net/ssrf.js';
 import { silentLogger } from '../src/logger.js';
+import { CaptureMailer } from '../src/mail/mailer.js';
 import { type EventInsert, insertEvents } from '../src/services/rollups.js';
 import { newId } from '../src/util/ids.js';
 
@@ -64,8 +65,12 @@ export interface Harness {
   lookupTable: Map<string, string[]>;
   worker: ReturnType<typeof createWorker>;
   call(method: string, path: string, opts?: { token?: string; body?: unknown; headers?: Record<string, string>; raw?: string }): Promise<Res>;
-  register(email?: string, name?: string): Promise<{ token: string; wsId: string; userId: string }>;
-  member(owner: { token: string }, role: 'admin' | 'member', email?: string): Promise<{ token: string; userId: string }>;
+  register(email?: string, name?: string): Promise<{ token: string; refreshToken: string; wsId: string; userId: string; email: string }>;
+  mailer: CaptureMailer;
+  /** Invites `email` into the owner's workspace with a built-in role id or a custom role id and accepts the invitation (the real flow, through the captured mail). */
+  member(owner: { token: string }, role: string, email?: string): Promise<{ token: string; refreshToken: string; userId: string; email: string }>;
+  /** A member whose role is a fresh custom role holding exactly `permissions`. */
+  memberWith(owner: { token: string }, permissions: string[], email?: string): Promise<{ token: string; refreshToken: string; userId: string; email: string; roleId: string }>;
 }
 
 let counter = 0;
@@ -79,10 +84,11 @@ export async function makeHarness(opts: { env?: Record<string, string>; ai?: AiP
   const lookupTable = new Map<string, string[]>([['hooks.example.com', ['93.184.216.34']]]);
   const config = loadConfig({
     NODE_ENV: 'test', DATABASE_PATH: ':memory:', JWT_SECRET: 'test-secret-test-secret-test-secret-123456', TRUST_PROXY: 'true', LOG_LEVEL: 'silent',
-    ENABLE_WORKER: 'false', EVENT_BUFFER_MS: '0', IP_GUARD_PER_MINUTE: '10000000', PUBLIC_PAGES_PER_MINUTE: '10000000', ACCESS_TOKEN_TTL_SECONDS: '31536000', APP_PUBLIC_CNAME_TARGET: 'sites.funnels.test', APP_PUBLIC_URL: 'https://app.funnels.test', WEB_DIST: '/nonexistent', ...opts.env,
+    ENABLE_WORKER: 'false', EVENT_BUFFER_MS: '0', IP_GUARD_PER_MINUTE: '10000000', AUTH_ATTEMPTS_PER_MINUTE: '10000000', PUBLIC_PAGES_PER_MINUTE: '10000000', ACCESS_TOKEN_TTL_SECONDS: '31536000', APP_PUBLIC_CNAME_TARGET: 'sites.funnels.test', APP_PUBLIC_URL: 'https://app.funnels.test', WEB_DIST: '/nonexistent', ...opts.env,
   });
+  const mailer = new CaptureMailer();
   const deps = await createDeps(config, {
-    db: opts.deps?.db ?? (await testDb()), now: clock.now, log: silentLogger, dns, http, ai: opts.ai ?? new HeuristicProvider(),
+    mailer, db: opts.deps?.db ?? (await testDb()), now: clock.now, log: silentLogger, dns, http, ai: opts.ai ?? new HeuristicProvider(),
     lookup: async (h) => {
       const r = lookupTable.get(h);
       if (!r) throw new Error('ENOTFOUND');
@@ -112,20 +118,30 @@ export async function makeHarness(opts: { env?: Record<string, string>; ai?: AiP
     return { status: res.status, json, headers: res.headers, text };
   };
 
-  return {
-    app, deps, clock, dns, http, lookupTable, worker, call,
+  const h: Harness = {
+    app, deps, clock, dns, http, lookupTable, worker, call, mailer,
     async register(email = `owner${++counter}@example.test`, name = 'Owner') {
       const r = await call('POST', '/api/auth/register', { body: { email, password: 'correct horse battery', name } });
       if (r.status !== 201) throw new Error(`register failed: ${r.text}`);
-      return { token: r.json.token, wsId: r.json.workspace.id, userId: r.json.user.id };
+      return { token: r.json.token, refreshToken: r.json.refreshToken, wsId: r.json.workspace.id, userId: r.json.user.id, email };
     },
     async member(owner, role, email = `${role}${++counter}@example.test`) {
-      const created = await call('POST', '/api/members', { token: owner.token, body: { email, name: role, role } });
-      if (created.status !== 201) throw new Error(`member failed: ${created.text}`);
-      const login = await call('POST', '/api/auth/login', { body: { email, password: created.json.temporaryPassword } });
-      return { token: login.json.token, userId: login.json.user.id };
+      const invited = await call('POST', '/api/invitations', { token: owner.token, body: { email, roleId: role } });
+      if (invited.status !== 201) throw new Error(`invite failed: ${invited.text}`);
+      const link = mailer.linkTo(email);
+      if (!link) throw new Error('no invitation mail captured');
+      const accepted = await call('POST', '/api/auth/invitations/accept', { body: { token: new URL(link).searchParams.get('token'), name: role, password: 'correct horse battery' } });
+      if (accepted.status !== 201) throw new Error(`accept failed: ${accepted.text}`);
+      return { token: accepted.json.token, refreshToken: accepted.json.refreshToken, userId: accepted.json.user.id, email };
+    },
+    async memberWith(owner, permissions, email = `custom${++counter}@example.test`) {
+      const role = await call('POST', '/api/roles', { token: owner.token, body: { name: `Role ${++counter} ${Math.random().toString(36).slice(2, 6)}`, permissions } });
+      if (role.status !== 201) throw new Error(`role failed: ${role.text}`);
+      const m = await h.member(owner, role.json.id, email);
+      return { ...m, roleId: role.json.id as string };
     },
   };
+  return h;
 }
 
 /** Verified domain ready for funnels: pending -> active through the fake DNS. */
@@ -196,4 +212,14 @@ export async function seedEvents(h: Harness, rows: (Pick<EventInsert, 'workspace
     created_at: '2026-03-10T12:00:00.000Z', ...r,
   }));
   await h.deps.db.transaction((tx) => insertEvents(tx, full));
+}
+
+/**
+ * A JWT whose signature is certainly different. NOT the last character: a 32-byte HS256 signature is 43 base64url characters whose last one carries only 4
+ * significant bits, so 'A', 'B', 'C' and 'D' there decode to the same bytes and replacing one with another yields a still-valid token (a ~1 in 16 flake).
+ */
+export function tamperSignature(jwt: string): string {
+  const [h, p, sig] = jwt.split('.');
+  const i = 10;
+  return `${h}.${p}.${sig!.slice(0, i)}${sig![i] === 'A' ? 'B' : 'A'}${sig!.slice(i + 1)}`;
 }

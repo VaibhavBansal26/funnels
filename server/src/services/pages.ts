@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { parseDocument, renderPage, type PageDocument, type RenderContext, LIMITS } from '../blocks/index.js';
-import type { Auth } from '../auth/context.js';
+import { can, type Auth } from '../auth/context.js';
 import type { Deps } from '../deps.js';
 import { AppError, conflict, notFound } from '../errors.js';
 import { inTx } from '../db/scope.js';
@@ -88,7 +88,7 @@ export async function insertPage(deps: Deps, ws: string, funnel: FunnelRow, step
   );
 }
 
-export const scriptsAllowedFor = async (deps: Deps, auth: Auth): Promise<boolean> => auth.role === 'owner' && (await workspaceAllowsScripts(deps, auth.workspaceId));
+export const scriptsAllowedFor = async (deps: Deps, auth: Auth): Promise<boolean> => can(auth, 'workspace:manage') && (await workspaceAllowsScripts(deps, auth.workspaceId));
 
 async function getPageRow(deps: Deps, ws: string, stepId: string): Promise<PageRow> {
   const p = await deps.db.get<PageRow>('SELECT * FROM step_pages WHERE workspace_id = ? AND step_id = ?', ws, stepId);

@@ -40,7 +40,18 @@ export const EnvSchema = z.object({
   REDIS_TIMEOUT_MS: int(25, 1, 5000),
   DATABASE_PATH: z.string().default('./data/funnels.db'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters').optional(),
-  ACCESS_TOKEN_TTL_SECONDS: int(60 * 60 * 12, 60),
+  ACCESS_TOKEN_TTL_SECONDS: int(15 * 60, 60),
+  REFRESH_TOKEN_TTL_DAYS: int(30, 1, 365),
+  SESSION_MAX_DAYS: int(90, 1, 730),
+  REFRESH_REUSE_GRACE_SECONDS: int(10, 0, 120),
+  INVITATION_TTL_DAYS: int(7, 1, 60),
+  PASSWORD_RESET_TTL_MINUTES: int(60, 5, 1440),
+  TOTP_ISSUER: z.string().min(1).max(60).default('Funnels'),
+  DATA_ENCRYPTION_KEY: z.string().min(32, 'DATA_ENCRYPTION_KEY must be at least 32 characters').optional(),
+  MAIL_TRANSPORT: z.enum(['none', 'console', 'webhook']).default('none'),
+  MAIL_FROM: z.string().max(200).default('Funnels <no-reply@localhost>'),
+  MAIL_WEBHOOK_URL: z.string().regex(/^https?:\/\//, 'MAIL_WEBHOOK_URL must start with http:// or https://').optional(),
+  MAIL_WEBHOOK_SECRET: z.string().min(16).optional(),
   PREVIEW_TOKEN_TTL_SECONDS: int(15 * 60, 30),
   APP_PUBLIC_URL: z.string().default('http://localhost:3000'),
   APP_PUBLIC_CNAME_TARGET: z.string().default('sites.funnels.example'),
@@ -118,6 +129,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     throw new Error('Invalid environment: JWT_SECRET is required in production');
   }
   if (rest.EVENT_BUS === 'redis' && !rest.REDIS_URL) throw new Error('Invalid environment: EVENT_BUS=redis needs REDIS_URL');
+  if (rest.MAIL_TRANSPORT === 'webhook' && !rest.MAIL_WEBHOOK_URL) throw new Error('Invalid environment: MAIL_TRANSPORT=webhook needs MAIL_WEBHOOK_URL');
   if (rest.ANALYTICS_READ_STORE === 'clickhouse' && !rest.CLICKHOUSE_URL) throw new Error('Invalid environment: ANALYTICS_READ_STORE=clickhouse needs CLICKHOUSE_URL');
   if (rest.EVENTSTORE_MIRROR === 'clickhouse' && !rest.CLICKHOUSE_URL) throw new Error('Invalid environment: EVENTSTORE_MIRROR=clickhouse needs CLICKHOUSE_URL');
   if (rest.INGEST_QUEUE && rest.NODE_ENV === 'production' && rest.EVENT_BUS !== 'redis' && !rest.REDIS_URL) throw new Error('Invalid environment: INGEST_QUEUE in production needs a durable bus (set REDIS_URL)');

@@ -27,7 +27,7 @@ export function TrashPage() {
             <FunnelThumb small thumb={f.thumbnail} />
             <div className="grow"><strong>{f.name}</strong><div className="muted small">Deleted {f.deletedAt ? fmtDate(f.deletedAt) : ''}</div></div>
             <button type="button" className="btn" disabled={restore.isPending} onClick={() => restore.mutate(f.id, { onSuccess: () => toast.push(`Restored "${f.name}"`, 'ok'), onError: (e) => toast.push(errorMessage(e), 'error') })}>Restore</button>
-            {can('owner') ? <button type="button" className="btn danger" onClick={() => setPurging(f)}>Delete forever</button> : null}
+            {can('funnels:purge') ? <button type="button" className="btn danger" onClick={() => setPurging(f)}>Delete forever</button> : null}
           </div>
         ))}
       </div>

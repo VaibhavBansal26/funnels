@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { signPreviewToken, verifyPreviewToken } from '../src/auth/tokens.js';
 import { BEACON_JS } from '../src/beacon.js';
 import { createBuilder, documentOf } from '../src/blocks/index.js';
-import { activeDomain, makeFunnel, makeHarness, type Harness } from './helpers.js';
+import { activeDomain, makeFunnel, makeHarness, tamperSignature, type Harness } from './helpers.js';
 
 const HOST = 'offers.example.com';
 const get = (h: Harness, path: string, headers: Record<string, string> = {}, host = HOST, method = 'GET') =>
@@ -139,7 +139,7 @@ describe('preview', () => {
     expect((await h.call('POST', `/api/funnels/${f.id}/preview-token`)).status).toBe(401);
     expect((await get(h, `/preview/${f.id}`, {}, 'app.funnels.test')).status).toBe(401);
     expect((await get(h, `/preview/${f.id}?token=garbage`, {}, 'app.funnels.test')).status).toBe(401);
-    const tampered = token.replace(/.$/, (c) => (c === 'A' ? 'B' : 'A'));
+    const tampered = tamperSignature(token);
     expect((await get(h, `/preview/${f.id}?token=${tampered}`, {}, 'app.funnels.test')).status).toBe(401);
     const parts = token.split('.');
     const forged = `${parts[0]}.${Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(parts[1]!, 'base64url').toString()), fid: 'other' })).toString('base64url')}.${parts[2]}`;

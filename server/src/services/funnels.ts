@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { atLeast, type Auth } from '../auth/context.js';
+import { can, type Auth } from '../auth/context.js';
 import { defaultStepDocument, firstHeading, safeUrl, type PageDocument } from '../blocks/index.js';
 import type { Deps } from '../deps.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -220,8 +220,8 @@ async function requireDomain(deps: Deps, ws: string, id: string): Promise<Domain
 }
 
 function assertTrackingRole(auth: Auth, input: { header_tracking_code?: unknown; footer_tracking_code?: unknown }): void {
-  if ((input.header_tracking_code !== undefined || input.footer_tracking_code !== undefined) && !atLeast(auth.role, 'admin')) {
-    throw forbidden('Only admins can edit tracking code');
+  if ((input.header_tracking_code !== undefined || input.footer_tracking_code !== undefined) && !can(auth, 'funnels:tracking')) {
+    throw forbidden('Editing tracking code requires the "funnels:tracking" permission');
   }
 }
 

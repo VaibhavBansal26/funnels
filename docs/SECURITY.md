@@ -9,6 +9,7 @@ Do not open a public issue. Contact the maintainers privately (a private reposit
 | Data | Where | Sensitivity |
 |---|---|---|
 | Accounts: email, name, scrypt password hash, role | `users` | personal data; hashes never leave the server |
+| Sessions (device, IP), refresh-token hashes, invitation and reset token hashes, encrypted TOTP secrets and hashed recovery codes, audit log (actor, IP) | `sessions`, `refresh_tokens`, `invitations`, `password_resets`, `user_totp`, `recovery_codes`, `audit_log` | personal data (IP, user agent, email); tokens only as hashes; TOTP secrets AES-256-GCM encrypted with `DATA_ENCRYPTION_KEY`; trim `sessions` and `audit_log` to your retention policy |
 | Leads: email, name, phone, submitted fields, UTM | `leads`, `events` | personal data of the customers' visitors; the main PII store |
 | Orders: buyer email/name, amounts, provider reference, payment method reference | `orders` | personal and financial (no card numbers; the payment provider holds them) |
 | Visitor ids (random cookie value), page URLs, UTM | `events` | pseudonymous identifiers |
@@ -30,14 +31,16 @@ PII policy: collect only what forms ask for; exports (CSV) are workspace-scoped 
 | Flooding the public endpoints | Cloudflare WAF rules, Worker limiter, origin limiter per IP and funnel, body size limits | volumetric attacks need Cloudflare/your provider |
 | Forged revenue | browsers cannot post orders; prices come from stored blocks | none known |
 | Replay/forgery of edge calls | HMAC with timestamp and nonce, 120 s window, fail closed without a secret | nonce cache is per process |
-| Token theft | HS256 with a `use` claim (access, preview, stream ticket), roles re-read per request, 12 h default TTL | no revocation list other than rotating `JWT_SECRET`; tokens live in browser storage |
+| Token theft | HS256 with a `use` claim (access, preview, stream ticket, 2FA challenge); access tokens last 15 minutes and carry a session id checked on every request, so revoking a session ends its tokens at once; refresh tokens rotate and reuse revokes the session | tokens live in browser `localStorage` (an XSS flaw would expose them; the SPA CSP is the mitigation) |
+| Credential stuffing, 2FA brute force | per-account and per-IP failure budgets in sliding windows, checked before any password or code; TOTP codes work once; recovery codes work once | an attacker rotating IPs against one account is limited by the per-account budget (8 per 15 min), which also locks the real user out for that time |
+| Privilege escalation | permission-based roles; nobody can grant, edit or act on more than they hold; built-in roles are immutable; last owner protected | roles apply to a whole workspace, not to single resources |
 | CSV/formula injection | cells starting with `= + - @` are prefixed | none known |
 | Leaked secrets | none in the repository; `.env.example` is blank | operator handling |
 | Redis outage | policies fail open or closed deliberately | a fail-open outage removes limiter protection (edge layer remains) |
 
 ## Authentication and authorisation
 
-Email and password (scrypt, per-user salt), JWT access tokens (`jose`, HS256). Roles `owner`, `admin`, `member` are enforced per route; the declaration in `server/src/routes/spec.ts` states each route's level and a test checks the code against it. Platform administrators are an allow-list of emails in configuration, separate from workspace roles.
+Email and password (scrypt, per-user salt), optional TOTP two-factor authentication, sessions with rotating refresh tokens, invitations and password reset by one-time links (hashes stored), JWT access tokens (`jose`, HS256). Authorization is permission-based: `server/src/routes/spec.ts` declares one permission per route, `authenticate()` enforces it, and a generated test matrix proves every route refuses a role without exactly that permission ([RBAC.md](RBAC.md)). An audit log records the security-relevant actions. Platform administrators are an allow-list of emails in configuration, separate from workspace roles.
 
 ## Network and transport
 

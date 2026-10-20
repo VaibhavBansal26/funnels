@@ -1,4 +1,5 @@
 import type { ZodType } from 'zod';
+import type { Permission } from '../auth/permissions.js';
 import * as ai from '../ai/service.js';
 import { AnalyticsQuery } from '../services/analytics.js';
 import { DefaultPagesInput, DomainInput } from '../services/domains.js';
@@ -12,7 +13,13 @@ import { ReorderInput, StepInput, StepPatch, ValidatePathInput } from '../servic
 import { TagInput } from '../services/tags.js';
 import { CategoryInput, CustomBlockInput, TemplateCreate, TemplatePatch, TemplateQuery } from '../services/templates.js';
 import { WebhookInput, WebhookPatch } from '../services/webhooks.js';
-import { LoginInput, MemberInput, MemberPatch, RegisterInput, WorkspacePatch } from '../services/accounts.js';
+import { LoginInput, MemberPatch, PasswordChange, RegisterInput, WorkspacePatch } from '../services/accounts.js';
+import { AuditQuery } from '../services/audit.js';
+import { AcceptInput, InvitationInput, LookupQuery } from '../services/invitations.js';
+import { ForgotInput, ResetInput } from '../services/recovery.js';
+import { RoleInput, RolePatch } from '../services/roles.js';
+import { CodeInput, ConfirmInput, VerifyLoginInput } from '../services/twofactor.js';
+import { RefreshInput } from './auth.js';
 
 /**
  * THE route declaration. One row per HTTP operation, read by:
@@ -22,12 +29,14 @@ import { LoginInput, MemberInput, MemberPatch, RegisterInput, WorkspacePatch } f
  *    a role-gated route that answers a lower role, or a route without a limiter policy.
  * Adding a route means adding its row here.
  */
-export type Auth = 'public' | 'user' | 'admin' | 'owner' | 'platform' | 'edge' | 'infra';
+export type Auth = 'public' | 'user' | 'platform' | 'edge' | 'infra';
 
 export interface Operation {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   auth: Auth;
+  /** Required for `auth: 'user'` rows (see auth/permissions.ts). Absent on public, edge, infra and platform rows. */
+  permission?: Permission | 'any';
   tag: string;
   summary: string;
   body?: ZodType;
@@ -56,9 +65,8 @@ const make = (method: Operation['method'], path: string, auth: Auth, tag: string
   return { method, path, auth, tag, summary, limits: limits ?? (method === 'GET' ? READ : WRITE), ...rest };
 };
 
-const A = (m: Operation['method'], p: string, tag: string, s: string, x?: Extra) => make(m, p, 'user', tag, s, x);
-const ADMIN = (m: Operation['method'], p: string, tag: string, s: string, x?: Extra) => make(m, p, 'admin', tag, s, x);
-const OWNER = (m: Operation['method'], p: string, tag: string, s: string, x?: Extra) => make(m, p, 'owner', tag, s, x);
+/** An authenticated route. `permission` is the one permission it needs (`any`: every signed-in member), enforced centrally by authenticate(). */
+const A = (m: Operation['method'], p: string, permission: Permission | 'any', tag: string, s: string, x?: Extra): Operation => ({ ...make(m, p, 'user', tag, s, x), permission });
 const PLATFORM = (m: Operation['method'], p: string, tag: string, s: string, x?: Extra) => make(m, p, 'platform', tag, s, { limits: ['ip.global', 'admin.platform', 'api.workspace'], ...x });
 
 export const OPERATIONS: Operation[] = [
@@ -78,84 +86,109 @@ export const OPERATIONS: Operation[] = [
   // auth and account
   make('POST', '/api/auth/register', 'public', 'auth', 'Create an account and its workspace', { body: RegisterInput, limits: ['ip.global', 'auth.attempts'], status: 201 }),
   make('POST', '/api/auth/login', 'public', 'auth', 'Log in', { body: LoginInput, limits: ['ip.global', 'auth.attempts'], inHandler: ['auth.failures.account', 'auth.failures.ip'] }),
-  A('GET', '/api/auth/me', 'auth', 'Current user and workspace'),
-  A('POST', '/api/events/ticket', 'events', 'Short-lived ticket for the SSE stream', { limits: READ }),
-  A('GET', '/api/events/stream', 'events', 'Server-sent events for the workspace', { inHandler: ['api.stream'], notes: 'Bearer header or ?ticket=.' }),
-  A('GET', '/api/workspace', 'workspace', 'Workspace details'),
-  OWNER('PATCH', '/api/workspace', 'workspace', 'Rename the workspace, toggle custom scripts', { body: WorkspacePatch }),
-  A('GET', '/api/members', 'workspace', 'List members'),
-  OWNER('POST', '/api/members', 'workspace', 'Add a member with a one-time password', { body: MemberInput, status: 201 }),
-  OWNER('PATCH', '/api/members/:id', 'workspace', 'Change a member role', { body: MemberPatch }),
-  OWNER('DELETE', '/api/members/:id', 'workspace', 'Remove a member', { status: 204 }),
+  make('POST', '/api/auth/refresh', 'public', 'auth', 'Exchange a refresh token for a new access and refresh token (rotation; reuse revokes the session)', { body: RefreshInput, limits: ['ip.global', 'auth.refresh'] }),
+  make('POST', '/api/auth/2fa/verify', 'public', 'auth', 'Complete a sign-in with a TOTP or recovery code', { body: VerifyLoginInput, limits: ['ip.global', 'auth.attempts'], inHandler: ['auth.failures.account', 'auth.failures.ip'] }),
+  make('POST', '/api/auth/password/forgot', 'public', 'auth', 'Request a password reset mail (same answer for unknown addresses)', { body: ForgotInput, limits: ['ip.global', 'auth.reset'], inHandler: ['auth.reset.email'] }),
+  make('POST', '/api/auth/password/reset', 'public', 'auth', 'Set a new password with a reset token; ends all sessions', { body: ResetInput, limits: ['ip.global', 'auth.reset'] }),
+  make('GET', '/api/auth/invitations/lookup', 'public', 'auth', 'What an invitation link is for (email, workspace, role)', { query: LookupQuery, limits: ['ip.global', 'auth.attempts'] }),
+  make('POST', '/api/auth/invitations/accept', 'public', 'auth', 'Accept an invitation: creates the account and signs it in', { body: AcceptInput, limits: ['ip.global', 'auth.attempts'], status: 201 }),
+  A('GET', '/api/auth/me', 'any', 'auth', 'Current user, role, permissions and workspace'),
+  A('POST', '/api/auth/logout', 'any', 'auth', 'Sign out: ends this session', { status: 204 }),
+  A('GET', '/api/auth/sessions', 'any', 'auth', 'Your active sessions'),
+  A('DELETE', '/api/auth/sessions/:id', 'any', 'auth', 'End one of your sessions', { status: 204 }),
+  A('POST', '/api/auth/sessions/revoke-others', 'any', 'auth', 'End all your other sessions'),
+  A('POST', '/api/auth/password', 'any', 'auth', 'Change your password (ends your other sessions)', { body: PasswordChange, inHandler: ['auth.failures.account', 'auth.failures.ip'] }),
+  A('POST', '/api/auth/2fa/setup', 'any', 'auth', 'Start TOTP enrolment: secret and otpauth URI'),
+  A('POST', '/api/auth/2fa/enable', 'any', 'auth', 'Confirm enrolment with the first code; returns recovery codes once', { body: CodeInput }),
+  A('POST', '/api/auth/2fa/disable', 'any', 'auth', 'Turn 2FA off (password and a code required)', { body: ConfirmInput, inHandler: ['auth.failures.account', 'auth.failures.ip'] }),
+  A('POST', '/api/auth/2fa/recovery-codes', 'any', 'auth', 'Replace the recovery codes (password and a code required)', { body: ConfirmInput, inHandler: ['auth.failures.account', 'auth.failures.ip'] }),
+  A('POST', '/api/events/ticket', 'any', 'events', 'Short-lived ticket for the SSE stream', { limits: READ }),
+  A('GET', '/api/events/stream', 'any', 'events', 'Server-sent events for the workspace', { inHandler: ['api.stream'], notes: 'Bearer header or ?ticket=.' }),
+  A('GET', '/api/workspace', 'any', 'workspace', 'Workspace details'),
+  A('PATCH', '/api/workspace', 'workspace:manage', 'workspace', 'Rename the workspace, toggle custom scripts', { body: WorkspacePatch }),
+  A('GET', '/api/members', 'members:read', 'workspace', 'List members'),
+  A('PATCH', '/api/members/:id', 'members:manage', 'workspace', 'Change a member role (you can only grant permissions you hold; a workspace keeps at least one owner)', { body: MemberPatch }),
+  A('POST', '/api/members/:id/reset-2fa', 'members:manage', 'workspace', 'Remove a member second factor and end their sessions (account recovery)'),
+  A('GET', '/api/invitations', 'members:read', 'workspace', 'Invitations with status'),
+  A('POST', '/api/invitations', 'members:manage', 'workspace', 'Invite an email address with a role; the one-time link is mailed (returned to you when no mail transport delivers it)', { body: InvitationInput, status: 201 }),
+  A('POST', '/api/invitations/:id/resend', 'members:manage', 'workspace', 'New link and expiry for a pending invitation'),
+  A('DELETE', '/api/invitations/:id', 'members:manage', 'workspace', 'Revoke an invitation', { status: 204 }),
+  A('GET', '/api/permissions', 'any', 'workspace', 'The permission catalogue'),
+  A('GET', '/api/roles', 'members:read', 'workspace', 'Built-in and custom roles with their permissions and member counts'),
+  A('POST', '/api/roles', 'roles:manage', 'workspace', 'Create a custom role (only permissions you hold)', { body: RoleInput, status: 201 }),
+  A('PATCH', '/api/roles/:id', 'roles:manage', 'workspace', 'Edit a custom role (you must hold all its old and new permissions)', { body: RolePatch }),
+  A('DELETE', '/api/roles/:id', 'roles:manage', 'workspace', 'Delete an unused custom role', { status: 204 }),
+  A('GET', '/api/audit', 'audit:read', 'workspace', 'Audit log, newest first (cursor pagination)', { query: AuditQuery }),
+  A('DELETE', '/api/members/:id', 'members:manage', 'workspace', 'Remove a member', { status: 204 }),
   // funnels
-  A('GET', '/api/funnels', 'funnels', 'List funnels (page/limit, search, filters)', { query: ListQuery }),
-  A('GET', '/api/funnels/filters', 'funnels', 'Filter counts'),
-  A('GET', '/api/funnels/trash', 'funnels', 'Funnels in the trash'),
-  A('POST', '/api/funnels', 'funnels', 'Create a funnel', { body: CreateFunnelInput, status: 201 }),
-  A('POST', '/api/funnels/validate-path', 'funnels', 'Check a step path for format and collisions', { body: ValidatePathInput }),
-  A('POST', '/api/funnels/bulk-tag', 'funnels', 'Add/remove tags on several funnels', { body: BulkTagInput }),
-  A('GET', '/api/funnels/:id', 'funnels', 'Funnel with steps and stats'),
-  A('PATCH', '/api/funnels/:id', 'funnels', 'Update a funnel (status, domain, tags, tracking code)', { body: UpdateFunnelInput }),
-  A('PUT', '/api/funnels/:id', 'funnels', 'Same as PATCH', { body: UpdateFunnelInput }),
-  ADMIN('DELETE', '/api/funnels/:id', 'funnels', 'Move a funnel to the trash', { status: 204 }),
-  ADMIN('POST', '/api/funnels/:id/restore', 'funnels', 'Restore from the trash'),
-  OWNER('DELETE', '/api/funnels/:id/purge', 'funnels', 'Permanently delete a trashed funnel', { status: 204 }),
-  A('POST', '/api/funnels/:id/duplicate', 'funnels', 'Duplicate a funnel', { status: 201, cost: 3 }),
-  A('POST', '/api/funnels/:id/preview-token', 'funnels', 'Mint a signed preview token'),
-  A('GET', '/api/funnels/:id/analytics', 'analytics', 'Funnel analytics for a date range and time zone', { query: AnalyticsQuery }),
-  A('GET', '/api/funnels/:id/steps', 'steps', 'Steps of a funnel'),
-  A('POST', '/api/funnels/:id/steps', 'steps', 'Add a step', { body: StepInput, status: 201 }),
-  A('PUT', '/api/funnels/:id/steps/order', 'steps', 'Reorder all steps', { body: ReorderInput }),
-  A('PATCH', '/api/funnels/:id/steps/:sid', 'steps', 'Update step settings', { body: StepPatch }),
-  A('DELETE', '/api/funnels/:id/steps/:sid', 'steps', 'Delete a step', { status: 204 }),
-  A('POST', '/api/funnels/:id/steps/:sid/duplicate', 'steps', 'Duplicate a step', { status: 201 }),
-  A('GET', '/api/funnels/:id/steps/:sid/analytics', 'analytics', 'Step analytics', { query: AnalyticsQuery }),
-  A('GET', '/api/funnels/:id/steps/:sid/page', 'pages', 'Page document and version'),
-  A('PUT', '/api/funnels/:id/steps/:sid/page', 'pages', 'Save the page document (optimistic concurrency on `version`)', { body: SaveInput, cost: 2 }),
-  A('GET', '/api/funnels/:id/steps/:sid/backups', 'pages', 'Page backups'),
-  A('GET', '/api/funnels/:id/steps/:sid/backups/:bid', 'pages', 'One backup'),
-  A('POST', '/api/funnels/:id/steps/:sid/backups/:bid/restore', 'pages', 'Restore a backup', { cost: 2 }),
+  A('GET', '/api/funnels', 'funnels:read', 'funnels', 'List funnels (page/limit, search, filters)', { query: ListQuery }),
+  A('GET', '/api/funnels/filters', 'funnels:read', 'funnels', 'Filter counts'),
+  A('GET', '/api/funnels/trash', 'funnels:read', 'funnels', 'Funnels in the trash'),
+  A('POST', '/api/funnels', 'funnels:write', 'funnels', 'Create a funnel', { body: CreateFunnelInput, status: 201 }),
+  A('POST', '/api/funnels/validate-path', 'funnels:write', 'funnels', 'Check a step path for format and collisions', { body: ValidatePathInput }),
+  A('POST', '/api/funnels/bulk-tag', 'funnels:write', 'funnels', 'Add/remove tags on several funnels', { body: BulkTagInput }),
+  A('GET', '/api/funnels/:id', 'funnels:read', 'funnels', 'Funnel with steps and stats'),
+  A('PATCH', '/api/funnels/:id', 'funnels:write', 'funnels', 'Update a funnel (status, domain, tags, tracking code)', { body: UpdateFunnelInput }),
+  A('PUT', '/api/funnels/:id', 'funnels:write', 'funnels', 'Same as PATCH', { body: UpdateFunnelInput }),
+  A('DELETE', '/api/funnels/:id', 'funnels:delete', 'funnels', 'Move a funnel to the trash', { status: 204 }),
+  A('POST', '/api/funnels/:id/restore', 'funnels:delete', 'funnels', 'Restore from the trash'),
+  A('DELETE', '/api/funnels/:id/purge', 'funnels:purge', 'funnels', 'Permanently delete a trashed funnel', { status: 204 }),
+  A('POST', '/api/funnels/:id/duplicate', 'funnels:write', 'funnels', 'Duplicate a funnel', { status: 201, cost: 3 }),
+  A('POST', '/api/funnels/:id/preview-token', 'funnels:read', 'funnels', 'Mint a signed preview token'),
+  A('GET', '/api/funnels/:id/analytics', 'analytics:read', 'analytics', 'Funnel analytics for a date range and time zone', { query: AnalyticsQuery }),
+  A('GET', '/api/funnels/:id/steps', 'funnels:read', 'steps', 'Steps of a funnel'),
+  A('POST', '/api/funnels/:id/steps', 'funnels:write', 'steps', 'Add a step', { body: StepInput, status: 201 }),
+  A('PUT', '/api/funnels/:id/steps/order', 'funnels:write', 'steps', 'Reorder all steps', { body: ReorderInput }),
+  A('PATCH', '/api/funnels/:id/steps/:sid', 'funnels:write', 'steps', 'Update step settings', { body: StepPatch }),
+  A('DELETE', '/api/funnels/:id/steps/:sid', 'funnels:write', 'steps', 'Delete a step', { status: 204 }),
+  A('POST', '/api/funnels/:id/steps/:sid/duplicate', 'funnels:write', 'steps', 'Duplicate a step', { status: 201 }),
+  A('GET', '/api/funnels/:id/steps/:sid/analytics', 'analytics:read', 'analytics', 'Step analytics', { query: AnalyticsQuery }),
+  A('GET', '/api/funnels/:id/steps/:sid/page', 'funnels:read', 'pages', 'Page document and version'),
+  A('PUT', '/api/funnels/:id/steps/:sid/page', 'funnels:write', 'pages', 'Save the page document (optimistic concurrency on `version`)', { body: SaveInput, cost: 2 }),
+  A('GET', '/api/funnels/:id/steps/:sid/backups', 'funnels:read', 'pages', 'Page backups'),
+  A('GET', '/api/funnels/:id/steps/:sid/backups/:bid', 'funnels:read', 'pages', 'One backup'),
+  A('POST', '/api/funnels/:id/steps/:sid/backups/:bid/restore', 'funnels:write', 'pages', 'Restore a backup', { cost: 2 }),
   // tags
-  A('GET', '/api/tags', 'tags', 'List tags'),
-  A('POST', '/api/tags', 'tags', 'Create a tag', { body: TagInput, status: 201 }),
-  A('PUT', '/api/tags/:id', 'tags', 'Rename a tag', { body: TagInput }),
-  A('DELETE', '/api/tags/:id', 'tags', 'Delete a tag', { status: 204 }),
-  A('DELETE', '/api/tags', 'tags', 'Delete several tags (?ids=a,b)'),
+  A('GET', '/api/tags', 'funnels:read', 'tags', 'List tags'),
+  A('POST', '/api/tags', 'tags:manage', 'tags', 'Create a tag', { body: TagInput, status: 201 }),
+  A('PUT', '/api/tags/:id', 'tags:manage', 'tags', 'Rename a tag', { body: TagInput }),
+  A('DELETE', '/api/tags/:id', 'tags:manage', 'tags', 'Delete a tag', { status: 204 }),
+  A('DELETE', '/api/tags', 'tags:manage', 'tags', 'Delete several tags (?ids=a,b)'),
   // domains
-  A('GET', '/api/domains', 'domains', 'List domains'),
-  A('GET', '/api/domains/:id', 'domains', 'One domain with DNS instructions'),
-  A('GET', '/api/domains/:id/routes', 'domains', 'Step paths served on the domain'),
-  ADMIN('POST', '/api/domains', 'domains', 'Add a domain', { body: DomainInput, status: 201 }),
-  ADMIN('POST', '/api/domains/:id/verify', 'domains', 'Run the DNS check now', { cost: 5 }),
-  ADMIN('PUT', '/api/domains/:id/default-pages', 'domains', 'Set the domain home and 404 steps', { body: DefaultPagesInput }),
-  ADMIN('DELETE', '/api/domains/:id', 'domains', 'Delete a domain (funnels revert to test)', { status: 204 }),
+  A('GET', '/api/domains', 'domains:read', 'domains', 'List domains'),
+  A('GET', '/api/domains/:id', 'domains:read', 'domains', 'One domain with DNS instructions'),
+  A('GET', '/api/domains/:id/routes', 'domains:read', 'domains', 'Step paths served on the domain'),
+  A('POST', '/api/domains', 'domains:manage', 'domains', 'Add a domain', { body: DomainInput, status: 201 }),
+  A('POST', '/api/domains/:id/verify', 'domains:manage', 'domains', 'Run the DNS check now', { cost: 5 }),
+  A('PUT', '/api/domains/:id/default-pages', 'domains:manage', 'domains', 'Set the domain home and 404 steps', { body: DefaultPagesInput }),
+  A('DELETE', '/api/domains/:id', 'domains:manage', 'domains', 'Delete a domain (funnels revert to test)', { status: 204 }),
   // leads, orders
-  A('GET', '/api/leads', 'leads', 'List leads', { query: LeadQuery }),
-  A('GET', '/api/leads/export', 'leads', 'CSV export (streamed, newest first)', { query: LeadQuery, cost: 5, inHandler: ['api.export'] }),
-  A('GET', '/api/orders', 'orders', 'List orders', { query: OrderQuery }),
-  A('GET', '/api/orders/export', 'orders', 'CSV export (streamed)', { query: OrderQuery, cost: 5, inHandler: ['api.export'] }),
-  A('GET', '/api/orders/:id', 'orders', 'One order'),
+  A('GET', '/api/leads', 'leads:read', 'leads', 'List leads', { query: LeadQuery }),
+  A('GET', '/api/leads/export', 'leads:export', 'leads', 'CSV export (streamed, newest first)', { query: LeadQuery, cost: 5, inHandler: ['api.export'] }),
+  A('GET', '/api/orders', 'orders:read', 'orders', 'List orders', { query: OrderQuery }),
+  A('GET', '/api/orders/export', 'orders:export', 'orders', 'CSV export (streamed)', { query: OrderQuery, cost: 5, inHandler: ['api.export'] }),
+  A('GET', '/api/orders/:id', 'orders:read', 'orders', 'One order'),
   // webhooks
-  ADMIN('GET', '/api/webhooks', 'webhooks', 'List webhooks'),
-  ADMIN('POST', '/api/webhooks', 'webhooks', 'Create a webhook (secret shown once)', { body: WebhookInput, status: 201 }),
-  ADMIN('PATCH', '/api/webhooks/:id', 'webhooks', 'Update a webhook', { body: WebhookPatch }),
-  ADMIN('DELETE', '/api/webhooks/:id', 'webhooks', 'Delete a webhook', { status: 204 }),
-  ADMIN('POST', '/api/webhooks/:id/rotate-secret', 'webhooks', 'Rotate the signing secret'),
-  ADMIN('POST', '/api/webhooks/:id/test', 'webhooks', 'Queue a test delivery', { status: 202 }),
-  ADMIN('GET', '/api/webhooks/:id/deliveries', 'webhooks', 'Delivery log'),
-  ADMIN('POST', '/api/webhooks/deliveries/:did/retry', 'webhooks', 'Retry a delivery'),
+  A('GET', '/api/webhooks', 'webhooks:manage', 'webhooks', 'List webhooks'),
+  A('POST', '/api/webhooks', 'webhooks:manage', 'webhooks', 'Create a webhook (secret shown once)', { body: WebhookInput, status: 201 }),
+  A('PATCH', '/api/webhooks/:id', 'webhooks:manage', 'webhooks', 'Update a webhook', { body: WebhookPatch }),
+  A('DELETE', '/api/webhooks/:id', 'webhooks:manage', 'webhooks', 'Delete a webhook', { status: 204 }),
+  A('POST', '/api/webhooks/:id/rotate-secret', 'webhooks:manage', 'webhooks', 'Rotate the signing secret'),
+  A('POST', '/api/webhooks/:id/test', 'webhooks:manage', 'webhooks', 'Queue a test delivery', { status: 202 }),
+  A('GET', '/api/webhooks/:id/deliveries', 'webhooks:manage', 'webhooks', 'Delivery log'),
+  A('POST', '/api/webhooks/deliveries/:did/retry', 'webhooks:manage', 'webhooks', 'Retry a delivery'),
   // notifications
-  A('GET', '/api/notifications', 'notifications', 'Notification feed'),
-  A('POST', '/api/notifications/read-all', 'notifications', 'Mark all read', { status: 204 }),
-  A('POST', '/api/notifications/:id/read', 'notifications', 'Mark one read', { status: 204 }),
+  A('GET', '/api/notifications', 'any', 'notifications', 'Notification feed'),
+  A('POST', '/api/notifications/read-all', 'any', 'notifications', 'Mark all read', { status: 204 }),
+  A('POST', '/api/notifications/:id/read', 'any', 'notifications', 'Mark one read', { status: 204 }),
   // templates and blocks
-  A('GET', '/api/templates', 'templates', 'List templates', { query: TemplateQuery }),
-  A('GET', '/api/templates/categories', 'templates', 'Template categories'),
-  A('GET', '/api/templates/:id', 'templates', 'One template with step documents'),
-  A('POST', '/api/templates/:id/use', 'templates', 'Create a funnel from a template', { status: 201, cost: 3 }),
-  A('GET', '/api/blocks', 'blocks', 'Saved custom blocks'),
-  A('POST', '/api/blocks', 'blocks', 'Save a custom block', { body: CustomBlockInput, status: 201 }),
-  A('DELETE', '/api/blocks/:id', 'blocks', 'Delete a custom block', { status: 204 }),
+  A('GET', '/api/templates', 'funnels:read', 'templates', 'List templates', { query: TemplateQuery }),
+  A('GET', '/api/templates/categories', 'funnels:read', 'templates', 'Template categories'),
+  A('GET', '/api/templates/:id', 'funnels:read', 'templates', 'One template with step documents'),
+  A('POST', '/api/templates/:id/use', 'funnels:write', 'templates', 'Create a funnel from a template', { status: 201, cost: 3 }),
+  A('GET', '/api/blocks', 'funnels:read', 'blocks', 'Saved custom blocks'),
+  A('POST', '/api/blocks', 'blocks:manage', 'blocks', 'Save a custom block', { body: CustomBlockInput, status: 201 }),
+  A('DELETE', '/api/blocks/:id', 'blocks:manage', 'blocks', 'Delete a custom block', { status: 204 }),
   PLATFORM('POST', '/api/admin/templates', 'admin', 'Publish a funnel as a global template (PLATFORM_ADMIN_EMAILS)', { body: TemplateCreate, status: 201 }),
   PLATFORM('PATCH', '/api/admin/templates/:id', 'admin', 'Edit a template', { body: TemplatePatch }),
   PLATFORM('DELETE', '/api/admin/templates/:id', 'admin', 'Delete a template', { status: 204 }),
@@ -168,12 +201,12 @@ export const OPERATIONS: Operation[] = [
   PLATFORM('DELETE', '/api/admin/rate-limits/allows', 'admin', 'Remove an allow-list entry', { body: WhoInput, status: 204 }),
   PLATFORM('PUT', '/api/admin/workspaces/:id/rate-tier', 'admin', 'Override a workspace plan or rate multiplier', { body: TierInput }),
   // AI
-  A('GET', '/api/ai/status', 'ai', 'Provider and daily usage'),
-  A('POST', '/api/ai/funnel', 'ai', 'Generate a funnel', { body: ai.FunnelRequest, status: 201, limits: ['ip.global', 'api.write', 'api.workspace'], inHandler: ['ai.minute', 'ai.daily'] }),
-  A('POST', '/api/ai/rewrite', 'ai', 'Rewrite copy', { body: ai.RewriteRequest, inHandler: ['ai.minute', 'ai.daily'] }),
-  A('POST', '/api/ai/headlines', 'ai', 'Headline variants', { body: ai.HeadlineRequest, inHandler: ['ai.minute', 'ai.daily'] }),
-  A('POST', '/api/ai/insights', 'ai', 'Analytics insights', { body: ai.InsightRequest, inHandler: ['ai.minute', 'ai.daily'] }),
-  A('POST', '/api/ai/alt-text', 'ai', 'Alt text for an image', { body: ai.AltTextRequest, inHandler: ['ai.minute', 'ai.daily'] }),
+  A('GET', '/api/ai/status', 'ai:use', 'ai', 'Provider and daily usage'),
+  A('POST', '/api/ai/funnel', 'ai:use', 'ai', 'Generate a funnel', { body: ai.FunnelRequest, status: 201, limits: ['ip.global', 'api.write', 'api.workspace'], inHandler: ['ai.minute', 'ai.daily'] }),
+  A('POST', '/api/ai/rewrite', 'ai:use', 'ai', 'Rewrite copy', { body: ai.RewriteRequest, inHandler: ['ai.minute', 'ai.daily'] }),
+  A('POST', '/api/ai/headlines', 'ai:use', 'ai', 'Headline variants', { body: ai.HeadlineRequest, inHandler: ['ai.minute', 'ai.daily'] }),
+  A('POST', '/api/ai/insights', 'ai:use', 'ai', 'Analytics insights', { body: ai.InsightRequest, inHandler: ['ai.minute', 'ai.daily'] }),
+  A('POST', '/api/ai/alt-text', 'ai:use', 'ai', 'Alt text for an image', { body: ai.AltTextRequest, inHandler: ['ai.minute', 'ai.daily'] }),
 ];
 
 const key = (m: string, p: string) => `${m} ${p}`;

@@ -40,7 +40,7 @@ describe('the route declaration', () => {
         expect(ids.has(id), `${o.method} ${o.path} names unknown policy "${id}"`).toBe(true);
         used.add(id);
       }
-      if (['user', 'admin', 'owner', 'platform'].includes(o.auth)) {
+      if (['user', 'platform'].includes(o.auth)) {
         expect(o.limits.some((id) => h.deps.limiter.policy(id).layer === 'workspace'), `${o.method} ${o.path}: authenticated routes count against the workspace quota`).toBe(true);
         expect(o.limits.some((id) => h.deps.limiter.policy(id).layer === 'principal'), `${o.method} ${o.path}: and against the caller`).toBe(true);
       }
@@ -50,21 +50,15 @@ describe('the route declaration', () => {
     expect([...ids].filter((id) => !used.has(id) && !reserved.has(id))).toEqual([]);
   });
 
-  it('declares authentication and roles that the routes really enforce', async () => {
+  it('declares authentication that the routes really enforce (the permission matrix is in rbac.policy.test.ts)', async () => {
     const h = await makeHarness();
-    const owner = await h.register();
-    const member = await h.member(owner, 'member');
     const fill = (p: string) => p.replace(/:[A-Za-z]+/g, 'x').replace('*', 'x');
     for (const o of OPERATIONS) {
       const path = fill(o.path);
       const tokenGated = o.path.startsWith('/preview/'); // authorised by a signed ?token=, answered with a message page
-      if (['user', 'admin', 'owner'].includes(o.auth)) {
+      if (o.auth === 'user') {
         const anon = await h.call(o.method, path, { body: o.method === 'GET' || o.method === 'DELETE' ? undefined : {} });
         expect(anon.status, `${o.method} ${o.path} must require a token`).toBe(401);
-      }
-      if (o.auth === 'admin' || o.auth === 'owner') {
-        const low = await h.call(o.method, path, { token: member.token, body: o.method === 'GET' || o.method === 'DELETE' ? undefined : {} });
-        expect(low.status, `${o.method} ${o.path} must refuse a member`).toBe(403);
       }
       if (o.auth === 'public' && !tokenGated) {
         const open = await h.call(o.method, path, { body: o.method === 'GET' ? undefined : {}, headers: UA });
@@ -222,7 +216,7 @@ describe('plan tiers', () => {
     h.clock.advance(3_600_000);
     const n3 = await drain(u.token);
     expect(n3).toBe(30);
-    const rows = await h.deps.db.all<{ action: string }>('SELECT action FROM audit_log ORDER BY created_at, id');
+    const rows = await h.deps.db.all<{ action: string }>("SELECT action FROM audit_log WHERE action NOT LIKE 'auth.%' ORDER BY created_at, id");
     expect(rows.map((r) => r.action)).toEqual(['set_tier', 'set_tier', 'set_tier']);
     await expect(admin.setTier('op', u.wsId, { plan: 'gold' as never })).rejects.toThrow(/Plan must be/);
     await expect(admin.setTier('op', 'ws_missing', { plan: 'pro' })).rejects.toThrow(/not found/);
@@ -254,7 +248,7 @@ describe('admin hooks', () => {
     expect((await send('198.51.100.20')).status).toBe(202); // allow-listed: bypasses every limiter
     expect((await admin.lists()).map((l) => `${l.kind}:${l.subject}`)).toContain('allow:ip:198.51.100.20');
     expect((await admin.limited(10)).some((r) => r.policyId === 'public.events' && r.subject.startsWith('cmp:198.51.100.20|'))).toBe(true); // IPs stay readable for operators; other ids are hashes
-    const audit = await h.deps.db.all<{ action: string; actor_id: string }>('SELECT action, actor_id FROM audit_log ORDER BY created_at, id');
+    const audit = await h.deps.db.all<{ action: string; actor_id: string }>("SELECT action, actor_id FROM audit_log WHERE action NOT LIKE 'auth.%' ORDER BY created_at, id");
     expect(audit.map((a) => a.action)).toEqual(['block', 'block', 'unblock', 'allow']);
     expect(audit.every((a) => a.actor_id === 'op@platform')).toBe(true);
   });

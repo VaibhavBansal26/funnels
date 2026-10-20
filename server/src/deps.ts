@@ -13,6 +13,7 @@ import type { Flights } from './util/flights.js';
 import type { RefCache } from './util/refcache.js';
 import type { EventBuffer } from './services/eventbuffer.js';
 import type { EventBus as DurableEventBus } from './queue/eventbus.js';
+import type { Mailer } from './mail/mailer.js';
 import type { AnalyticsReader } from './services/analytics.js';
 import type { EventStore } from './store/eventstore.js';
 import type { CloudflarePurger } from './edge/purger.js';
@@ -40,6 +41,8 @@ export interface Deps {
   /** Durable bus (Redis Streams, or in-process memory): ingest queue, outbox relay, secondary store feed. `bus` above is the in-process SSE bus. */
   eventBus: DurableEventBus;
   /** Secondary analytics store (ClickHouse) when EVENTSTORE_MIRROR is on. */
+  /** Outbound mail (invitations, password reset). See mail/mailer.ts. */
+  mailer: Mailer;
   secondaryStore?: EventStore;
   /** Analytics reads from ClickHouse (ANALYTICS_READ_STORE=clickhouse); the primary database answers when absent, stale or failing. */
   analyticsReader?: AnalyticsReader;

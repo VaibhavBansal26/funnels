@@ -1,8 +1,11 @@
+/** The legacy coarse role mirrored by the server; authorize with `permissions`. */
 export type Role = 'owner' | 'admin' | 'member';
-export interface User { id: string; email: string; name: string; role: Role; workspaceId: string }
+export interface User { id: string; email: string; name: string; role: Role; roleId: string; roleName: string; permissions: string[]; twoFactorEnabled: boolean; workspaceId: string }
 export interface Workspace { id: string; name: string; allowCustomScripts: boolean; createdAt: string }
 export interface Session { user: User; workspace: Workspace }
-export interface AuthResponse extends Session { token: string }
+export interface AuthResponse extends Session { token: string; refreshToken: string; expiresIn: number }
+/** The password step of a sign-in when two-factor authentication is on. */
+export interface TwoFactorChallenge { twoFactorRequired: true; challengeToken: string }
 
 export interface Pagination { page: number; limit: number; total: number; totalPages: number }
 export interface Paged<T> { data: T[]; pagination: Pagination }
@@ -41,7 +44,13 @@ export interface Order { id: string; productName: string; amount: number; amount
 export interface Webhook { id: string; url: string; events: string[]; active: boolean; secretPreview: string; createdAt: string; secret?: string }
 export interface Delivery { id: string; event: string; status: 'queued' | 'delivered' | 'failed' | 'dead'; attempts: number; responseStatus: number | null; error: string | null; createdAt: string; updatedAt: string }
 export interface AppNotification { id: string; type: string; title: string; body: string; readAt: string | null; createdAt: string }
-export interface Member { id: string; email: string; name: string; role: Role; createdAt: string }
+export interface Member { id: string; email: string; name: string; role: Role; roleId: string; roleName: string; twoFactorEnabled: boolean; lastLoginAt: string | null; createdAt: string }
+export interface RoleInfo { id: string; name: string; description: string; system: boolean; permissions: string[]; members: number }
+export interface PermissionInfo { id: string; description: string }
+export interface Invitation { id: string; email: string; roleId: string; roleName: string; status: 'pending' | 'accepted' | 'revoked' | 'expired'; invitedBy: string; createdAt: string; expiresAt: string }
+export interface InvitationResult { invitation: Invitation; delivered: boolean; link?: string }
+export interface SessionInfo { id: string; createdAt: string; lastUsedAt: string; expiresAt: string; userAgent: string | null; ip: string | null; current: boolean }
+export interface AuditRow { id: string; actorId: string; action: string; target: string | null; detail: Record<string, unknown>; ip: string | null; createdAt: string }
 
 export interface TemplateSummary { id: string; slug: string; name: string; description: string; categoryId: string | null; categoryName: string | null; stepCount: number; heading: string | null }
 export interface TemplateDetail extends TemplateSummary { steps: { id: string; name: string; path: string; position: number; doc: unknown }[] }

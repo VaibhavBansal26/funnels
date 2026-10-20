@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Auth } from '../auth/context.js';
-import { atLeast } from '../auth/context.js';
+import { can } from '../auth/context.js';
 import { defaultStepDocument, type PageDocument } from '../blocks/index.js';
 import type { Deps } from '../deps.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -114,8 +114,8 @@ export const StepPatch = z.object({
 
 export async function updateStep(deps: Deps, auth: Auth, funnelId: string, stepId: string, patch: z.infer<typeof StepPatch>) {
   const ws = auth.workspaceId;
-  if ((patch.header_tracking_code !== undefined || patch.footer_tracking_code !== undefined) && !atLeast(auth.role, 'admin')) {
-    throw forbidden('Only admins can edit tracking code');
+  if ((patch.header_tracking_code !== undefined || patch.footer_tracking_code !== undefined) && !can(auth, 'funnels:tracking')) {
+    throw forbidden('Editing tracking code requires the "funnels:tracking" permission');
   }
   const step = await inTx(deps, async (d) => {
     const funnel = await lockFunnel(d.db, ws, funnelId);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hashPassword, verifyPassword } from '../src/auth/password.js';
 import { signAccessToken, verifyAccessToken } from '../src/auth/tokens.js';
-import { makeHarness, type Harness } from './helpers.js';
+import { makeHarness, tamperSignature, type Harness } from './helpers.js';
 
 describe('password hashing', () => {
   it('hashes with a random salt and verifies', async () => {
@@ -52,15 +52,31 @@ describe('auth', () => {
     const u = await h.register();
     expect((await h.call('GET', '/api/funnels')).status).toBe(401);
     expect((await h.call('GET', '/api/funnels', { token: 'garbage' })).status).toBe(401);
-    expect((await h.call('GET', '/api/funnels', { token: u.token.slice(0, -3) + 'abc' })).status).toBe(401);
+    expect((await h.call('GET', '/api/funnels', { token: tamperSignature(u.token) })).status).toBe(401);
     const preview = await h.call('POST', '/api/funnels', { token: u.token, body: { name: 'x' } });
     const pt = await h.call('POST', `/api/funnels/${preview.json.id}/preview-token`, { token: u.token });
     expect((await h.call('GET', '/api/funnels', { token: pt.json.token })).status).toBe(401); // preview token is not an access token
     h.clock.advance(13 * 3600 * 1000);
     expect((await h.call('GET', '/api/funnels', { token: u.token })).status).toBe(401);
     expect(await verifyAccessToken(h.deps.config, u.token, h.clock.now())).toBeNull();
-    const fresh = await signAccessToken(h.deps.config, u.userId, h.clock.now());
+    const fresh = await signAccessToken(h.deps.config, u.userId, 'ses_x', h.clock.now());
     expect((await verifyAccessToken(h.deps.config, fresh, h.clock.now()))?.userId).toBe(u.userId);
+  });
+
+  it('explains why signature tampering must not target the last character: its 2 trailing bits are unused, so A-D decode alike', async () => {
+    const h = await makeHarness();
+    const u = await h.register();
+    const [head, payload, sig] = u.token.split('.');
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const accepted = [] as string[];
+    for (const c of alphabet) {
+      const variant = `${head}.${payload}.${sig!.slice(0, -1)}${c}`;
+      if ((await h.call('GET', '/api/auth/me', { token: variant })).status === 200) accepted.push(c);
+    }
+    // exactly the characters that share the original's 4 significant bits are accepted: 4 of 64, which is what made a naive "change the last char" test flaky
+    expect(accepted).toHaveLength(4);
+    expect(accepted).toContain(sig!.slice(-1));
+    expect((await h.call('GET', '/api/auth/me', { token: tamperSignature(u.token) })).status).toBe(401);
   });
 
   it('a deleted user token stops working', async () => {
@@ -94,7 +110,7 @@ describe('roles', () => {
     const admin = await h.member(owner, 'admin');
     const member = await h.member(owner, 'member');
     for (const t of [admin, member]) {
-      expect((await h.call('POST', '/api/members', { token: t.token, body: { email: 'z@example.test', name: 'z', role: 'member' } })).status).toBe(403);
+      expect((await h.call('POST', '/api/invitations', { token: t.token, body: { email: 'z@example.test', roleId: 'member' } })).status).toBe(403);
       expect((await h.call('PATCH', '/api/workspace', { token: t.token, body: { name: 'Hacked' } })).status).toBe(403);
     }
     expect((await h.call('PATCH', '/api/workspace', { token: owner.token, body: { name: 'Acme', allowCustomScripts: true } })).json).toMatchObject({ name: 'Acme', allowCustomScripts: true });
@@ -117,7 +133,7 @@ describe('roles', () => {
     expect((await h.call('DELETE', `/api/funnels/${f.id}`, { token: admin.token })).status).toBe(204);
   });
 
-  it('only owners purge; the owner role is protected', async () => {
+  it('only owners purge; the last owner is protected', async () => {
     const h = await makeHarness();
     const owner = await h.register();
     const admin = await h.member(owner, 'admin');
@@ -126,8 +142,13 @@ describe('roles', () => {
     expect((await h.call('DELETE', `/api/funnels/${f.id}/purge`, { token: admin.token })).status).toBe(403);
     expect((await h.call('DELETE', `/api/funnels/${f.id}/purge`, { token: owner.token })).status).toBe(204);
     const me = await h.call('GET', '/api/auth/me', { token: owner.token });
-    expect((await h.call('PATCH', `/api/members/${me.json.user.id}`, { token: owner.token, body: { role: 'member' } })).status).toBe(403);
+    // the last owner can be neither demoted nor removed, and nobody removes themselves
+    const demote = await h.call('PATCH', `/api/members/${me.json.user.id}`, { token: owner.token, body: { roleId: 'member' } });
+    expect(demote.status).toBe(409);
+    expect(demote.json.error.code).toBe('LAST_OWNER');
     expect((await h.call('DELETE', `/api/members/${me.json.user.id}`, { token: owner.token })).status).toBe(400);
+    // an admin cannot touch the owner at all (it lacks permissions the owner has)
+    expect((await h.call('PATCH', `/api/members/${me.json.user.id}`, { token: admin.token, body: { roleId: 'member' } })).status).toBe(403);
   });
 
   it('role changes apply immediately to existing tokens', async () => {
@@ -135,7 +156,7 @@ describe('roles', () => {
     const owner = await h.register();
     const m = await h.member(owner, 'admin');
     expect((await h.call('GET', '/api/webhooks', { token: m.token })).status).toBe(200);
-    await h.call('PATCH', `/api/members/${m.userId}`, { token: owner.token, body: { role: 'member' } });
+    await h.call('PATCH', `/api/members/${m.userId}`, { token: owner.token, body: { roleId: 'member' } });
     expect((await h.call('GET', '/api/webhooks', { token: m.token })).status).toBe(403);
   });
 

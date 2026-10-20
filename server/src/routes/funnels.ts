@@ -1,5 +1,5 @@
 import { Hono, type Context } from 'hono';
-import { authenticate, authOf, requireRole, type AppEnv } from '../auth/context.js';
+import { authenticate, authOf, type AppEnv } from '../auth/context.js';
 import { signPreviewToken } from '../auth/tokens.js';
 import type { Deps } from '../deps.js';
 import { requireFunnel } from '../repos/funnels.js';
@@ -25,12 +25,12 @@ export function funnelRoutes(deps: Deps): Hono<AppEnv> {
   const update = async (c: Context<AppEnv>) => c.json(await funnels.updateFunnel(deps, authOf(c), c.req.param('id') as string, await bodyOf(c, funnels.UpdateFunnelInput)));
   r.patch('/:id', update);
   r.put('/:id', update);
-  r.delete('/:id', requireRole('admin'), async (c) => {
+  r.delete('/:id', async (c) => {
     await funnels.softDeleteFunnel(deps, authOf(c), c.req.param('id'));
     return c.body(null, 204);
   });
-  r.post('/:id/restore', requireRole('admin'), async (c) => c.json(await funnels.restoreFunnel(deps, authOf(c), c.req.param('id'))));
-  r.delete('/:id/purge', requireRole('owner'), async (c) => {
+  r.post('/:id/restore', async (c) => c.json(await funnels.restoreFunnel(deps, authOf(c), c.req.param('id'))));
+  r.delete('/:id/purge', async (c) => {
     await funnels.purgeFunnel(deps, authOf(c), c.req.param('id'));
     return c.body(null, 204);
   });

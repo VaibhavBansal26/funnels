@@ -649,12 +649,307 @@
         ]
       }
     },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Exchange a refresh token for a new access and refresh token (rotation; reuse revokes the session)",
+        "operationId": "post_api_auth_refresh",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "refreshToken"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "auth.refresh"
+        ]
+      }
+    },
+    "/api/auth/2fa/verify": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Complete a sign-in with a TOTP or recovery code",
+        "operationId": "post_api_auth_2fa_verify",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "challengeToken": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 2000
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 6,
+                    "maxLength": 30
+                  }
+                },
+                "required": [
+                  "challengeToken",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "auth.attempts",
+          "auth.failures.account",
+          "auth.failures.ip"
+        ]
+      }
+    },
+    "/api/auth/password/forgot": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Request a password reset mail (same answer for unknown addresses)",
+        "operationId": "post_api_auth_password_forgot",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  }
+                },
+                "required": [
+                  "email"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "auth.reset",
+          "auth.reset.email"
+        ]
+      }
+    },
+    "/api/auth/password/reset": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Set a new password with a reset token; ends all sessions",
+        "operationId": "post_api_auth_password_reset",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 200
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "token",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "auth.reset"
+        ]
+      }
+    },
+    "/api/auth/invitations/lookup": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "What an invitation link is for (email, workspace, role)",
+        "operationId": "get_api_auth_invitations_lookup",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "auth.attempts"
+        ]
+      }
+    },
+    "/api/auth/invitations/accept": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Accept an invitation: creates the account and signs it in",
+        "operationId": "post_api_auth_invitations_accept",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 200
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "token",
+                  "name",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "auth.attempts"
+        ]
+      }
+    },
     "/api/auth/me": {
       "get": {
         "tags": [
           "auth"
         ],
-        "summary": "Current user and workspace",
+        "summary": "Current user, role, permissions and workspace",
         "operationId": "get_api_auth_me",
         "parameters": [],
         "responses": {
@@ -677,10 +972,451 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "any",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
           "api.workspace"
+        ]
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Sign out: ends this session",
+        "operationId": "post_api_auth_logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "any",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/auth/sessions": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Your active sessions",
+        "operationId": "get_api_auth_sessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "any",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/auth/sessions/{id}": {
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "End one of your sessions",
+        "operationId": "delete_api_auth_sessions_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "any",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/auth/sessions/revoke-others": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "End all your other sessions",
+        "operationId": "post_api_auth_sessions_revoke_others",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "any",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/auth/password": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Change your password (ends your other sessions)",
+        "operationId": "post_api_auth_password",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "currentPassword": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "currentPassword",
+                  "newPassword"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "any",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace",
+          "auth.failures.account",
+          "auth.failures.ip"
+        ]
+      }
+    },
+    "/api/auth/2fa/setup": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Start TOTP enrolment: secret and otpauth URI",
+        "operationId": "post_api_auth_2fa_setup",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "any",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/auth/2fa/enable": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Confirm enrolment with the first code; returns recovery codes once",
+        "operationId": "post_api_auth_2fa_enable",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "minLength": 6,
+                    "maxLength": 30
+                  }
+                },
+                "required": [
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "any",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/auth/2fa/disable": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Turn 2FA off (password and a code required)",
+        "operationId": "post_api_auth_2fa_disable",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 6,
+                    "maxLength": 30
+                  }
+                },
+                "required": [
+                  "password",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "any",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace",
+          "auth.failures.account",
+          "auth.failures.ip"
+        ]
+      }
+    },
+    "/api/auth/2fa/recovery-codes": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Replace the recovery codes (password and a code required)",
+        "operationId": "post_api_auth_2fa_recovery_codes",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 6,
+                    "maxLength": 30
+                  }
+                },
+                "required": [
+                  "password",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "any",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace",
+          "auth.failures.account",
+          "auth.failures.ip"
         ]
       }
     },
@@ -712,6 +1448,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "any",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -748,6 +1485,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "any",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -784,6 +1522,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "any",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -839,7 +1578,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "owner",
+        "x-auth": "user",
+        "x-permission": "workspace:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -865,74 +1605,6 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
-          "429": {
-            "$ref": "#/components/responses/RateLimited"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "x-auth": "user",
-        "x-rate-limit-policies": [
-          "ip.global",
-          "api.read",
-          "api.workspace"
-        ]
-      },
-      "post": {
-        "tags": [
-          "workspace"
-        ],
-        "summary": "Add a member with a one-time password",
-        "operationId": "post_api_members",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "maxLength": 254,
-                    "format": "email",
-                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
-                  },
-                  "name": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 100
-                  },
-                  "role": {
-                    "type": "string",
-                    "enum": [
-                      "admin",
-                      "member"
-                    ]
-                  }
-                },
-                "required": [
-                  "email",
-                  "name",
-                  "role"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Success"
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
           "403": {
             "$ref": "#/components/responses/Error"
           },
@@ -945,10 +1617,11 @@
             "bearer": []
           }
         ],
-        "x-auth": "owner",
+        "x-auth": "user",
+        "x-permission": "members:read",
         "x-rate-limit-policies": [
           "ip.global",
-          "api.write",
+          "api.read",
           "api.workspace"
         ]
       }
@@ -958,7 +1631,7 @@
         "tags": [
           "workspace"
         ],
-        "summary": "Change a member role",
+        "summary": "Change a member role (you can only grant permissions you hold; a workspace keeps at least one owner)",
         "operationId": "patch_api_members_id",
         "parameters": [
           {
@@ -977,16 +1650,14 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "role": {
+                  "roleId": {
                     "type": "string",
-                    "enum": [
-                      "admin",
-                      "member"
-                    ]
+                    "minLength": 1,
+                    "maxLength": 64
                   }
                 },
                 "required": [
-                  "role"
+                  "roleId"
                 ]
               }
             }
@@ -1017,7 +1688,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "owner",
+        "x-auth": "user",
+        "x-permission": "members:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -1065,10 +1737,637 @@
             "bearer": []
           }
         ],
-        "x-auth": "owner",
+        "x-auth": "user",
+        "x-permission": "members:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/members/{id}/reset-2fa": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Remove a member second factor and end their sessions (account recovery)",
+        "operationId": "post_api_members_id_reset_2fa",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "members:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/invitations": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Invitations with status",
+        "operationId": "get_api_invitations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "members:read",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      },
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Invite an email address with a role; the one-time link is mailed (returned to you when no mail transport delivers it)",
+        "operationId": "post_api_invitations",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "roleId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "email",
+                  "roleId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "members:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/invitations/{id}/resend": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "New link and expiry for a pending invitation",
+        "operationId": "post_api_invitations_id_resend",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "members:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/invitations/{id}": {
+      "delete": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Revoke an invitation",
+        "operationId": "delete_api_invitations_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "members:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/permissions": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "The permission catalogue",
+        "operationId": "get_api_permissions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "any",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/roles": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Built-in and custom roles with their permissions and member counts",
+        "operationId": "get_api_roles",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "members:read",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      },
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Create a custom role (only permissions you hold)",
+        "operationId": "post_api_roles",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "permissions": {
+                    "maxItems": 25,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "permissions"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "roles:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/roles/{id}": {
+      "patch": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Edit a custom role (you must hold all its old and new permissions)",
+        "operationId": "patch_api_roles_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "permissions": {
+                    "maxItems": 25,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "roles:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      },
+      "delete": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Delete an unused custom role",
+        "operationId": "delete_api_roles_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "roles:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/audit": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Audit log, newest first (cursor pagination)",
+        "operationId": "get_api_audit",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 80
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 80
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "audit:read",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
           "api.workspace"
         ]
       }
@@ -1179,6 +2478,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -1189,6 +2491,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -1316,6 +2619,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -1326,6 +2632,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -1351,6 +2658,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -1361,6 +2671,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -1386,6 +2697,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -1396,6 +2710,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -1473,6 +2788,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -1483,6 +2801,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -1550,6 +2869,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -1560,6 +2882,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -1594,6 +2917,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -1607,6 +2933,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -1736,6 +3063,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -1749,6 +3079,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -1878,6 +3209,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -1891,6 +3225,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -1938,7 +3273,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "funnels:delete",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -1988,7 +3324,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "funnels:delete",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -2038,7 +3375,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "owner",
+        "x-auth": "user",
+        "x-permission": "funnels:purge",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -2073,6 +3411,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2086,6 +3427,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -2121,6 +3463,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2134,6 +3479,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -2193,6 +3539,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2206,6 +3555,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "analytics:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -2240,6 +3590,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2253,6 +3606,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -2310,6 +3664,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2323,6 +3680,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -2396,6 +3754,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2409,6 +3770,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -2527,6 +3889,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2540,6 +3905,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -2580,6 +3946,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2593,6 +3962,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -2635,6 +4005,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2648,6 +4021,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -2715,6 +4089,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2728,6 +4105,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "analytics:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -2770,6 +4148,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2783,6 +4164,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -2847,6 +4229,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2860,6 +4245,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -2903,6 +4289,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2916,6 +4305,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -2966,6 +4356,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -2979,6 +4372,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -3029,6 +4423,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -3042,6 +4439,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -3068,6 +4466,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -3078,6 +4479,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -3121,6 +4523,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -3131,6 +4536,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "tags:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -3154,6 +4560,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -3164,6 +4573,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "tags:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -3218,6 +4628,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -3231,6 +4644,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "tags:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -3263,6 +4677,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -3276,6 +4693,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "tags:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -3301,6 +4719,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -3311,6 +4732,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "domains:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -3366,7 +4788,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "domains:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -3401,6 +4824,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -3414,6 +4840,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "domains:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -3461,7 +4888,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "domains:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -3496,6 +4924,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -3509,6 +4940,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "domains:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -3558,7 +4990,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "domains:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -3643,7 +5076,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "domains:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -3726,6 +5160,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -3736,6 +5173,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "leads:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -3818,6 +5256,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -3828,6 +5269,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "leads:export",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -3912,6 +5354,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -3922,6 +5367,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "orders:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -4004,6 +5450,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -4014,6 +5463,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "orders:export",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -4050,6 +5500,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -4063,6 +5516,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "orders:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -4100,7 +5554,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "webhooks:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -4172,7 +5627,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "webhooks:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -4254,7 +5710,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "webhooks:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -4302,7 +5759,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "webhooks:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -4352,7 +5810,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "webhooks:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -4402,7 +5861,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "webhooks:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -4452,7 +5912,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "webhooks:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -4502,7 +5963,8 @@
             "bearer": []
           }
         ],
-        "x-auth": "admin",
+        "x-auth": "user",
+        "x-permission": "webhooks:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -4538,6 +6000,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "any",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -4573,6 +6036,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "any",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -4620,6 +6084,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "any",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -4664,6 +6129,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -4674,6 +6142,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -4699,6 +6168,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -4709,6 +6181,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -4743,6 +6216,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -4756,6 +6232,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -4790,6 +6267,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -4803,6 +6283,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:write",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -4829,6 +6310,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -4839,6 +6323,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "funnels:read",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -4884,6 +6369,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -4894,6 +6382,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "blocks:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -4928,6 +6417,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -4941,6 +6433,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "blocks:manage",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -5706,6 +7199,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -5716,6 +7212,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "ai:use",
         "x-rate-limit-policies": [
           "ip.global",
           "api.read",
@@ -5791,6 +7288,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -5801,6 +7301,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "ai:use",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -5871,6 +7372,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -5881,6 +7385,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "ai:use",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -5942,6 +7447,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -5952,6 +7460,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "ai:use",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -6009,6 +7518,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -6019,6 +7531,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "ai:use",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",
@@ -6070,6 +7583,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -6080,6 +7596,7 @@
           }
         ],
         "x-auth": "user",
+        "x-permission": "ai:use",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",

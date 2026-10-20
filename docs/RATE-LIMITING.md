@@ -118,6 +118,9 @@ Defaults, before environment overrides and plan multipliers (this table is gener
 | `public.page` | class | ip | gcra | 6000 / 1 min, burst 1500 | open |  | lease | Pages served straight from the origin on a customer domain, per IP (the edge cache absorbs real traffic). |
 | `public.preview` | class | ip | gcra | 300 / 1 min, burst 100 | open |  | lease | Signed previews, per IP. |
 | `auth.attempts` | class | ip | gcra | 10 / 1 min, burst 10 | closed |  | penalty box | Register and login requests, per IP. Fails closed, with a penalty box. |
+| `auth.refresh` | class | ip | gcra | 600 / 1 min, burst 60 | open |  | lease | Refresh-token exchanges, per IP. The token itself is the credential (256 bits), so this only bounds load; generous because offices share an address. |
+| `auth.reset` | class | ip | gcra | 10 / 1 min, burst 5 | closed |  | penalty box | Password reset requests and redemptions, per IP. Fails closed, with a penalty box. |
+| `auth.reset.email` | principal | composite(scope) | window | 3 / 1 h | closed |  |  | Reset mails per address (hashed): 3 per hour, so nobody can mail-bomb an inbox. Over budget the request still answers the same, silently. |
 | `auth.failures.account` | principal | composite(scope) | window | 8 / 15 min | closed |  |  | Failed logins per account (hashed email): lockout after 8 failures in 15 minutes. |
 | `auth.failures.ip` | principal | ip | window | 30 / 15 min | closed |  |  | Failed logins per IP: lockout after 30 failures in 15 minutes. |
 | `api.read` | principal | user | gcra | 600 / 1 min, burst 200 | open |  | lease | Authenticated reads, per user. |

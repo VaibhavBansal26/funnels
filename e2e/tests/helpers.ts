@@ -57,3 +57,14 @@ export async function goLive(page: Page, funnelId: string, hostname: string) {
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText(hostname).first()).toBeVisible();
 }
+
+/** The last mail the e2e server "sent" to `to` (see server.mjs), and the first link in it. */
+export async function linkFromMail(to: string): Promise<string> {
+  const port = Number(process.env.E2E_PORT ?? 4180) + 1;
+  for (let i = 0; i < 30; i++) {
+    const res = await fetch(`http://127.0.0.1:${port}/mail?to=${encodeURIComponent(to)}`);
+    if (res.ok) return ((await res.json()) as { text: string }).text.match(/https?:\/\/\S+/)![0];
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`no mail arrived for ${to}`);
+}

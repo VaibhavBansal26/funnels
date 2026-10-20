@@ -19,7 +19,9 @@ Start with the [README](../README.md) for what this is and how to run it.
 | validate the scale targets in a cloud environment | [CLOUD-LOADTEST.md](CLOUD-LOADTEST.md) |
 | run or write tests | [TESTING.md](TESTING.md), [CONTRIBUTING](../CONTRIBUTING.md) |
 | understand the AI features | [AI.md](AI.md) |
-| review security | [SECURITY.md](SECURITY.md) |
+| review security | [RBAC.md](RBAC.md) | Permission model, built-in and custom roles, escalation rules, sessions and refresh rotation, TOTP 2FA, invitations, password reset, lockout, audit log (permission and route tables generated) |
+| [SECURITY.md](SECURITY.md) |
+| understand roles, permissions, sessions, 2FA and the audit log | [RBAC.md](RBAC.md) |
 | decode a term or a legacy name | [GLOSSARY.md](GLOSSARY.md), [MIGRATION-NOTES.md](MIGRATION-NOTES.md) |
 | see what changed | [CHANGELOG](../CHANGELOG.md) |
 
@@ -66,3 +68,4 @@ Start with the [README](../README.md) for what this is and how to run it.
 | [0015](adr/0015-event-bus-outbox-ingest-queue.md) | Durable event bus, transactional outbox and the ingest queue | Accepted |
 | [0016](adr/0016-clickhouse-secondary-store.md) | ClickHouse as a secondary analytics store behind the EventStore interface | Accepted |
 | [0017](adr/0017-fair-queueing.md) | Per-workspace fairness: admission quota, partition by workspace, round-robin claims | Accepted |
+| [0018](adr/0018-rbac-sessions-2fa.md) | Permission-based RBAC, sessions with rotating refresh tokens, TOTP 2FA | Accepted |

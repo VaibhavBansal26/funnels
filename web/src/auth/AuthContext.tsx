@@ -1,20 +1,24 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, tokenStore, UNAUTHORIZED_EVENT } from '../api/client';
-import type { AuthResponse, Role, Session } from '../api/types';
+import type { AuthResponse, Session, TwoFactorChallenge } from '../api/types';
 
 interface AuthState {
   session: Session | null;
   loading: boolean;
-  login(email: string, password: string): Promise<void>;
+  /** Resolves with a challenge when two-factor authentication is on (finish with `verifyTwoFactor`), otherwise signs in and resolves null. */
+  login(email: string, password: string): Promise<TwoFactorChallenge | null>;
+  verifyTwoFactor(challengeToken: string, code: string): Promise<void>;
   register(input: { email: string; password: string; name: string; workspaceName?: string }): Promise<void>;
+  /** Adopts a session returned by another flow (accepting an invitation). */
+  adopt(r: AuthResponse): void;
   logout(): void;
   refresh(): Promise<void>;
-  can(min: Role): boolean;
+  /** Whether the signed-in user's role holds this permission (the server enforces it too; this only decides what to show). */
+  can(permission: string): boolean;
 }
 
 const Ctx = createContext<AuthState | null>(null);
-const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
@@ -22,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState<boolean>(() => !!tokenStore.get());
 
   const logout = useCallback(() => {
+    if (tokenStore.get()) void api.post('/api/auth/logout').catch(() => undefined); // ends the session on the server; the local state is cleared regardless
     tokenStore.clear();
     setSession(null);
     qc.clear();
@@ -53,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
 
   const accept = (r: AuthResponse) => {
-    tokenStore.set(r.token);
+    tokenStore.set(r.token, r.refreshToken);
     setSession({ user: r.user, workspace: r.workspace });
   };
 
@@ -62,14 +67,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       loading,
       async login(email, password) {
-        accept(await api.post<AuthResponse>('/api/auth/login', { email, password }, { auth: false }));
+        const r = await api.post<AuthResponse | TwoFactorChallenge>('/api/auth/login', { email, password }, { auth: false });
+        if ('twoFactorRequired' in r) return r;
+        accept(r);
+        return null;
       },
+      async verifyTwoFactor(challengeToken, code) {
+        accept(await api.post<AuthResponse>('/api/auth/2fa/verify', { challengeToken, code }, { auth: false }));
+      },
+      adopt: accept,
       async register(input) {
         accept(await api.post<AuthResponse>('/api/auth/register', input, { auth: false }));
       },
       logout,
       refresh,
-      can: (min) => !!session && RANK[session.user.role] >= RANK[min],
+      can: (permission) => !!session && session.user.permissions.includes(permission),
     }),
     [session, loading, logout, refresh],
   );

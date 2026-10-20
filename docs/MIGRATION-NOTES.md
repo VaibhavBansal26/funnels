@@ -68,3 +68,13 @@ Live chat widget and support tokens, split testing (never existed), the URL shor
 ## Edge serving (phase 2)
 
 The legacy Cloudflare worker called `GET /funnelstepcloudlflare` with an HMAC that was skipped when the secret was unset, and wrote HTML back with `POST`. The replacement worker in `edge/` calls `GET /internal/edge/resolve` (read-only, HMAC mandatory, timestamp window, nonce replay protection, fail closed) and never writes to the origin; cache purge is driven by the origin through the Cloudflare API. Cloudflare custom hostnames (legacy `lightning.domains`) map to `DomainProvider` `cloudflare`.
+
+## Access control (phase 3)
+
+Not a legacy migration but a behaviour change for anyone running an earlier build of this app:
+
+* **Everyone signs in once after the upgrade.** Access tokens now carry a session id; tokens issued before (no session id) are rejected.
+* **`POST /api/members` (temporary password) is gone.** Use `POST /api/invitations` (one-time link by mail). `PATCH /api/members/{id}` takes `{ roleId }` instead of `{ role }`.
+* **Roles are permission sets.** Existing users keep their role: `users.role_id` is filled from `users.role` (owner, admin, member), so nobody gains or loses access. New built-in role `viewer`. The legacy `users.role` column stays and mirrors the built-in role (`member` for custom roles and viewers).
+* **A workspace can have several owners**, and the last owner can no longer be demoted (previously the owner role was frozen).
+* Access tokens default to 15 minutes (was 12 hours); the web app renews them with the refresh token.

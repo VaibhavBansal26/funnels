@@ -18,7 +18,18 @@ Generated from the zod schema in `server/src/config.ts` and the descriptions in 
 | `REDIS_TIMEOUT_MS` | `25` | no | `25` | Budget for one limiter call to Redis. Past it the call counts as a failure and the policy fails open or closed (docs/RATE-LIMITING.md). |
 | `DATABASE_PATH` | `./data/funnels.db` | no | `/data/funnels.db` | SQLite file used when DATABASE_URL is unset (`:memory:` for tests). |
 | `JWT_SECRET` | (generated in development) | in production | `(32+ random characters)` | HMAC secret for access, preview and stream tokens (32+ characters). Generated and logged as a warning when unset outside production, so sessions then do not survive a restart. **Security:** Rotating it logs everybody out. Never commit it; a leaked secret allows forging any user token. |
-| `ACCESS_TOKEN_TTL_SECONDS` | `43200` | no | `43200` | Lifetime of access tokens. |
+| `ACCESS_TOKEN_TTL_SECONDS` | `900` | no | `900` | Lifetime of access tokens (short: the web app renews them with the refresh token, and revoking a session ends its access tokens at once). |
+| `REFRESH_TOKEN_TTL_DAYS` | `30` | no | `30` | Lifetime of a refresh token before it must be used (each use issues a new one, so an active session never hits this). |
+| `SESSION_MAX_DAYS` | `90` | no | `90` | Absolute lifetime of a session regardless of activity; after it the user signs in again. |
+| `REFRESH_REUSE_GRACE_SECONDS` | `10` | no | `10` | A refresh token presented again within this many seconds of its first use is treated as two tabs racing (401 REFRESH_RACE, session kept); later reuse revokes the whole session. |
+| `INVITATION_TTL_DAYS` | `7` | no | `7` | How long an invitation link stays valid. |
+| `PASSWORD_RESET_TTL_MINUTES` | `60` | no | `60` | How long a password reset link stays valid. |
+| `TOTP_ISSUER` | `Funnels` | no | `Funnels` | Name shown in authenticator apps next to the account. |
+| `DATA_ENCRYPTION_KEY` | (unset) | no | `a-long-random-string-of-at-least-32-chars` | Key (min 32 chars) for encrypting TOTP secrets at rest (AES-256-GCM). Falls back to a key derived from JWT_SECRET; set it separately so rotating JWT_SECRET does not lock everyone out of 2FA. **Security:** Secret. Losing it makes enrolled TOTP secrets unreadable (users must re-enrol); rotating needs a re-encryption step that is not automated. |
+| `MAIL_TRANSPORT` | `none` | no | `webhook` | How invitations and password resets are sent: `none` (nothing is sent; invitation links are shown to the inviter, resets cannot be delivered), `console` (printed to the log, development only), `webhook` (POST JSON to MAIL_WEBHOOK_URL). |
+| `MAIL_FROM` | `Funnels <no-reply@localhost>` | no | `Funnels <no-reply@example.com>` | Sender passed to the mail transport. |
+| `MAIL_WEBHOOK_URL` | (unset) | no | `https://mail-bridge.internal/send` | Endpoint that receives `{from,to,subject,text}` and hands it to your mail provider. |
+| `MAIL_WEBHOOK_SECRET` | (unset) | no | `a-long-random-string` | When set, each mail webhook carries `X-Signature: sha256=<HMAC-SHA256 of the body>` (min 16 chars). **Security:** Secret. |
 | `PREVIEW_TOKEN_TTL_SECONDS` | `900` | no | `900` | Lifetime of signed preview links. |
 | `APP_PUBLIC_URL` | `http://localhost:3000` | no | `https://app.example.com` | Public base URL of the app; its host is reserved and cannot be registered as a customer domain. |
 | `APP_PUBLIC_CNAME_TARGET` | `sites.funnels.example` | no | `sites.example.com` | Hostname customers point their CNAME at. |

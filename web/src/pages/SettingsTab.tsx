@@ -60,7 +60,7 @@ export function SettingsTab({ funnel }: { funnel: FunnelDetail }) {
   const dup = useMutate(() => api.post<FunnelDetail>(`/api/funnels/${funnel.id}/duplicate`), [keys.funnels]);
   const errors = validateSettings(f);
   const active = (domains.data?.data ?? []).filter((d) => d.status === 'active');
-  const patch = buildPatch(orig, f, can('admin'));
+  const patch = buildPatch(orig, f, can('funnels:tracking'));
   const dirty = Object.keys(patch).length > 0;
 
   const submit = (extra: Record<string, unknown> = {}) =>
@@ -117,7 +117,7 @@ export function SettingsTab({ funnel }: { funnel: FunnelDetail }) {
         </fieldset>
 
         <TextField label="Favicon URL" value={f.favicon} error={errors.favicon} hint="Shown in the browser tab of published pages." onChange={(favicon) => setF({ ...f, favicon })} />
-        {can('admin') ? (
+        {can('funnels:tracking') ? (
           <>
             <Field label="Header tracking code" hint="Injected into every page's <head>. Only served when the workspace allows custom scripts (Settings).">{(p) => <textarea className="input mono" rows={3} value={f.header} onChange={(e) => setF({ ...f, header: e.target.value })} {...p} />}</Field>
             <Field label="Footer tracking code" hint="Injected before </body>.">{(p) => <textarea className="input mono" rows={3} value={f.footer} onChange={(e) => setF({ ...f, footer: e.target.value })} {...p} />}</Field>
@@ -133,7 +133,7 @@ export function SettingsTab({ funnel }: { funnel: FunnelDetail }) {
         <h2>Actions</h2>
         <div className="row">
           <button type="button" className="btn" disabled={dup.isPending} onClick={() => dup.mutate(undefined, { onSuccess: (n) => { toast.push(`Created "${n.name}"`, 'ok'); nav(`/funnels/${n.id}`); } })}>Duplicate funnel</button>
-          {can('admin') ? <button type="button" className="btn danger" onClick={() => setTrashing(true)}>Move to trash</button> : <span className="muted small">Admins can delete funnels.</span>}
+          {can('funnels:delete') ? <button type="button" className="btn danger" onClick={() => setTrashing(true)}>Move to trash</button> : <span className="muted small">Admins can delete funnels.</span>}
         </div>
       </div>
 

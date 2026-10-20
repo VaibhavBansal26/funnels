@@ -6,7 +6,7 @@ import { AuthProvider } from './auth/AuthContext';
 import { Layout, RequireAuth } from './components/Layout';
 import { ToastProvider } from './components/Toasts';
 import { Loading } from './components/ui';
-import { LoginPage, RegisterPage } from './pages/AuthPages';
+import { AcceptInvitePage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage } from './pages/AuthPages';
 import { FunnelsPage } from './pages/FunnelsPage';
 
 // Heavy screens are lazy so the first paint (login, funnel list) stays small; the builder pulls in the renderer and schema only when opened.
@@ -17,6 +17,7 @@ const TemplatesPage = lazy(() => import('./pages/TemplatesPage').then((m) => ({ 
 const DomainsPage = lazy(() => import('./pages/DomainsPage').then((m) => ({ default: m.DomainsPage })));
 const WebhooksPage = lazy(() => import('./pages/WebhooksPage').then((m) => ({ default: m.WebhooksPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const AuditPage = lazy(() => import('./pages/AuditPage').then((m) => ({ default: m.AuditPage })));
 const TrashPage = lazy(() => import('./pages/TrashPage').then((m) => ({ default: m.TrashPage })));
 
 const lazyEl = (el: React.ReactNode) => <Suspense fallback={<Loading />}>{el}</Suspense>;
@@ -24,6 +25,9 @@ const lazyEl = (el: React.ReactNode) => <Suspense fallback={<Loading />}>{el}</S
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage /> },
   { path: '/register', element: <RegisterPage /> },
+  { path: '/forgot-password', element: <ForgotPasswordPage /> },
+  { path: '/reset-password', element: <ResetPasswordPage /> },
+  { path: '/accept-invite', element: <AcceptInvitePage /> },
   {
     element: <RequireAuth />,
     children: [
@@ -40,6 +44,7 @@ export const routes: RouteObject[] = [
           { path: '/webhooks', element: lazyEl(<WebhooksPage />) },
           { path: '/trash', element: lazyEl(<TrashPage />) },
           { path: '/settings', element: lazyEl(<SettingsPage />) },
+          { path: '/audit', element: lazyEl(<AuditPage />) },
           { path: '*', element: <div className="empty"><h3>Page not found</h3></div> },
         ],
       },

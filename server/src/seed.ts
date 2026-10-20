@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { generateFunnel } from './ai/service.js';
 import { hashPassword } from './auth/password.js';
+import { SYSTEM_ROLES } from './auth/permissions.js';
 import type { Auth } from './auth/context.js';
 import { createDeps } from './bootstrap.js';
 import { loadConfig } from './config.js';
@@ -43,12 +44,12 @@ export async function seedDemo(deps: Deps): Promise<SeedResult> {
   if (await deps.db.get('SELECT 1 FROM users WHERE email = ?', DEMO_EMAIL)) return { created: false, email: DEMO_EMAIL, password: DEMO_PASSWORD };
   const owner = await register(deps, { email: DEMO_EMAIL, password: DEMO_PASSWORD, name: 'Demo Owner', workspaceName: 'Demo Studio' });
   const ws = owner.workspace.id;
-  const auth: Auth = { userId: owner.user.id, workspaceId: ws, role: 'owner', email: DEMO_EMAIL, name: 'Demo Owner' };
+  const auth: Auth = { userId: owner.user.id, workspaceId: ws, role: 'owner', roleId: 'owner', roleName: SYSTEM_ROLES.owner.name, permissions: new Set(SYSTEM_ROLES.owner.permissions), sessionId: 'seed', email: DEMO_EMAIL, name: 'Demo Owner' };
   const at = deps.now();
   const iso = (d: Date) => d.toISOString();
 
   for (const [email, name, role] of [['demo-admin@example.test', 'Demo Admin', 'admin'], ['demo-member@example.test', 'Demo Member', 'member']] as const) {
-    await deps.db.run('INSERT INTO users (id, workspace_id, email, name, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', newId('usr'), ws, email, name, await hashPassword(DEMO_PASSWORD), role, iso(at));
+    await deps.db.run('INSERT INTO users (id, workspace_id, email, name, password_hash, role, role_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', newId('usr'), ws, email, name, await hashPassword(DEMO_PASSWORD), role, role, iso(at));
   }
 
   const tags = [];

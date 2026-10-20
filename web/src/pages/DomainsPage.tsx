@@ -78,13 +78,13 @@ export function DomainsPage() {
   const create = useMutate((hostname: string) => api.post<Domain>('/api/domains', { hostname }), [keys.domains]);
   return (
     <div className="stack">
-      <div className="row between"><h1>Domains</h1>{can('admin') ? <button type="button" className="btn primary" onClick={() => setAdding(true)}>Add domain</button> : null}</div>
+      <div className="row between"><h1>Domains</h1>{can('domains:manage') ? <button type="button" className="btn primary" onClick={() => setAdding(true)}>Add domain</button> : null}</div>
       <p className="muted">Connect your own domain to publish funnels. Only domains whose DNS is verified can be attached to a funnel.</p>
-      {!can('admin') ? <div className="alert">Admins and owners manage domains. You can see their status here.</div> : null}
+      {!can('domains:manage') ? <div className="alert">You need the domains:manage permission to change domains. You can see their status here.</div> : null}
       <ErrorBanner error={q.error} onRetry={() => void q.refetch()} />
       {q.isLoading ? <Loading /> : null}
       {q.data && q.data.data.length === 0 ? <div className="card"><Empty title="No domains yet">Add a domain such as offers.example.com to publish your first funnel.</Empty></div> : null}
-      {q.data?.data.map((d) => <DomainCard key={d.id} d={d} canManage={can('admin')} />)}
+      {q.data?.data.map((d) => <DomainCard key={d.id} d={d} canManage={can('domains:manage')} />)}
       {adding ? (
         <Modal title="Add domain" onClose={() => { setAdding(false); setHost(''); setError(null); }}
           footer={<><button type="button" className="btn" onClick={() => setAdding(false)}>Cancel</button><button type="button" className="btn primary" disabled={create.isPending} onClick={() => {

@@ -66,3 +66,73 @@ describe('api client', () => {
     window.removeEventListener(UNAUTHORIZED_EVENT, seen);
   });
 });
+
+describe('token refresh', () => {
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
+
+  it('renews an expired access token with the refresh token and repeats the request once', async () => {
+    tokenStore.set('old', 'rt_old');
+    const calls: string[] = [];
+    const f = vi.fn(async (url: string, init: RequestInit & { headers: Record<string, string> }) => {
+      calls.push(`${url} ${init.headers?.authorization ?? ''}`);
+      if (url === '/api/auth/refresh') return json(200, { token: 'new', refreshToken: 'rt_new' });
+      return init.headers.authorization === 'Bearer new' ? json(200, { ok: true }) : json(401, { error: { code: 'UNAUTHORIZED', message: 'expired' } });
+    });
+    vi.stubGlobal('fetch', f);
+    expect(await api.get('/api/funnels')).toEqual({ ok: true });
+    expect(calls).toEqual(['/api/funnels Bearer old', '/api/auth/refresh ', '/api/funnels Bearer new']);
+    expect(tokenStore.get()).toBe('new');
+    expect(tokenStore.getRefresh()).toBe('rt_new'); // the rotated refresh token replaced the old one
+  });
+
+  it('several requests failing at once share one refresh (the server spends a refresh token on use)', async () => {
+    tokenStore.set('old', 'rt_old');
+    let refreshes = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit & { headers: Record<string, string> }) => {
+      if (url === '/api/auth/refresh') {
+        refreshes++;
+        await new Promise((r) => setTimeout(r, 10));
+        return json(200, { token: 'new', refreshToken: 'rt_new' });
+      }
+      return init.headers.authorization === 'Bearer new' ? json(200, { ok: true }) : json(401, { error: { code: 'UNAUTHORIZED', message: 'expired' } });
+    }));
+    await Promise.all([api.get('/api/a'), api.get('/api/b'), api.get('/api/c')]);
+    expect(refreshes).toBe(1);
+  });
+
+  it('ends the session (event) when the refresh token is refused, and does not loop', async () => {
+    tokenStore.set('old', 'rt_old');
+    const seen: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      seen.push(url);
+      return json(401, { error: { code: 'UNAUTHORIZED', message: 'no' } });
+    }));
+    let ended = 0;
+    const on = () => ended++;
+    window.addEventListener(UNAUTHORIZED_EVENT, on);
+    await expect(api.get('/api/funnels')).rejects.toMatchObject({ status: 401 });
+    window.removeEventListener(UNAUTHORIZED_EVENT, on);
+    expect(seen).toEqual(['/api/funnels', '/api/auth/refresh']);
+    expect(ended).toBe(1);
+  });
+
+  it('a refresh lost to another tab (REFRESH_RACE) uses the tokens that tab stored', async () => {
+    tokenStore.set('old', 'rt_old');
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit & { headers: Record<string, string> }) => {
+      if (url === '/api/auth/refresh') {
+        tokenStore.set('from-other-tab', 'rt_other'); // the other tab's refresh finished first and stored its result
+        return json(401, { error: { code: 'REFRESH_RACE', message: 'just used' } });
+      }
+      return init.headers.authorization === 'Bearer from-other-tab' ? json(200, { ok: true }) : json(401, { error: { code: 'UNAUTHORIZED', message: 'expired' } });
+    }));
+    expect(await api.get('/api/funnels')).toEqual({ ok: true });
+  });
+
+  it('does not try to refresh without a refresh token or for requests that carry no credentials', async () => {
+    tokenStore.clear();
+    const f = vi.fn(async () => json(401, { error: { code: 'UNAUTHORIZED', message: 'Invalid email or password' } }));
+    vi.stubGlobal('fetch', f);
+    await expect(api.post('/api/auth/login', {}, { auth: false })).rejects.toMatchObject({ status: 401 });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+});

@@ -25,7 +25,18 @@ const dns = {
     return row ? [`funnels-verify=${row.t}`] : [];
   },
 };
-deps = await createDeps(config, { dns });
+// A capturing mailer instead of a real transport, readable at http://127.0.0.1:<MAIL_PORT>/mail?to=<address> (the last message to that address, as JSON),
+// so a test can follow an invitation or password reset link like a user following the email would.
+const inbox = new Map();
+const mailer = { kind: 'capture', async send(m) { inbox.set(m.to, m); return true; } };
+const { createServer } = await import('node:http');
+createServer((req, res) => {
+  const to = new URL(req.url, 'http://x').searchParams.get('to') ?? '';
+  const m = inbox.get(to);
+  res.writeHead(m ? 200 : 404, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(m ?? { error: 'no mail for ' + to }));
+}).listen(Number(process.env.MAIL_PORT ?? 4181), '127.0.0.1');
+deps = await createDeps(config, { dns, mailer });
 const server = serve({ fetch: createApp(deps).fetch, port: config.PORT, hostname: config.HOST });
 const stop = () => server.close(() => deps.db.close().finally(() => process.exit(0)));
 process.on('SIGTERM', stop);

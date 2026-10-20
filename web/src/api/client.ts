@@ -1,16 +1,21 @@
 const TOKEN_KEY = 'funnels.token';
+const REFRESH_KEY = 'funnels.refresh';
+
+const read = (k: string): string | null => {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+};
 
 export const tokenStore = {
-  get(): string | null {
-    try {
-      return localStorage.getItem(TOKEN_KEY);
-    } catch {
-      return null;
-    }
-  },
-  set(token: string): void {
+  get: (): string | null => read(TOKEN_KEY),
+  getRefresh: (): string | null => read(REFRESH_KEY),
+  set(token: string, refreshToken?: string): void {
     try {
       localStorage.setItem(TOKEN_KEY, token);
+      if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
     } catch {
       /* storage unavailable: the session lasts until reload */
     }
@@ -18,11 +23,44 @@ export const tokenStore = {
   clear(): void {
     try {
       localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(REFRESH_KEY);
     } catch {
       /* nothing to clear */
     }
   },
 };
+
+let refreshing: Promise<boolean> | null = null;
+
+/**
+ * Renews the access token with the stored refresh token (which the server rotates: the response carries the next one). One refresh at a time per tab; when
+ * another tab wins the race (`REFRESH_RACE`) its tokens are already in storage, so this waits briefly and uses them. False means the session is over.
+ */
+export function refreshTokens(): Promise<boolean> {
+  const rt = tokenStore.getRefresh();
+  if (!rt) return Promise.resolve(false);
+  refreshing ??= (async () => {
+    try {
+      const res = await fetch('/api/auth/refresh', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ refreshToken: rt }) });
+      if (res.ok) {
+        const j = (await res.json()) as { token: string; refreshToken: string };
+        tokenStore.set(j.token, j.refreshToken);
+        return true;
+      }
+      const code = ((await res.json().catch(() => null)) as { error?: { code?: string } } | null)?.error?.code;
+      if (code === 'REFRESH_RACE') {
+        await new Promise((r) => setTimeout(r, 300));
+        return tokenStore.getRefresh() !== rt && !!tokenStore.get();
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      refreshing = null;
+    }
+  })();
+  return refreshing;
+}
 
 export const UNAUTHORIZED_EVENT = 'funnels:unauthorized';
 
@@ -65,7 +103,7 @@ export function buildUrl(path: string, query?: RequestOptions['query']): string 
   return s ? `${path}${path.includes('?') ? '&' : '?'}${s}` : path;
 }
 
-export async function request<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
+export async function request<T>(method: string, path: string, opts: RequestOptions = {}, retried = false): Promise<T> {
   const headers: Record<string, string> = { accept: 'application/json' };
   const token = opts.auth === false ? null : tokenStore.get();
   if (token) headers.authorization = `Bearer ${token}`;
@@ -91,7 +129,11 @@ export async function request<T>(method: string, path: string, opts: RequestOpti
   }
   if (!res.ok) {
     const err = (json as { error?: { code?: string; message?: string; details?: unknown } } | null)?.error;
-    if (res.status === 401 && token) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    if (res.status === 401 && token) {
+      // An expired access token is routine: renew it once and repeat the request. Anything else (revoked session, bad refresh token) ends the session.
+      if (!retried && (await refreshTokens())) return request<T>(method, path, opts, true);
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    }
     throw new ApiError(res.status, err?.code ?? 'HTTP_ERROR', err?.message ?? `Request failed (${res.status})`, err?.details);
   }
   return json as T;
@@ -107,8 +149,9 @@ export const api = {
 
 /** Downloads an authenticated CSV endpoint through the browser. */
 export async function downloadFile(path: string, filename: string, query?: RequestOptions['query']): Promise<void> {
-  const token = tokenStore.get();
-  const res = await fetch(buildUrl(path, query), { headers: token ? { authorization: `Bearer ${token}` } : {} });
+  const get = () => fetch(buildUrl(path, query), { headers: tokenStore.get() ? { authorization: `Bearer ${tokenStore.get()}` } : {} });
+  let res = await get();
+  if (res.status === 401 && (await refreshTokens())) res = await get();
   if (!res.ok) throw new ApiError(res.status, 'DOWNLOAD_FAILED', 'The export could not be downloaded');
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement('a');

@@ -1,5 +1,5 @@
 import { Hono, type Context } from 'hono';
-import { authenticate, authOf, requireRole, type AppEnv } from '../auth/context.js';
+import { authenticate, authOf, type AppEnv } from '../auth/context.js';
 import type { Deps } from '../deps.js';
 import * as domains from '../services/domains.js';
 import { bodyOf } from './util.js';
@@ -12,10 +12,10 @@ export function domainRoutes(deps: Deps): Hono<AppEnv> {
   r.get('/', async (c) => c.json(await domains.listDomains(deps, ws(c))));
   r.get('/:id', async (c) => c.json(await domains.getDomain(deps, ws(c), c.req.param('id'))));
   r.get('/:id/routes', async (c) => c.json(await domains.domainRoutes(deps, ws(c), c.req.param('id'))));
-  r.post('/', requireRole('admin'), async (c) => c.json(await domains.createDomain(deps, ws(c), await bodyOf(c, domains.DomainInput)), 201));
-  r.post('/:id/verify', requireRole('admin'), async (c) => c.json(await domains.verifyDomain(deps, ws(c), c.req.param('id'))));
-  r.put('/:id/default-pages', requireRole('admin'), async (c) => c.json(await domains.setDefaultPages(deps, ws(c), c.req.param('id'), await bodyOf(c, domains.DefaultPagesInput))));
-  r.delete('/:id', requireRole('admin'), async (c) => {
+  r.post('/', async (c) => c.json(await domains.createDomain(deps, ws(c), await bodyOf(c, domains.DomainInput)), 201));
+  r.post('/:id/verify', async (c) => c.json(await domains.verifyDomain(deps, ws(c), c.req.param('id'))));
+  r.put('/:id/default-pages', async (c) => c.json(await domains.setDefaultPages(deps, ws(c), c.req.param('id'), await bodyOf(c, domains.DefaultPagesInput))));
+  r.delete('/:id', async (c) => {
     await domains.deleteDomain(deps, ws(c), c.req.param('id'));
     return c.body(null, 204);
   });
