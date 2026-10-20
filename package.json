@@ -15,6 +15,9 @@
     "typecheck": "npm run typecheck --prefix server && npm run typecheck --prefix web && npm run typecheck --prefix edge",
     "seed": "npm run seed --prefix server",
     "package": "npm run build && tar -czf funnels.tgz server/dist server/package.json server/package-lock.json web/dist",
-    "check:size": "npm run check:size --prefix web"
+    "check:size": "npm run check:size --prefix web",
+    "docs:config": "npm run docs:config --prefix server",
+    "docs:api": "npm run docs:api --prefix server",
+    "docs:check": "npm run docs:check --prefix server"
   }
 }

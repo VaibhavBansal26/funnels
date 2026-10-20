@@ -1,0 +1,60 @@
+# Configuration
+
+Generated from the zod schema in `server/src/config.ts` and the descriptions in `server/src/config.docs.ts` by `npm run docs:config`; `npm test` fails when this file is stale. Configuration is environment-only and validated at boot (the process refuses to start with an invalid value). Nothing is required in development. Copy `.env.example` for a starting point.
+
+| Variable | Default | Required | Example | What it does |
+|---|---|---|---|---|
+| `NODE_ENV` | `development` | no | `production` | Runtime mode. `production` makes JWT_SECRET mandatory. |
+| `PORT` | `3000` | no | `3000` | HTTP port. |
+| `HOST` | `0.0.0.0` | no | `0.0.0.0` | Interface to bind. |
+| `DATABASE_URL` | (unset) | no | `postgres://funnels:secret@db:5432/funnels` | PostgreSQL connection URL. When set it selects PostgreSQL (a `pg` pool) and DATABASE_PATH is ignored. Unset = SQLite. **Security:** Contains credentials: pass it as a secret, never commit it. Use TLS (`?sslmode=require`) outside a private network. |
+| `DATABASE_POOL_MAX` | `10` | no | `10` | Maximum connections in the PostgreSQL pool per process. Size it so `replicas x pool` stays below the server (or PgBouncer) limit. |
+| `REDIS_URL` | (unset) | no | `redis://redis:6379` | Redis for the shared rate limiter. Unset = per-process in-memory limiter (fine for one replica). **Security:** May contain a password. Use `rediss://` over untrusted networks. |
+| `REDIS_KEY_PREFIX` | `funnels` | no | `funnels-prod` | Namespace for every Redis key, so deployments can share one Redis. |
+| `REDIS_TIMEOUT_MS` | `25` | no | `25` | Budget for one limiter call to Redis. Past it the call counts as a failure and the policy fails open or closed (docs/RATE-LIMITING.md). |
+| `DATABASE_PATH` | `./data/funnels.db` | no | `/data/funnels.db` | SQLite file used when DATABASE_URL is unset (`:memory:` for tests). |
+| `JWT_SECRET` | (generated in development) | in production | `(32+ random characters)` | HMAC secret for access, preview and stream tokens (32+ characters). Generated and logged as a warning when unset outside production, so sessions then do not survive a restart. **Security:** Rotating it logs everybody out. Never commit it; a leaked secret allows forging any user token. |
+| `ACCESS_TOKEN_TTL_SECONDS` | `43200` | no | `43200` | Lifetime of access tokens. |
+| `PREVIEW_TOKEN_TTL_SECONDS` | `900` | no | `900` | Lifetime of signed preview links. |
+| `APP_PUBLIC_URL` | `http://localhost:3000` | no | `https://app.example.com` | Public base URL of the app; its host is reserved and cannot be registered as a customer domain. |
+| `APP_PUBLIC_CNAME_TARGET` | `sites.funnels.example` | no | `sites.example.com` | Hostname customers point their CNAME at. |
+| `CORS_ORIGINS` | (empty) | no | `https://app.example.com` | Comma-separated origins allowed to call /api cross-origin. |
+| `PLATFORM_ADMIN_EMAILS` | (empty) | no | `ops@example.com` | Comma-separated emails of platform administrators (global templates, rate limit operations). **Security:** Matched case-insensitively against the account email; protect those mailboxes. |
+| `TRUST_PROXY` | `false` | no | `true` | Believe X-Forwarded-For (see TRUSTED_PROXY_HOPS). Turn on only behind a proxy you control; otherwise clients can forge their address and dodge per-IP limits. **Security:** Misconfiguring it either way breaks per-IP limits: off behind a proxy throttles everyone as one client, on without a proxy lets clients choose their IP. |
+| `WEB_DIST` | `../web/dist` | no |  | Directory of the built web app to serve. Defaults to ../web/dist relative to the server. |
+| `ANTHROPIC_API_KEY` | (unset) | no |  | Enables the Anthropic provider for AI features. Unset = offline heuristic provider. **Security:** Secret. Prompts never contain it. |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | no |  | Model used by the Anthropic provider. |
+| `AI_DAILY_CAP` | `50` | no | `50` | AI calls per workspace per UTC day (0 disables AI). Durable (database). |
+| `AI_RATE_LIMIT_PER_MINUTE` | `10` | no | `10` | AI calls per workspace per minute (policy `ai.minute`, each call costs 10 units). |
+| `RATELIMIT_ENABLED` | `true` | no | `true` | Master switch for the rate limiter. `false` admits everything (emergency use, benchmarks). **Security:** Disabling removes flood and credential-stuffing protection. |
+| `RATELIMIT_LEASE_FRACTION` | `0.1` | no | `0.1` | Fraction of a token bucket a process pre-pays from Redis and spends locally (0 disables the local tier; max 0.5). Error bound in docs/RATE-LIMITING.md. |
+| `IP_GUARD_PER_MINUTE` | `1200` | no | `1200` | Policy `ip.global`: requests per client IP per minute across the whole app (burst = a quarter). |
+| `PUBLIC_PAGES_PER_MINUTE` | `6000` | no | `6000` | Policy `public.page`: pages served directly by the origin on customer domains, per IP per minute. |
+| `API_USER_PER_MINUTE` | `600` | no | `600` | Policy `api.read`: authenticated requests per user per minute (writes get half). |
+| `API_WORKSPACE_PER_MINUTE` | `600` | no | `600` | Policy `api.workspace`: requests per workspace per minute on the free plan (pro x5, business x20). |
+| `EXPORT_CONCURRENCY` | `2` | no | `2` | Policy `api.export`: concurrent CSV exports per workspace on the free plan (pro x2, business x4). |
+| `EDGE_RESOLVE_PER_MINUTE` | `120000` | no | `120000` | Policy `edge.resolve`: signed worker calls per minute (all arrive from few addresses). |
+| `TRUSTED_PROXY_HOPS` | `1` | no | `1` | Reverse proxies that append to X-Forwarded-For; the client address is that many entries from the right. |
+| `TRUST_CLOUDFLARE_RANGES` | `true` | no | `true` | Believe CF-Connecting-IP when the TCP peer is inside Cloudflare's published ranges. |
+| `CF_IP_RANGES` | (empty) | no | `173.245.48.0/20,103.21.244.0/22` | Comma-separated CIDRs replacing the built-in Cloudflare range list. |
+| `PUBLIC_EVENTS_PER_MINUTE` | `120` | no | `120` | Policy `public.events`: beacon events per IP and funnel per minute. |
+| `PUBLIC_FORMS_PER_MINUTE` | `20` | no | `20` | Policies `public.forms` and `public.checkout`: posts per IP and funnel per minute. |
+| `AUTH_ATTEMPTS_PER_MINUTE` | `10` | no | `10` | Policy `auth.attempts`: register and login requests per IP per minute. |
+| `WEBHOOK_MAX_ATTEMPTS` | `6` | no | `6` | Delivery attempts before a webhook delivery is dead-lettered (30 s x 2^n backoff). |
+| `DOMAIN_VERIFY_TIMEOUT_HOURS` | `72` | no | `72` | Hours a pending domain keeps being re-checked before it is marked failed. |
+| `EVENT_BUFFER_MS` | `250` | no | `250` | Write-behind flush interval for analytics events (0 = write-through). A hard kill can lose this window. |
+| `EVENT_BUFFER_MAX` | `5000` | no | `5000` | Rows that force an early flush (backpressure for the caller). |
+| `REQUEST_TIMEOUT_MS` | `30000` | no | `30000` | A handler running longer gets a 504 (the client is released; synchronous work cannot be interrupted). |
+| `EDGE_SHARED_SECRET` | (unset) | no | `(32+ random characters)` | Shared with the Cloudflare Worker to sign /internal/edge/resolve (32+ characters). Unset = the endpoint refuses everything (fail closed). **Security:** Secret. Rotate on both sides together. |
+| `EDGE_SKEW_SECONDS` | `120` | no | `120` | Accepted clock skew of edge signatures; also the replay window. |
+| `CF_ORIGIN_SECRET` | (unset) | no | `(16+ random characters)` | Header secret the Worker adds (`x-cf-origin-secret`) so the origin can trust CF-Connecting-IP. **Security:** Secret; anyone holding it can claim any client IP. |
+| `CF_API_TOKEN` | (unset) | no |  | Cloudflare API token (cache purge; custom hostnames when DOMAIN_PROVIDER=cloudflare). **Security:** Secret; scope it to the zone with Cache Purge and SSL and Certificates edit only. |
+| `CF_ZONE_ID` | (unset) | no |  | Cloudflare zone id used for purges and custom hostnames. |
+| `CF_API_BASE` | `https://api.cloudflare.com/client/v4` | no | `https://api.cloudflare.com/client/v4` | Cloudflare API base URL (tests point it at a fake). |
+| `DOMAIN_PROVIDER` | `manual` | no | `manual` | `manual` (DNS checks) or `cloudflare` (Cloudflare for SaaS custom hostnames). |
+| `METRICS_TOKEN` | (unset) | no |  | Bearer token required to scrape /metrics. Empty = open. **Security:** Leave /metrics unreachable from the internet when empty. |
+| `ENABLE_WORKER` | `true` | no | `true` | Run the in-process job worker (webhooks, domain checks, purges). With several replicas it is safe on all of them on PostgreSQL (`FOR UPDATE SKIP LOCKED`). |
+| `JOB_POLL_MS` | `1000` | no | `1000` | Job queue poll interval. |
+| `LOG_LEVEL` | `info` | no | `info` | debug, info, warn, error or silent. Logs are JSON lines. |
+
+Booleans accept `1/true/yes/on` (case-insensitive); lists are comma-separated. Rate limit variables are explained in [RATE-LIMITING.md](RATE-LIMITING.md); database selection in [ARCHITECTURE.md](ARCHITECTURE.md#data-layer).

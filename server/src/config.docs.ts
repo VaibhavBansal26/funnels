@@ -1,0 +1,65 @@
+import type { EnvSchema } from './config.js';
+
+export interface EnvDoc {
+  desc: string;
+  example?: string;
+  /** `production` = required only when NODE_ENV=production. */
+  required?: boolean | 'production';
+  security?: string;
+}
+
+/** Documentation for every environment variable. Typed against the schema, so a variable without an entry does not compile; docs/CONFIGURATION.md is generated from this plus the schema defaults (`npm run docs:config`). */
+export const ENV_DOCS: Record<keyof typeof EnvSchema.shape, EnvDoc> = {
+  NODE_ENV: { desc: 'Runtime mode. `production` makes JWT_SECRET mandatory.', example: 'production' },
+  PORT: { desc: 'HTTP port.', example: '3000' },
+  HOST: { desc: 'Interface to bind.', example: '0.0.0.0' },
+  DATABASE_URL: { desc: 'PostgreSQL connection URL. When set it selects PostgreSQL (a `pg` pool) and DATABASE_PATH is ignored. Unset = SQLite.', example: 'postgres://funnels:secret@db:5432/funnels', security: 'Contains credentials: pass it as a secret, never commit it. Use TLS (`?sslmode=require`) outside a private network.' },
+  DATABASE_POOL_MAX: { desc: 'Maximum connections in the PostgreSQL pool per process. Size it so `replicas x pool` stays below the server (or PgBouncer) limit.', example: '10' },
+  DATABASE_PATH: { desc: 'SQLite file used when DATABASE_URL is unset (`:memory:` for tests).', example: '/data/funnels.db' },
+  REDIS_URL: { desc: 'Redis for the shared rate limiter. Unset = per-process in-memory limiter (fine for one replica).', example: 'redis://redis:6379', security: 'May contain a password. Use `rediss://` over untrusted networks.' },
+  REDIS_KEY_PREFIX: { desc: 'Namespace for every Redis key, so deployments can share one Redis.', example: 'funnels-prod' },
+  REDIS_TIMEOUT_MS: { desc: 'Budget for one limiter call to Redis. Past it the call counts as a failure and the policy fails open or closed (docs/RATE-LIMITING.md).', example: '25' },
+  JWT_SECRET: { desc: 'HMAC secret for access, preview and stream tokens (32+ characters). Generated and logged as a warning when unset outside production, so sessions then do not survive a restart.', required: 'production', example: '(32+ random characters)', security: 'Rotating it logs everybody out. Never commit it; a leaked secret allows forging any user token.' },
+  ACCESS_TOKEN_TTL_SECONDS: { desc: 'Lifetime of access tokens.', example: '43200' },
+  PREVIEW_TOKEN_TTL_SECONDS: { desc: 'Lifetime of signed preview links.', example: '900' },
+  APP_PUBLIC_URL: { desc: 'Public base URL of the app; its host is reserved and cannot be registered as a customer domain.', example: 'https://app.example.com' },
+  APP_PUBLIC_CNAME_TARGET: { desc: 'Hostname customers point their CNAME at.', example: 'sites.example.com' },
+  CORS_ORIGINS: { desc: 'Comma-separated origins allowed to call /api cross-origin.', example: 'https://app.example.com' },
+  PLATFORM_ADMIN_EMAILS: { desc: 'Comma-separated emails of platform administrators (global templates, rate limit operations).', example: 'ops@example.com', security: 'Matched case-insensitively against the account email; protect those mailboxes.' },
+  TRUST_PROXY: { desc: 'Believe X-Forwarded-For (see TRUSTED_PROXY_HOPS). Turn on only behind a proxy you control; otherwise clients can forge their address and dodge per-IP limits.', example: 'true', security: 'Misconfiguring it either way breaks per-IP limits: off behind a proxy throttles everyone as one client, on without a proxy lets clients choose their IP.' },
+  WEB_DIST: { desc: 'Directory of the built web app to serve. Defaults to ../web/dist relative to the server.' },
+  ANTHROPIC_API_KEY: { desc: 'Enables the Anthropic provider for AI features. Unset = offline heuristic provider.', security: 'Secret. Prompts never contain it.' },
+  ANTHROPIC_MODEL: { desc: 'Model used by the Anthropic provider.' },
+  AI_DAILY_CAP: { desc: 'AI calls per workspace per UTC day (0 disables AI). Durable (database).', example: '50' },
+  AI_RATE_LIMIT_PER_MINUTE: { desc: 'AI calls per workspace per minute (policy `ai.minute`, each call costs 10 units).', example: '10' },
+  RATELIMIT_ENABLED: { desc: 'Master switch for the rate limiter. `false` admits everything (emergency use, benchmarks).', example: 'true', security: 'Disabling removes flood and credential-stuffing protection.' },
+  RATELIMIT_LEASE_FRACTION: { desc: 'Fraction of a token bucket a process pre-pays from Redis and spends locally (0 disables the local tier; max 0.5). Error bound in docs/RATE-LIMITING.md.', example: '0.1' },
+  IP_GUARD_PER_MINUTE: { desc: 'Policy `ip.global`: requests per client IP per minute across the whole app (burst = a quarter).', example: '1200' },
+  PUBLIC_PAGES_PER_MINUTE: { desc: 'Policy `public.page`: pages served directly by the origin on customer domains, per IP per minute.', example: '6000' },
+  API_USER_PER_MINUTE: { desc: 'Policy `api.read`: authenticated requests per user per minute (writes get half).', example: '600' },
+  API_WORKSPACE_PER_MINUTE: { desc: 'Policy `api.workspace`: requests per workspace per minute on the free plan (pro x5, business x20).', example: '600' },
+  EXPORT_CONCURRENCY: { desc: 'Policy `api.export`: concurrent CSV exports per workspace on the free plan (pro x2, business x4).', example: '2' },
+  EDGE_RESOLVE_PER_MINUTE: { desc: 'Policy `edge.resolve`: signed worker calls per minute (all arrive from few addresses).', example: '120000' },
+  TRUSTED_PROXY_HOPS: { desc: 'Reverse proxies that append to X-Forwarded-For; the client address is that many entries from the right.', example: '1' },
+  TRUST_CLOUDFLARE_RANGES: { desc: 'Believe CF-Connecting-IP when the TCP peer is inside Cloudflare\'s published ranges.', example: 'true' },
+  CF_IP_RANGES: { desc: 'Comma-separated CIDRs replacing the built-in Cloudflare range list.', example: '173.245.48.0/20,103.21.244.0/22' },
+  PUBLIC_EVENTS_PER_MINUTE: { desc: 'Policy `public.events`: beacon events per IP and funnel per minute.', example: '120' },
+  PUBLIC_FORMS_PER_MINUTE: { desc: 'Policies `public.forms` and `public.checkout`: posts per IP and funnel per minute.', example: '20' },
+  AUTH_ATTEMPTS_PER_MINUTE: { desc: 'Policy `auth.attempts`: register and login requests per IP per minute.', example: '10' },
+  WEBHOOK_MAX_ATTEMPTS: { desc: 'Delivery attempts before a webhook delivery is dead-lettered (30 s x 2^n backoff).', example: '6' },
+  DOMAIN_VERIFY_TIMEOUT_HOURS: { desc: 'Hours a pending domain keeps being re-checked before it is marked failed.', example: '72' },
+  EVENT_BUFFER_MS: { desc: 'Write-behind flush interval for analytics events (0 = write-through). A hard kill can lose this window.', example: '250' },
+  EVENT_BUFFER_MAX: { desc: 'Rows that force an early flush (backpressure for the caller).', example: '5000' },
+  REQUEST_TIMEOUT_MS: { desc: 'A handler running longer gets a 504 (the client is released; synchronous work cannot be interrupted).', example: '30000' },
+  EDGE_SHARED_SECRET: { desc: 'Shared with the Cloudflare Worker to sign /internal/edge/resolve (32+ characters). Unset = the endpoint refuses everything (fail closed).', example: '(32+ random characters)', security: 'Secret. Rotate on both sides together.' },
+  EDGE_SKEW_SECONDS: { desc: 'Accepted clock skew of edge signatures; also the replay window.', example: '120' },
+  CF_ORIGIN_SECRET: { desc: 'Header secret the Worker adds (`x-cf-origin-secret`) so the origin can trust CF-Connecting-IP.', example: '(16+ random characters)', security: 'Secret; anyone holding it can claim any client IP.' },
+  CF_API_TOKEN: { desc: 'Cloudflare API token (cache purge; custom hostnames when DOMAIN_PROVIDER=cloudflare).', security: 'Secret; scope it to the zone with Cache Purge and SSL and Certificates edit only.' },
+  CF_ZONE_ID: { desc: 'Cloudflare zone id used for purges and custom hostnames.' },
+  CF_API_BASE: { desc: 'Cloudflare API base URL (tests point it at a fake).', example: 'https://api.cloudflare.com/client/v4' },
+  DOMAIN_PROVIDER: { desc: '`manual` (DNS checks) or `cloudflare` (Cloudflare for SaaS custom hostnames).', example: 'manual' },
+  METRICS_TOKEN: { desc: 'Bearer token required to scrape /metrics. Empty = open.', security: 'Leave /metrics unreachable from the internet when empty.' },
+  ENABLE_WORKER: { desc: 'Run the in-process job worker (webhooks, domain checks, purges). With several replicas it is safe on all of them on PostgreSQL (`FOR UPDATE SKIP LOCKED`).', example: 'true' },
+  JOB_POLL_MS: { desc: 'Job queue poll interval.', example: '1000' },
+  LOG_LEVEL: { desc: 'debug, info, warn, error or silent. Logs are JSON lines.', example: 'info' },
+};

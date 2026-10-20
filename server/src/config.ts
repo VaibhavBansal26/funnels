@@ -25,7 +25,7 @@ const int = (def: number, min = 0, max = Number.MAX_SAFE_INTEGER) =>
     .transform((v) => (v === undefined || v === '' ? def : Number(v)))
     .pipe(z.number().int().min(min).max(max));
 
-const EnvSchema = z.object({
+export const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: int(3000, 1, 65535),
   HOST: z.string().default('0.0.0.0'),
