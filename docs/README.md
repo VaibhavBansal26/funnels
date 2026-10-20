@@ -6,6 +6,7 @@ Start with the [README](../README.md) for what this is and how to run it.
 
 | ...do this | read |
 |---|---|
+| deploy it for free (Render, GitHub-connected) | [DEPLOY.md](DEPLOY.md) |
 | understand the system, data model, data layer and locks | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | know why something is the way it is | [APPROACH.md](APPROACH.md), [adr/](adr/0001-stack.md) |
 | call the API | [API.md](API.md), [openapi.json](openapi.json) |
