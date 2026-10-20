@@ -35,7 +35,7 @@ const Issues = ({ issues }: { issues: string[] }) => (issues.length ? <ul role="
 export function BasicTrait({ trait }: TraitProps) {
   const type = trait.get('type');
   const label = trait.getLabel();
-  const id = `trait-${trait.getId()}`;
+  const id = `trait-${trait.getName()}`;
   const [error, setError] = useState('');
   if (type === 'checkbox') return <Check id={id} label={label} checked={!!trait.getValue()} onChange={(v) => trait.setValue(v)} />;
   if (type === 'select') {
@@ -75,8 +75,9 @@ export function ActionTrait({ editor, component, trait }: TraitProps) {
   const { env } = useBuilder();
   const a = val<Record<string, unknown>>(trait, { type: 'none' });
   const set = (next: Record<string, unknown>) => trait.setValue(next);
-  const anchors = editor.getWrapper()!.find('[id]').map((c) => String(c.getAttributes().id)).filter((id) => !/^(i[a-z0-9]{3,}|fnroot)$/.test(id) || true).slice(0, 80);
-  const popups = editor.getWrapper()!.findType('fn-popup').map((c) => String(c.getAttributes().id ?? '')).filter(Boolean);
+  // anchors a button can scroll to: ids the author set (auto-generated ids of GrapesJS are not stable and are skipped)
+  const anchors = [...new Set(editor.getWrapper()!.find('*').map((c) => String(c.getAttributes().id ?? '')).filter((id) => id && !/^i[a-z0-9]{3,4}$/.test(id) && id !== 'fnroot'))].slice(0, 80);
+  const popups = [...new Set(editor.getWrapper()!.findType('fn-popup').map((c) => String(c.getAttributes().id ?? '')).filter(Boolean))];
   void component;
   return (
     <div className="flex flex-col gap-2.5">

@@ -21,7 +21,7 @@ export function SettingsPanel() {
       <div className="flex items-center gap-2 border-b border-border p-3">
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-semibold">{c.getName()}</h3>
-          <p className="text-[0.75rem] text-muted">{TYPE_LABEL[type] ?? type}{multi > 1 ? ` · settings apply to the first of ${multi} selected` : ''}</p>
+          <p className="text-[0.75rem] text-muted">{TYPE_LABEL[type] && TYPE_LABEL[type] !== c.getName() ? TYPE_LABEL[type] : 'Element'}{multi > 1 ? ` · settings apply to the first of ${multi} selected` : ''}</p>
         </div>
         {TEXTY.has(type) && type !== 'fn-tab-btn' ? <Button size="sm" variant="soft" onClick={() => editor.runCommand('fn:ai-rewrite')}><Sparkles /> Rewrite</Button> : null}
       </div>
@@ -31,9 +31,9 @@ export function SettingsPanel() {
           const Custom = TRAIT_EDITORS[String(t.get('type'))];
           const props = { editor, component: c, trait: t };
           return Custom ? (
-            <Section key={t.getId()} title={t.getLabel()} id={String(t.get('type'))}>{Custom(props)}</Section>
+            <Section key={`${String(t.get("type"))}:${t.getName()}`} title={t.getLabel()} id={String(t.get('type'))}>{Custom(props)}</Section>
           ) : (
-            <BasicTrait key={t.getId()} {...props} />
+            <BasicTrait key={`${String(t.get("type"))}:${t.getName()}`} {...props} />
           );
         })}
       </div>

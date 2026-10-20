@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { PageThumb } from '../components/FunnelThumb';
 import { Link } from 'react-router';
 import { api, errorMessage } from '../api/client';
 import { keys, useMutate } from '../api/hooks';
@@ -83,7 +84,7 @@ export function StepsTab({ funnel }: { funnel: FunnelDetail }) {
         <button type="button" className="btn primary" onClick={() => setAdding(true)}>Add step</button>
       </div>
       <ErrorBanner error={reorder.error ?? dup.error ?? del.error ?? defaults.error} />
-      <ol style={{ listStyle: 'none', padding: 0, margin: 0 }} aria-label="Funnel steps">
+      <ol className="m-0 list-none p-0" aria-label="Funnel steps">
         {order.map((s, i) => (
           <li
             key={s.id}
@@ -105,11 +106,12 @@ export function StepsTab({ funnel }: { funnel: FunnelDetail }) {
             onDrop={(e) => { e.preventDefault(); if (dragging !== null && dragging !== i) move(dragging, i); setDragging(null); setOver(null); }}
           >
             <span className="step-index" aria-hidden="true">{i + 1}</span>
+            <PageThumb funnelId={funnel.id} stepId={s.id} title={s.name} className="hidden sm:block" />
             <div className="grow">
               <strong>{s.name}</strong> {s.isDomainHome ? <span className="badge ok">Domain home</span> : null} {s.isDomain404 ? <span className="badge warn">Domain 404</span> : null}
               <div className="muted small mono">{s.path}</div>
             </div>
-            <div className="row" style={{ flexWrap: 'nowrap' }}>
+            <div className="row justify-end">
               <button type="button" className="btn sm icon" aria-label={`Move ${s.name} up`} disabled={i === 0} onClick={() => move(i, i - 1)}>↑</button>
               <button type="button" className="btn sm icon" aria-label={`Move ${s.name} down`} disabled={i === order.length - 1} onClick={() => move(i, i + 1)}>↓</button>
               <Link className="btn sm primary" to={`/funnels/${funnel.id}/builder/${s.id}`}>Edit page</Link>

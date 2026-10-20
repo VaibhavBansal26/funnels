@@ -72,7 +72,8 @@ export function installToolbar(editor: Editor): () => void {
     if (c.get('removable') !== false) items.push({ id: 'fn-delete', label: TOOLBAR_ICONS.remove(), command: 'tlb-delete', attributes: { title: 'Delete (Del)', 'aria-label': 'Delete' } });
     return items;
   };
-  const onSelect = (c: Component) => c.set('toolbar', build(c) as never);
+  // The toolbar is view state: setting it must not create an undo step or mark the page as changed.
+  const onSelect = (c: Component) => editor.UndoManager.skip(() => c.set('toolbar', build(c) as never));
   editor.on('component:selected', onSelect);
   return () => void editor.off('component:selected', onSelect);
 }

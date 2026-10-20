@@ -160,8 +160,8 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
       'fn:help': () => setDialog('shortcuts'),
       'fn:ai-rewrite': (c: Component) => c && setAiTarget(c),
       'fn:rte-link': (s: { rte: never; range: Range | null; href: string }) => setLink(s),
-      'run:core:preview': () => setPreviewing(true),
-      'stop:core:preview': () => setPreviewing(false),
+      'command:run:core:preview': () => setPreviewing(true),
+      'command:stop:core:preview': () => setPreviewing(false),
       'change:device': () => setDevice((DEVICES.find((d) => d.id === editor.getDevice())?.id ?? 'desktop') as DeviceId),
       'fn:tab-activate': (btn: Component) => {
         const nav = btn.parent();

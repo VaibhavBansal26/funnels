@@ -22,9 +22,9 @@ export interface FnEditor extends Editor {
 }
 
 /** Creates the GrapesJS editor with every piece of its default chrome switched off: the host app renders blocks, layers, styles, traits and assets itself. */
-export function createEditor(container: HTMLElement, env: BuilderEnv): FnEditor {
+export function createEditor(container: HTMLElement | null, env: BuilderEnv, opts: { headless?: boolean } = {}): FnEditor {
   const editor = grapesjs.init({
-    container,
+    ...(opts.headless ? { headless: true } : { container: container! }),
     height: '100%',
     width: 'auto',
     fromElement: false,

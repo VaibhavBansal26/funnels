@@ -149,3 +149,4 @@ export const fmtMoney = (n: number, currency = 'USD') => {
 export const fmtNum = (n: number) => new Intl.NumberFormat().format(n);
 export const fmtPct = (n: number) => `${n.toFixed(2)}%`;
 export const fmtDate = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+export const fmtDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });

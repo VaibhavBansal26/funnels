@@ -42,7 +42,7 @@ body{margin:0;background:var(--fn-bg);color:var(--fn-text);font-family:var(--fn-
 :where(.fn-row.fn-ratio-2-1>.fn-column:first-child){flex-grow:2}
 :where(.fn-row.fn-ratio-1-3>.fn-column:nth-child(2)){flex-grow:3}
 :where(.fn-row.fn-ratio-3-1>.fn-column:first-child){flex-grow:3}
-@media(max-width:640px){.fn-row:not(.fn-keep)>.fn-column{flex:1 1 100%!important;max-width:100%!important}:where(.fn-section.fn-pad-lg){padding:56px 0}:where(.fn-section.fn-pad-xl){padding:72px 0}}
+@media(max-width:640px){.fn-row:not(.fn-keep)>.fn-column{flex:1 1 100%!important;max-width:100%!important}:where(.fn-countdown){gap:8px}:where(.fn-countdown>div){min-width:62px;padding:10px 8px}:where(.fn-countdown strong){font-size:1.6rem}:where(.fn-section.fn-pad-lg){padding:56px 0}:where(.fn-section.fn-pad-xl){padding:72px 0}}
 :where(.fn-al-left){text-align:left}:where(.fn-al-center){text-align:center}:where(.fn-al-right){text-align:right}
 :where(.fn-column>.fn-btn,.fn-column>.fn-img,.fn-column>.fn-video){align-self:flex-start}
 :where(.fn-column>.fn-btn.fn-al-center,.fn-column>.fn-img.fn-al-center,.fn-section.fn-align-center .fn-column>.fn-btn,.fn-section.fn-align-center .fn-column>.fn-img){align-self:center}
@@ -101,6 +101,7 @@ body{margin:0;background:var(--fn-bg);color:var(--fn-text);font-family:var(--fn-
 :where(.fn-nav-links a){text-decoration:none;color:inherit;font-weight:500}
 :where(.fn-footer){padding:40px 24px;background:#0f172a;color:#cbd5e1;font-size:.92rem;text-align:center}
 :where(.fn-footer a){color:#e2e8f0}
+:where(.fn-footer .fn-nav-links){justify-content:center;margin-bottom:14px}
 :where(.fn-popup){display:none;position:fixed;inset:0;z-index:100;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.62)}
 :where(.fn-popup.fn-open){display:flex}
 :where(.fn-popup-dialog){position:relative;background:var(--fn-card);color:var(--fn-card-ink);border-radius:calc(var(--fn-radius) + 4px);padding:32px;max-width:520px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 30px 80px -20px rgba(0,0,0,.5)}

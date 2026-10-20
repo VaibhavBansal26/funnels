@@ -64,3 +64,19 @@ export function FunnelThumb({ thumb, funnelId, small, className }: { thumb: { he
     </div>
   );
 }
+
+/** One step's page as a small real preview (steps list). Same loading and fallback rules as the funnel thumbnail. */
+export function PageThumb({ funnelId, stepId, title, className }: { funnelId: string; stepId: string; title: string; className?: string }) {
+  const [ref, near] = useNearViewport<HTMLDivElement>();
+  const q = useQuery({
+    queryKey: ['page-html', stepId],
+    enabled: near,
+    queryFn: () => api.get<{ html: string; checksum: string }>(`/api/funnels/${funnelId}/steps/${stepId}/html`),
+    staleTime: 60_000,
+  });
+  return (
+    <div ref={ref} className={cn('aspect-[16/10] w-28 flex-none overflow-hidden rounded-md border border-border bg-surface-2', className)}>
+      {q.data ? <ScaledPage html={q.data.html} title={`Preview of ${title}`} className="rounded-none" /> : null}
+    </div>
+  );
+}

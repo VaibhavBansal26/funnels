@@ -1,13 +1,14 @@
+import { Copy, ExternalLink, LayoutGrid, MoreHorizontal, Pencil, Plus, Rows3, Search, Tag, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { api } from '../api/client';
+import { api, errorMessage } from '../api/client';
 import { useFunnelFilters, useFunnels, useMutate, useTags, keys } from '../api/hooks';
 import type { FunnelSummary } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { FunnelThumb } from '../components/FunnelThumb';
 import { useToast } from '../components/Toasts';
-import { ConfirmDialog, Empty, ErrorBanner, fmtDate, fmtMoney, fmtNum, Loading, Modal, Pager, StatusBadge } from '../components/ui';
-import { errorMessage } from '../api/client';
+import { ConfirmDialog, Empty, ErrorBanner, fmtDate, fmtDay, fmtMoney, fmtNum, Loading, Modal, Pager, StatusBadge } from '../components/ui';
+import { Button, Card, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input } from '../ui';
 
 function useDebounced<T>(value: T, ms = 300): T {
   const [v, setV] = useState(value);
@@ -31,23 +32,23 @@ function BulkTagDialog({ ids, onClose }: { ids: string[]; onClose: () => void })
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn primary" disabled={m.isPending || (!add.length && !remove.length)} onClick={() => m.mutate(undefined, { onSuccess: () => { toast.push('Tags updated', 'ok'); onClose(); } })}>Apply</button>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={m.isPending || (!add.length && !remove.length)} onClick={() => m.mutate(undefined, { onSuccess: () => { toast.push('Tags updated', 'ok'); onClose(); } })}>Apply</Button>
         </>
       }
     >
       <ErrorBanner error={m.error} />
       {tags.isLoading ? <Loading rows={2} /> : null}
       {tags.data?.data.length === 0 ? <Empty title="No tags yet">Create tags in a funnel's settings tab, then use them here.</Empty> : null}
-      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-        <fieldset style={{ border: 0, padding: 0 }}>
-          <legend className="label">Add tags</legend>
+      <div className="grid grid-cols-2 gap-4">
+        <fieldset className="m-0 border-0 p-0">
+          <legend className="mb-1 text-sm font-semibold">Add tags</legend>
           {tags.data?.data.map((t) => (
             <label key={t.id} className="check"><input type="checkbox" checked={add.includes(t.id)} onChange={() => toggle(add, setAdd, t.id)} />{t.name}</label>
           ))}
         </fieldset>
-        <fieldset style={{ border: 0, padding: 0 }}>
-          <legend className="label">Remove tags</legend>
+        <fieldset className="m-0 border-0 p-0">
+          <legend className="mb-1 text-sm font-semibold">Remove tags</legend>
           {tags.data?.data.map((t) => (
             <label key={t.id} className="check"><input type="checkbox" checked={remove.includes(t.id)} onChange={() => toggle(remove, setRemove, t.id)} />{t.name}</label>
           ))}
@@ -67,12 +68,12 @@ export function FunnelsPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [tagging, setTagging] = useState(false);
   const [deleting, setDeleting] = useState<FunnelSummary | null>(null);
-  const view = sp.get('view') === 'cards' ? 'cards' : 'table';
+  const view = sp.get('view') === 'table' ? 'table' : 'cards';
 
   const set = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(sp);
     for (const [k, v] of Object.entries(patch)) (v ? next.set(k, v) : next.delete(k));
-    if (!('page' in patch)) next.delete('page');
+    if (!('page' in patch) && !('view' in patch)) next.delete('page');
     setSp(next, { replace: true });
   };
   useEffect(() => {
@@ -89,68 +90,120 @@ export function FunnelsPage() {
   const rows = q.data?.data ?? [];
   const filtered = !!(query.search || query.status || query.tags || query.domain_connected);
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const total = (filters.data?.status.live ?? 0) + (filters.data?.status.test ?? 0);
+  const duplicate = (f: FunnelSummary) => dup.mutate(f.id, { onSuccess: (n) => toast.push(`Created "${n.name}"`, 'ok'), onError: (e) => toast.push(errorMessage(e), 'error') });
+
+  const actions = (f: FunnelSummary) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`More actions for ${f.name}`}><MoreHorizontal /></Button></DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => nav(`/funnels/${f.id}`)}><ExternalLink /> Open</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => duplicate(f)}><Copy /> Duplicate</DropdownMenuItem>
+        {can('funnels:delete') ? <><DropdownMenuSeparator /><DropdownMenuItem danger onSelect={() => setDeleting(f)}><Trash2 /> Move to trash</DropdownMenuItem></> : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  const status = sp.get('status') ?? '';
 
   return (
-    <div className="stack">
-      <div className="row between">
-        <h1>My Funnels</h1>
-        <Link className="btn primary" to="/funnels/new">New funnel</Link>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="!mb-0">My Funnels</h1>
+          <p className="small muted m-0">{total} funnel{total === 1 ? '' : 's'} · {filters.data?.status.live ?? 0} live</p>
+        </div>
+        <Link className="btn primary" to="/funnels/new"><Plus className="size-4" aria-hidden="true" /> New funnel</Link>
       </div>
 
-      <form className="filters" role="search" aria-label="Filter funnels" onSubmit={(e) => e.preventDefault()}>
-        <div className="field"><label htmlFor="f-search">Search by name</label><input id="f-search" className="input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search funnels" /></div>
-        <div className="field">
-          <label htmlFor="f-status">Status</label>
-          <select id="f-status" className="input" value={sp.get('status') ?? ''} onChange={(e) => set({ status: e.target.value || null })}>
-            <option value="">All ({(filters.data?.status.live ?? 0) + (filters.data?.status.test ?? 0)})</option>
-            <option value="live">Live ({filters.data?.status.live ?? 0})</option>
-            <option value="test">Test ({filters.data?.status.test ?? 0})</option>
-          </select>
+      <form className="flex flex-wrap items-center gap-2.5" role="search" aria-label="Filter funnels" onSubmit={(e) => e.preventDefault()}>
+        <div className="relative w-full sm:w-64">
+          <label htmlFor="f-search" className="sr-only">Search by name</label>
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+          <Input id="f-search" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search funnels" />
         </div>
-        <div className="field">
-          <label htmlFor="f-tag">Tag</label>
+        <div role="group" aria-label="Status" className="inline-flex overflow-hidden rounded-md border border-border-strong bg-surface shadow-sm">
+          {[{ v: '', l: 'All', n: total }, { v: 'live', l: 'Live', n: filters.data?.status.live ?? 0 }, { v: 'test', l: 'Test', n: filters.data?.status.test ?? 0 }].map((o) => (
+            <button key={o.v} type="button" aria-pressed={status === o.v} onClick={() => set({ status: o.v || null })} className={cn('min-h-9 px-3 text-sm font-semibold text-muted hover:bg-surface-2', status === o.v && 'bg-primary-soft text-primary')}>{o.l} <span className="font-normal opacity-80">{o.n}</span></button>
+          ))}
+        </div>
+        <div>
+          <label htmlFor="f-tag" className="sr-only">Tag</label>
           <select id="f-tag" className="input" value={sp.get('tags') ?? ''} onChange={(e) => set({ tags: e.target.value || null })}>
             <option value="">Any tag</option>
             {tags.data?.data.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.count ?? 0})</option>)}
           </select>
         </div>
-        <div className="field">
-          <label htmlFor="f-domain">Domain</label>
+        <div>
+          <label htmlFor="f-domain" className="sr-only">Domain</label>
           <select id="f-domain" className="input" value={sp.get('domain_connected') ?? ''} onChange={(e) => set({ domain_connected: e.target.value || null })}>
-            <option value="">Any</option>
-            <option value="true">Connected</option>
-            <option value="false">Not connected</option>
+            <option value="">Any domain state</option>
+            <option value="true">Domain connected</option>
+            <option value="false">No domain</option>
           </select>
         </div>
-        <div className="field">
-          <label htmlFor="f-sort">Sort by</label>
+        <div>
+          <label htmlFor="f-sort" className="sr-only">Sort by</label>
           <select id="f-sort" className="input" value={query.sort} onChange={(e) => set({ sort: e.target.value })}>
             <option value="updated">Recently updated</option>
             <option value="created">Recently created</option>
             <option value="name">Name</option>
           </select>
         </div>
-        <div className="row" role="group" aria-label="View">
-          <button type="button" className="btn sm" aria-pressed={view === 'table'} onClick={() => set({ view: null })}>Table</button>
-          <button type="button" className="btn sm" aria-pressed={view === 'cards'} onClick={() => set({ view: 'cards' })}>Cards</button>
+        <div className="ml-auto inline-flex overflow-hidden rounded-md border border-border-strong bg-surface shadow-sm" role="group" aria-label="View">
+          <button type="button" aria-label="Cards" aria-pressed={view === 'cards'} onClick={() => set({ view: null })} className={cn('grid size-9 place-items-center text-muted hover:bg-surface-2', view === 'cards' && 'bg-primary-soft text-primary')}><LayoutGrid className="size-4" /></button>
+          <button type="button" aria-label="Table" aria-pressed={view === 'table'} onClick={() => set({ view: 'table' })} className={cn('grid size-9 place-items-center text-muted hover:bg-surface-2', view === 'table' && 'bg-primary-soft text-primary')}><Rows3 className="size-4" /></button>
         </div>
       </form>
 
       {selected.length ? (
-        <div className="alert row between" role="status">
+        <div className="alert row between !mb-0" role="status">
           <span>{selected.length} selected</span>
-          <span className="row"><button type="button" className="btn sm" onClick={() => setTagging(true)}>Tag selected</button><button type="button" className="btn sm ghost" onClick={() => setSelected([])}>Clear</button></span>
+          <span className="row"><Button size="sm" onClick={() => setTagging(true)}><Tag /> Tag selected</Button><Button size="sm" variant="ghost" onClick={() => setSelected([])}>Clear</Button></span>
         </div>
       ) : null}
 
       <ErrorBanner error={q.error} onRetry={() => void q.refetch()} />
       {q.isLoading ? <Loading /> : null}
       {q.data && rows.length === 0 ? (
-        <div className="card">
-          <Empty title={filtered ? 'No funnels match these filters' : 'No funnels yet'} action={filtered ? <button type="button" className="btn" onClick={() => { setSearch(''); setSp(new URLSearchParams(), { replace: true }); }}>Clear filters</button> : <Link className="btn primary" to="/funnels/new">Create your first funnel</Link>}>
-            {filtered ? 'Try a different search or clear the filters.' : 'Start from a template, let AI draft one, or build from scratch.'}
-          </Empty>
-        </div>
+        <Empty title={filtered ? 'No funnels match these filters' : 'No funnels yet'} action={filtered ? <Button onClick={() => { setSearch(''); setSp(new URLSearchParams(), { replace: true }); }}>Clear filters</Button> : <Link className="btn primary" to="/funnels/new">Create your first funnel</Link>}>
+          {filtered ? 'Try a different search or clear the filters.' : 'Start from a template, let AI draft one, or build from scratch.'}
+        </Empty>
+      ) : null}
+
+      {rows.length && view === 'cards' ? (
+        <>
+          <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 19rem), 1fr))' }}>
+            {rows.map((f) => (
+              <Card key={f.id} className="group/card flex flex-col overflow-hidden transition-shadow hover:shadow-pop" aria-label={f.name} role="article">
+                <Link to={`/funnels/${f.id}`} tabIndex={-1} aria-hidden="true" className="relative block border-b border-border bg-surface-2">
+                  <FunnelThumb thumb={f.thumbnail} funnelId={f.id} className="rounded-none border-0" />
+                  <span className="pointer-events-none absolute inset-0 bg-primary/0 transition-colors group-hover/card:bg-primary/5" />
+                </Link>
+                <div className="flex flex-1 flex-col gap-2.5 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="!mb-0 min-w-0 text-[0.98rem] leading-snug"><Link to={`/funnels/${f.id}`} className="text-fg no-underline hover:text-primary">{f.name}</Link></h3>
+                    <StatusBadge status={f.status} />
+                  </div>
+                  <p className="small muted !mb-0 truncate">{f.domain ? f.domain.hostname : 'No domain connected'} · updated {fmtDay(f.updatedAt)}</p>
+                  {f.tags.length ? <div className="flex flex-wrap gap-1">{f.tags.map((t) => <span key={t.id} className="tag-chip">{t.name}</span>)}</div> : null}
+                  <dl className="m-0 mt-auto grid grid-cols-4 gap-2 border-t border-border pt-3 text-center">
+                    {[['Visits', fmtNum(f.stats.visits)], ['Opt-ins', fmtNum(f.stats.optins)], ['Orders', fmtNum(f.stats.orders)], ['Sales', fmtMoney(f.stats.sales)]].map(([l, v]) => (
+                      <div key={l}><dd className="m-0 text-sm font-bold tabular-nums">{v}</dd><dt className="text-[0.7rem] text-muted">{l}</dt></div>
+                    ))}
+                  </dl>
+                  <div className="flex items-center gap-1.5 border-t border-border pt-3">
+                    <label className="check small !font-normal"><input type="checkbox" checked={selected.includes(f.id)} onChange={() => toggle(f.id)} aria-label={`Select ${f.name}`} />Select</label>
+                    <span className="ml-auto flex items-center gap-1.5">
+                      <Button size="sm" onClick={() => nav(`/funnels/${f.id}`)}><Pencil /> Open</Button>
+                      {actions(f)}
+                    </span>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+          {q.data ? <Pager p={q.data.pagination} onPage={(n) => set({ page: String(n) })} /> : null}
+        </>
       ) : null}
 
       {rows.length && view === 'table' ? (
@@ -177,34 +230,13 @@ export function FunnelsPage() {
                   <td><StatusBadge status={f.status} /></td>
                   <td className="num">{f.stepCount}</td><td className="num">{fmtNum(f.stats.visits)}</td><td className="num">{fmtNum(f.stats.optins)}</td><td className="num">{fmtNum(f.stats.orders)}</td><td className="num">{fmtMoney(f.stats.sales)}</td>
                   <td className="small muted">{fmtDate(f.updatedAt)}</td>
-                  <td>
-                    <span className="row" style={{ flexWrap: 'nowrap' }}>
-                      <button type="button" className="btn sm" onClick={() => dup.mutate(f.id, { onSuccess: (n) => { toast.push(`Created "${n.name}"`, 'ok'); }, onError: (e) => toast.push(errorMessage(e), 'error') })}>Duplicate</button>
-                      {can('funnels:delete') ? <button type="button" className="btn sm danger" aria-label={`Delete ${f.name}`} onClick={() => setDeleting(f)}>Delete</button> : null}
-                    </span>
-                  </td>
+                  <td><span className="row" style={{ flexWrap: 'nowrap' }}><Button size="sm" onClick={() => duplicate(f)}>Duplicate</Button>{can('funnels:delete') ? <Button size="sm" variant="danger" aria-label={`Delete ${f.name}`} onClick={() => setDeleting(f)}>Delete</Button> : null}</span></td>
                 </tr>
               ))}
             </tbody>
           </table>
           {q.data ? <Pager p={q.data.pagination} onPage={(n) => set({ page: String(n) })} /> : null}
         </div>
-      ) : null}
-
-      {rows.length && view === 'cards' ? (
-        <>
-          <div className="grid cards">
-            {rows.map((f) => (
-              <article key={f.id} className="card flex flex-col gap-3 transition-shadow hover:shadow-pop" aria-label={f.name}>
-                <FunnelThumb thumb={f.thumbnail} funnelId={f.id} />
-                <div className="row between"><h3><Link to={`/funnels/${f.id}`}>{f.name}</Link></h3><StatusBadge status={f.status} /></div>
-                <div className="flex justify-between text-[0.85rem] text-muted"><span>{f.stepCount} steps</span><span>{fmtNum(f.stats.visits)} visits</span><span>{fmtNum(f.stats.optins)} opt-ins</span><span>{fmtMoney(f.stats.sales)}</span></div>
-                <div className="row"><label className="check small"><input type="checkbox" checked={selected.includes(f.id)} onChange={() => toggle(f.id)} />Select</label><span className="right row"><button type="button" className="btn sm" onClick={() => nav(`/funnels/${f.id}`)}>Open</button><button type="button" className="btn sm" onClick={() => dup.mutate(f.id)}>Duplicate</button></span></div>
-              </article>
-            ))}
-          </div>
-          {q.data ? <Pager p={q.data.pagination} onPage={(n) => set({ page: String(n) })} /> : null}
-        </>
       ) : null}
 
       {tagging ? <BulkTagDialog ids={selected} onClose={() => { setTagging(false); setSelected([]); }} /> : null}
