@@ -74,6 +74,13 @@ export function createEditor(container: HTMLElement | null, env: BuilderEnv, opt
       body.id = 'fnroot';
       body.classList.add('fn-page');
     }
+    // Ctrl/Cmd+S while typing inside the page: the shortcut layer ignores key presses in editable text, and the browser would offer to download the page.
+    el.contentWindow?.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        editor.trigger('fn:save');
+      }
+    });
   });
   // A block dropped from the panel becomes the selection, so the inspector is ready for it (the same as inserting it with a click).
   editor.on('block:drag:stop', (c: Component | undefined) => {

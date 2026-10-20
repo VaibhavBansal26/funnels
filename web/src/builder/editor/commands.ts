@@ -19,7 +19,8 @@ function moveBy(editor: Editor, delta: -1 | 1): boolean {
   const i = siblings.indexOf(sel);
   const to = i + delta;
   if (to < 0 || to >= siblings.length) return false;
-  sel.move(parent, { at: to });
+  // `at` is an index in the current list (insertBefore semantics): one place down is before the sibling after next.
+  sel.move(parent, { at: delta === 1 ? to + 1 : to });
   editor.select(sel);
   return true;
 }
@@ -83,20 +84,66 @@ export function installRte(editor: Editor): void {
   const rte = editor.RichTextEditor;
   for (const a of [...rte.getAll()].map((x) => x.name)) rte.remove(a);
   const mk = (name: string, title: string, icon: IconKey, command: string) =>
-    rte.add(name, { icon: svgIcon(icon), attributes: { title, 'aria-label': title }, result: (r: any) => r.exec(command), state: (r: any, doc: Document) => (r && r.doc?.queryCommandState?.(command) ? 1 : 0) } as never);
+    rte.add(name, { icon: svgIcon(icon), attributes: { title, 'aria-label': title, role: 'button', tabindex: '0' }, result: (r: any) => r.exec(command), state: (r: any, doc: Document) => (r && r.doc?.queryCommandState?.(command) ? 1 : 0) } as never);
   mk('bold', 'Bold (Ctrl+B)', 'bold', 'bold');
   mk('italic', 'Italic (Ctrl+I)', 'italic', 'italic');
   mk('underline', 'Underline (Ctrl+U)', 'underline', 'underline');
   mk('strikethrough', 'Strikethrough', 'strike', 'strikeThrough');
   rte.add('link', {
     icon: svgIcon('link'),
-    attributes: { title: 'Link', 'aria-label': 'Link' },
+    attributes: { title: 'Link', 'aria-label': 'Link', role: 'button', tabindex: '0' },
     result: (r: any) => {
       const sel = r.selection?.() as Selection | null;
       const anchor = sel?.anchorNode?.parentElement?.closest('a') ?? null;
-      editor.trigger('fn:rte-link', { rte: r, range: sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null, href: anchor?.getAttribute('href') ?? '' });
+      const comp = editor.getSelected();
+      const el = comp?.getEl() as HTMLElement | undefined;
+      const range = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+      // The dialog takes focus, which ends inline editing; so the selection is remembered as character offsets and rebuilt when the link is applied.
+      let span: [number, number] | null = null;
+      if (el && range && el.contains(range.commonAncestorContainer)) {
+        const pre = el.ownerDocument.createRange();
+        pre.selectNodeContents(el);
+        pre.setEnd(range.startContainer, range.startOffset);
+        const start = pre.toString().length;
+        span = [start, start + range.toString().length];
+      }
+      editor.trigger('fn:rte-link', { href: anchor?.getAttribute('href') ?? '', apply: (href: string | null) => { if (comp && span) void applyLink(editor, comp, span, href); } });
     },
     state: (_r: any, doc: Document) => (doc.getSelection()?.anchorNode?.parentElement?.closest('a') ? 1 : 0),
   } as never);
   mk('clear', 'Clear formatting', 'clear', 'removeFormat');
+}
+
+/** Puts a link (or removes it, with null) on a character range of a text component: re-enters inline editing, selects the range again, applies the browser command and commits. */
+async function applyLink(editor: Editor, comp: Component, [from, to]: [number, number], href: string | null): Promise<void> {
+  const view = comp.getView() as unknown as { el: HTMLElement; rteEnabled?: boolean; onActive(): Promise<void> | void; disableEditing(): Promise<void> | void } | undefined;
+  if (!view?.el) return;
+  if (!view.rteEnabled) await view.onActive();
+  const el = view.el;
+  const doc = el.ownerDocument;
+  const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const range = doc.createRange();
+  let pos = 0;
+  let started = false;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const len = (n.textContent ?? '').length;
+    if (!started && from <= pos + len) { range.setStart(n, from - pos); started = true; }
+    if (started && to <= pos + len) { range.setEnd(n, to - pos); break; }
+    pos += len;
+  }
+  if (!started) return;
+  el.focus();
+  const sel = doc.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+  if (href) doc.execCommand('createLink', false, href);
+  else doc.execCommand('unlink');
+  await view.disableEditing();
+  editor.select(comp);
+}
+
+/** Ends inline text editing, so that what the author has typed is in the page model (it is only synced when the editing session closes). Call before saving. */
+export async function commitEditing(editor: Editor): Promise<void> {
+  const view = (editor as unknown as { getEditing(): Component | undefined }).getEditing?.()?.getView() as unknown as { rteEnabled?: boolean; disableEditing(): Promise<void> | void } | undefined;
+  if (view?.rteEnabled) await view.disableEditing();
 }

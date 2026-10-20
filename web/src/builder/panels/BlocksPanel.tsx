@@ -1,6 +1,6 @@
 import type { Block, Component, Editor } from 'grapesjs';
 import { GripVertical, Search, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { keys, useCustomBlocks, useMutate } from '../../api/hooks';
 import { useAuth } from '../../auth/AuthContext';
@@ -82,7 +82,7 @@ export function BlocksPanel() {
   const [query, setQuery] = useState('');
   const saved = useCustomBlocks();
   const del = useMutate((id: string) => api.delete(`/api/blocks/${id}`), [keys.blocks]);
-  useEditorEvents(editor, 'block:add block:remove');
+  useEditorEvents(editor, 'block:add block:remove component:selected component:deselected'); // (selection too: "Save selection as block" depends on it)
 
   // "My blocks" (saved per workspace) live in the block manager next to the built-in library.
   useEffect(() => {
@@ -96,12 +96,12 @@ export function BlocksPanel() {
   }, [editor, saved.data]);
 
   const q = query.trim().toLowerCase();
-  const groups = useMemo(() => {
+  // Not memoised: the block list changes through editor events (saved blocks are added in an effect), and filtering ~50 blocks is cheap.
+  const groups = (() => {
     const all = editor.Blocks.getAll().models.filter((b) => !q || `${b.getLabel()} ${b.get('attributes')?.['data-keywords'] ?? ''} ${b.getCategoryLabel()}`.toLowerCase().includes(q));
     const order: string[] = [...BLOCK_CATEGORIES, MY];
     return order.map((c) => ({ c, blocks: all.filter((b) => b.getCategoryLabel() === c) })).filter((g) => g.blocks.length);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, q, saved.data]);
+  })();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" role="region" aria-label="Blocks">

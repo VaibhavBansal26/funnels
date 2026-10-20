@@ -15,7 +15,8 @@ export function exportComponent(editor: Editor, root: Component): Record<string,
     if (Object.keys(attrs).length) node.attributes = attrs;
     else delete node.attributes;
     const kids = comp.components().models;
-    ((node.components as Record<string, unknown>[] | undefined) ?? []).forEach((n, i) => kids[i] && walk(kids[i]!, n));
+    const list = node.components;
+    if (Array.isArray(list)) (list as Record<string, unknown>[]).forEach((n, i) => kids[i] && walk(kids[i]!, n));
   };
   walk(root, json);
   return json;

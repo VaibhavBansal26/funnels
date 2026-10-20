@@ -53,8 +53,8 @@ export function LayersPanel() {
   };
   const commit = (moved: Component, target: Component, zone: Zone) => {
     const host = zone === 'inside' ? target : target.parent()!;
-    let at = zone === 'inside' ? host.components().length : host.components().indexOf(target) + (zone === 'after' ? 1 : 0);
-    if (moved.parent() === host && host.components().indexOf(moved) < at) at -= 1;
+    const at = zone === 'inside' ? host.components().length : host.components().indexOf(target) + (zone === 'after' ? 1 : 0);
+    // `at` is an index in the CURRENT list (like insertBefore); GrapesJS itself allows for the element leaving its old place when it stays in the same parent.
     moved.move(host, { at });
     editor.select(moved);
     if (zone === 'inside') editor.Layers.setOpen(host, true);

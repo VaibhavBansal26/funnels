@@ -217,19 +217,15 @@ export function AiRewriteDialog({ target, onClose }: { target: Component | null;
 }
 
 /* ---------- link dialog for the inline text editor ---------- */
-export function LinkDialog({ state, onClose }: { state: { rte: { exec(c: string, v?: string): void; doc: Document }; range: Range | null; href: string } | null; onClose: () => void }) {
+export function LinkDialog({ state, onClose }: { state: { href: string; apply: (href: string | null) => void } | null; onClose: () => void }) {
   const [href, setHref] = useState('');
   useEffect(() => setHref(state?.href ?? ''), [state]);
-  const restore = () => {
-    if (!state) return;
-    const sel = state.rte.doc.getSelection();
-    if (sel && state.range) { sel.removeAllRanges(); sel.addRange(state.range); }
-  };
   const ok = /^(https?:\/\/|mailto:|tel:|\/|#)\S*$/.test(href.trim());
+  const done = (h: string | null) => { state?.apply(h); onClose(); };
   return (
     <Dialog open={!!state} onOpenChange={(o) => !o && onClose()} title="Link" size="sm"
-      footer={<>{state?.href ? <Button variant="danger" onClick={() => { restore(); state.rte.exec('unlink'); onClose(); }}>Remove link</Button> : null}<Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!ok} onClick={() => { restore(); state!.rte.exec('createLink', href.trim()); onClose(); }}>Apply</Button></>}>
-      <form onSubmit={(e) => { e.preventDefault(); if (ok && state) { restore(); state.rte.exec('createLink', href.trim()); onClose(); } }}>
+      footer={<>{state?.href ? <Button variant="danger" onClick={() => done(null)}>Remove link</Button> : null}<Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!ok} onClick={() => done(href.trim())}>Apply</Button></>}>
+      <form onSubmit={(e) => { e.preventDefault(); if (ok) done(href.trim()); }}>
         <FormField label="Address" hint="https://…, mailto:…, tel:…, /path or #anchor">{(p) => <Input {...p} data-autofocus value={href} onChange={(e) => setHref(e.target.value)} placeholder="https://example.com" />}</FormField>
       </form>
     </Dialog>

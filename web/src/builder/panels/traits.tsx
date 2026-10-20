@@ -268,7 +268,7 @@ export function FaqTrait({ component }: TraitProps) {
         <div key={it.cid} className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2/50 px-2 py-1">
           <span className="min-w-0 flex-1 truncate text-[0.8rem]">{it.components().models[0]?.getEl()?.textContent || `Question ${i + 1}`}</span>
           <Button variant="ghost" size="icon-sm" aria-label="Move up" disabled={i === 0} onClick={() => it.move(component, { at: i - 1 })}><ArrowUp /></Button>
-          <Button variant="ghost" size="icon-sm" aria-label="Move down" disabled={i === items.length - 1} onClick={() => it.move(component, { at: i + 1 })}><ArrowDown /></Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Move down" disabled={i === items.length - 1} onClick={() => it.move(component, { at: i + 2 })}><ArrowDown /></Button>
           <Button variant="ghost" size="icon-sm" aria-label="Remove question" disabled={items.length <= 1} onClick={() => it.remove()}><Trash2 /></Button>
         </div>
       ))}

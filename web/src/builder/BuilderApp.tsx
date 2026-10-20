@@ -15,6 +15,7 @@ import { createEditor, DEVICES, type DeviceId, type FnEditor } from './editor/cr
 import { checkProject, loadDoc, readProject } from './editor/load';
 import { CanvasArea } from './panels/CanvasArea';
 import { Inspector } from './panels/Inspector';
+import { commitEditing } from './editor/commands';
 import { LeftRail, type LeftTab } from './panels/LeftRail';
 import { TopBar, type SaveState } from './panels/TopBar';
 import { useLayout } from './useBreakpoint';
@@ -42,12 +43,16 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
   const [dirty, setDirty] = useState(false);
   const [issues, setIssues] = useState<string[]>([]);
   const [notes, setNotes] = useState<string[]>([]);
-  const [leftTab, setLeftTab] = useState<LeftTab>('blocks');
+  // The rail stays on the tab the author chose when the page changes (switching pages from the Pages tab must not throw them back to Blocks).
+  const [leftTab, setLeftTabState] = useState<LeftTab>(() => {
+    try { const t = sessionStorage.getItem('funnels.builder.tab'); return t === 'layers' || t === 'pages' || t === 'assets' ? t : 'blocks'; } catch { return 'blocks'; }
+  });
+  const setLeftTab = (t: LeftTab) => { setLeftTabState(t); try { sessionStorage.setItem('funnels.builder.tab', t); } catch { /* private mode: the choice just is not remembered */ } };
   const [drawer, setDrawer] = useState<null | 'left' | 'right'>(null);
   const [dialog, setDialog] = useState<null | 'shortcuts' | 'settings' | 'history' | 'publish' | 'saveBlock'>(null);
   const [picker, setPicker] = useState<null | { pick: (url: string) => void }>(null);
   const [aiTarget, setAiTarget] = useState<Component | null>(null);
-  const [link, setLink] = useState<null | { rte: never; range: Range | null; href: string }>(null);
+  const [link, setLink] = useState<null | { href: string; apply: (href: string | null) => void }>(null);
   const [mobileNotice, setMobileNotice] = useState(true);
   const version = useRef(page.version);
   const savedSig = useRef('0:-1');
@@ -93,6 +98,7 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
   const doSave = useCallback(
     async (backup: boolean) => {
       if (!editor || saving.current) return;
+      await commitEditing(editor);
       const check = checkProject(editor);
       if (!check.ok) {
         setIssues(check.issues.map((i) => `${i.path}: ${i.message}`));
@@ -159,7 +165,7 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
       'fn:save': () => void saveRef.current(true),
       'fn:help': () => setDialog('shortcuts'),
       'fn:ai-rewrite': (c: Component) => c && setAiTarget(c),
-      'fn:rte-link': (s: { rte: never; range: Range | null; href: string }) => setLink(s),
+      'fn:rte-link': (s: { href: string; apply: (href: string | null) => void }) => setLink(s),
       'command:run:core:preview': () => setPreviewing(true),
       'command:stop:core:preview': () => setPreviewing(false),
       'change:device': () => setDevice((DEVICES.find((d) => d.id === editor.getDevice())?.id ?? 'desktop') as DeviceId),
@@ -263,7 +269,7 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
             {editor ? <SaveBlockDialog open={dialog === 'saveBlock'} onClose={() => setDialog(null)} editor={editor} /> : null}
             <AssetPickerDialog open={!!picker} onClose={() => setPicker(null)} onPick={(url) => picker?.pick(url)} />
             <AiRewriteDialog target={aiTarget} onClose={() => setAiTarget(null)} />
-            <LinkDialog state={link as never} onClose={() => setLink(null)} />
+            <LinkDialog state={link} onClose={() => setLink(null)} />
             <PublishDialog open={dialog === 'publish'} onClose={() => setDialog(null)} funnel={funnel} dirty={dirty} save={doSave} saveState={save} onPreview={() => void openPreview()} />
           </>,
         )}
