@@ -47,7 +47,7 @@ export async function store(env: Record<string, string> = {}) {
     stripe.pay(sid);
     return { sid, redirect: r.json.redirect as string };
   };
-  const orders = async () => h.deps.db.all<{ id: string; is_bump: number; is_upsell: number; provider: string; provider_ref: string; status: string; refunded_cents: number; amount_cents: number; payment_method_ref: string | null; provider_customer: string | null }>('SELECT * FROM orders ORDER BY created_at, id');
+  const orders = async () => h.deps.db.all<{ id: string; is_bump: number; is_upsell: number; provider: string; provider_ref: string; status: string; refunded_cents: number; disputed_lost_cents: number; amount_cents: number; payment_method_ref: string | null; provider_customer: string | null }>('SELECT * FROM orders ORDER BY created_at, id');
   return { ...w, t, acct: acct!, buy, pay, orders };
 }
 
