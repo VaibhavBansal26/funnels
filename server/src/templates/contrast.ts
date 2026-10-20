@@ -83,6 +83,7 @@ export function auditContrast(project: GjsProject): ContrastIssue[] {
     const explicitBg = colorsIn(bgValue);
     if (/url\(/.test(bgValue)) here = []; // an image: unknown, not audited
     else if (explicitBg.length) here = explicitBg;
+    if (style.color && !TEXT_TYPES.has(type)) t = { ...t, ink: style.color, muted: style.color }; // a box with an explicit colour passes it to its copy
     const ink = style.color ?? (has('fn-muted') ? t.muted : t.ink);
 
     const isHeading = type === 'fn-heading';

@@ -107,7 +107,7 @@ export function discs(pm: PageBuilder, colors: [string, string, string] = ['#93c
 }
 
 /** A square badge with a short glyph or emoji. `bg`/`fg` must contrast (the library test checks explicit colours). */
-export const iconBadge = (pm: PageBuilder, glyph: string, bg = PASTEL.blue, fg = '#1e3a8a', size = '48px'): GjsNode =>
+export const iconBadge = (pm: PageBuilder, glyph: string, bg: string = PASTEL.blue, fg = '#1e3a8a', size = '48px'): GjsNode =>
   pm.box([pm.text(glyph, { align: 'center' })], { name: 'Icon', style: { width: size, height: size, 'border-radius': '14px', background: bg, color: fg, display: 'flex', 'align-items': 'center', 'justify-content': 'center', 'font-weight': '800', 'font-size': '1.25rem', 'flex-shrink': '0' } });
 
 // ---- sections and rows ----------------------------------------------------------------------------------------------------------------------------------
