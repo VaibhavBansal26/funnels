@@ -75,3 +75,5 @@ export interface Backup { id: string; version: number; label: string; checksum: 
 export interface PageData { stepId: string; version: number; checksum: string; updatedAt: string; doc: unknown }
 
 export interface PathConflict { path: string; resolved_path: string; conflictsWith?: { funnelName: string; stepName: string } }
+
+export interface ApiKeyInfo { id: string; name: string; mode: 'live' | 'test'; prefix: string; scopes: ('analytics:read' | 'analytics:export')[]; ipAllowlist: string[]; createdAt: string; expiresAt: string | null; lastUsedAt: string | null; revokedAt: string | null }
