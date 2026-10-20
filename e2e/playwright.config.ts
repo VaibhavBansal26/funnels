@@ -33,6 +33,7 @@ export default defineConfig({
       APP_PUBLIC_URL: BASE,
       APP_PUBLIC_CNAME_TARGET: 'sites.e2e.test',
       LOG_LEVEL: 'error',
+      PLATFORM_ADMIN_EMAILS: 'admin@e2e.test', // NODE_ENV=production above, so administrators need two-factor authentication here
       TRUST_PROXY: 'true',
       IP_GUARD_PER_MINUTE: '1000000',
       PUBLIC_FORMS_PER_MINUTE: '100000',

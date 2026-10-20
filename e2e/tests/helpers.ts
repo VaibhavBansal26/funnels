@@ -3,8 +3,8 @@ import { expect, type Page } from '@playwright/test';
 let counter = 0;
 
 /** Registers a fresh user (unique email) through the UI and waits for the funnels list. */
-export async function register(page: Page, name = 'E2E Owner') {
-  const email = `e2e${Date.now()}${++counter}@example.test`;
+export async function register(page: Page, name = 'E2E Owner', fixedEmail?: string) {
+  const email = fixedEmail ?? `e2e${Date.now()}${++counter}@example.test`;
   await page.goto('/register');
   await page.getByLabel('Your name').fill(name);
   await page.getByLabel('Email').fill(email);

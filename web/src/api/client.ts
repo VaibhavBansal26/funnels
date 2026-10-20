@@ -1,4 +1,5 @@
 const TOKEN_KEY = 'funnels.token';
+const STASH_KEY = 'funnels.admin.stash';
 const REFRESH_KEY = 'funnels.refresh';
 
 const read = (k: string): string | null => {
@@ -20,8 +21,34 @@ export const tokenStore = {
       /* storage unavailable: the session lasts until reload */
     }
   },
+  /** Support access: an access token that has no refresh token. The administrator's own tokens wait in sessionStorage until the session ends. */
+  startSupport(token: string): void {
+    try {
+      sessionStorage.setItem(STASH_KEY, JSON.stringify({ token: read(TOKEN_KEY), refresh: read(REFRESH_KEY) }));
+      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.removeItem(REFRESH_KEY);
+    } catch {
+      /* storage unavailable: support access cannot start */
+    }
+  },
+  /** Puts the administrator's own tokens back. Returns false when there is nothing to restore. */
+  endSupport(): boolean {
+    try {
+      const raw = sessionStorage.getItem(STASH_KEY);
+      sessionStorage.removeItem(STASH_KEY);
+      if (!raw) return false;
+      const s = JSON.parse(raw) as { token: string | null; refresh: string | null };
+      if (!s.token) return false;
+      localStorage.setItem(TOKEN_KEY, s.token);
+      if (s.refresh) localStorage.setItem(REFRESH_KEY, s.refresh);
+      return true;
+    } catch {
+      return false;
+    }
+  },
   clear(): void {
     try {
+      sessionStorage.removeItem(STASH_KEY);
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(REFRESH_KEY);
     } catch {
@@ -145,6 +172,8 @@ export const api = {
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, { body }),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, { body }),
   delete: <T = void>(path: string, query?: RequestOptions['query']) => request<T>('DELETE', path, { query }),
+  /** DELETE that carries a JSON body (confirmations). */
+  deleteWith: <T = void>(path: string, body: unknown) => request<T>('DELETE', path, { body }),
 };
 
 /** Downloads an authenticated CSV endpoint through the browser. */

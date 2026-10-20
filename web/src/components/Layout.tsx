@@ -6,6 +6,7 @@ import { keys, useMutate, useNotifications } from '../api/hooks';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from './Toasts';
 import { Empty, fmtDate, Loading, Modal } from './ui';
+import { Notices } from './Notices';
 
 export function RequireAuth() {
   const { session, loading } = useAuth();
@@ -84,7 +85,7 @@ export function Layout() {
   const [open, setOpen] = useState(false);
   const notes = useNotifications();
   useNotificationStream();
-  const links: [string, string][] = [['/funnels', 'My Funnels'], ['/templates', 'Templates'], ['/domains', 'Domains'], ['/webhooks', 'Webhooks'], ['/trash', 'Trash'], ['/settings', 'Settings'], ['/audit', 'Audit log']];
+  const links: [string, string][] = [['/funnels', 'My Funnels'], ['/templates', 'Templates'], ['/domains', 'Domains'], ['/webhooks', 'Webhooks'], ['/trash', 'Trash'], ['/settings', 'Settings'], ['/audit', 'Audit log'], ['/admin', 'Admin']];
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -94,7 +95,7 @@ export function Layout() {
         </NavLink>
         <nav className="nav" aria-label="Main">
           {links
-            .filter(([to]) => (to === '/webhooks' ? can('webhooks:manage') : to === '/audit' ? can('audit:read') : true))
+            .filter(([to]) => (to === '/webhooks' ? can('webhooks:manage') : to === '/audit' ? can('audit:read') : to === '/admin' ? !!session?.platformAdmin : true))
             .map(([to, label]) => (
               <NavLink key={to} to={to}>{label}</NavLink>
             ))}
@@ -112,7 +113,8 @@ export function Layout() {
           <button type="button" className="btn sm" onClick={() => { logout(); nav('/login'); }}>Sign out</button>
         </header>
         <main className="content" id="main">
-          <Outlet />
+          <Notices />
+          {session?.workspace.suspended ? null : <Outlet />}
         </main>
       </div>
       {open ? <NotificationsDrawer onClose={() => setOpen(false)} /> : null}

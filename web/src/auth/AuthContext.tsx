@@ -14,6 +14,10 @@ interface AuthState {
   adopt(r: AuthResponse): void;
   logout(): void;
   refresh(): Promise<void>;
+  /** Switches this browser to a support session returned by the admin API (the administrator's own tokens are kept aside). */
+  startSupport(token: string): Promise<void>;
+  /** Ends the support session and returns to the administrator's own. */
+  endSupport(): Promise<void>;
   /** Whether the signed-in user's role holds this permission (the server enforces it too; this only decides what to show). */
   can(permission: string): boolean;
 }
@@ -60,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const accept = (r: AuthResponse) => {
     tokenStore.set(r.token, r.refreshToken);
     setSession({ user: r.user, workspace: r.workspace });
+    void refresh(); // the sign-in answer lacks what /me adds: administrator status, support access, suspension
   };
 
   const value = useMemo<AuthState>(
@@ -81,9 +86,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       logout,
       refresh,
+      async startSupport(token) {
+        tokenStore.startSupport(token);
+        qc.clear();
+        await refresh();
+      },
+      async endSupport() {
+        await api.post('/api/auth/logout').catch(() => undefined);
+        const restored = tokenStore.endSupport();
+        qc.clear();
+        if (!restored) tokenStore.clear();
+        await refresh();
+      },
       can: (permission) => !!session && session.user.permissions.includes(permission),
     }),
-    [session, loading, logout, refresh],
+    [session, loading, logout, refresh, qc],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

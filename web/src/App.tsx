@@ -18,6 +18,7 @@ const DomainsPage = lazy(() => import('./pages/DomainsPage').then((m) => ({ defa
 const WebhooksPage = lazy(() => import('./pages/WebhooksPage').then((m) => ({ default: m.WebhooksPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const AuditPage = lazy(() => import('./pages/AuditPage').then((m) => ({ default: m.AuditPage })));
+const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 const TrashPage = lazy(() => import('./pages/TrashPage').then((m) => ({ default: m.TrashPage })));
 
 const lazyEl = (el: React.ReactNode) => <Suspense fallback={<Loading />}>{el}</Suspense>;
@@ -45,6 +46,7 @@ export const routes: RouteObject[] = [
           { path: '/trash', element: lazyEl(<TrashPage />) },
           { path: '/settings', element: lazyEl(<SettingsPage />) },
           { path: '/audit', element: lazyEl(<AuditPage />) },
+          { path: '/admin/:tab?', element: lazyEl(<AdminPage />) },
           { path: '*', element: <div className="empty"><h3>Page not found</h3></div> },
         ],
       },

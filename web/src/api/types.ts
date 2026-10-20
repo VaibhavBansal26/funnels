@@ -1,8 +1,8 @@
 /** The legacy coarse role mirrored by the server; authorize with `permissions`. */
 export type Role = 'owner' | 'admin' | 'member';
 export interface User { id: string; email: string; name: string; role: Role; roleId: string; roleName: string; permissions: string[]; twoFactorEnabled: boolean; workspaceId: string }
-export interface Workspace { id: string; name: string; allowCustomScripts: boolean; createdAt: string }
-export interface Session { user: User; workspace: Workspace }
+export interface Workspace { id: string; name: string; allowCustomScripts: boolean; createdAt: string; suspended?: boolean; suspendedReason?: string | null }
+export interface Session { user: User; workspace: Workspace; platformAdmin?: boolean; impersonation?: { by: string; expiresAt: string | null } | null }
 export interface AuthResponse extends Session { token: string; refreshToken: string; expiresIn: number }
 /** The password step of a sign-in when two-factor authentication is on. */
 export interface TwoFactorChallenge { twoFactorRequired: true; challengeToken: string }

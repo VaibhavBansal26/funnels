@@ -135,7 +135,7 @@ Defaults, before environment overrides and plan multipliers (this table is gener
 | `analytics.export` | principal | apiKey | gcra | 10 / 1 min, burst 10 | open |  |  | Analytics API exports (NDJSON pages), per API key (default 10 per minute). |
 | `analytics.workspace` | workspace | workspace | gcra | 1200 / 1 min, burst 400 | open | free x1, pro x5, business x20 | lease | All analytics API traffic of one workspace, whatever the keys: a quota scaled by plan tier so many keys cannot multiply the load. |
 | `edge.resolve` | class | ip | gcra | 120000 / 1 min, burst 12000 | open |  | lease | Signed requests from the Cloudflare worker (all traffic arrives from few IPs, so the limit is high). |
-| `admin.platform` | principal | user | gcra | 120 / 1 min, burst 30 | closed |  |  | Platform admin routes, per user. |
+| `admin.platform` | principal | user | gcra | 600 / 1 min, burst 120 | closed |  |  | Platform admin routes, per user. Generous on purpose: one admin screen issues several reads, and the caller is an authenticated, two-factor administrator. |
 | `webhook.inbound` | class | ip | gcra | 6000 / 1 min, burst 1000 | open |  | lease | Reserved for inbound provider webhooks (Stripe, later). High limit, fails open so a limiter outage never drops payment events. |
 <!-- policies:end -->
 
