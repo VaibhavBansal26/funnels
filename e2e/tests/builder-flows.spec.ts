@@ -69,6 +69,9 @@ test('images: upload from the Images panel, then use it on an image block throug
   await page.getByRole('button', { name: 'Choose image' }).click();
   await page.getByRole('dialog', { name: 'Choose an image' }).getByRole('button', { name: 'Use dot.png' }).click();
   await expect.poll(() => readEditor(page, (ed) => ed.getSelected()?.getAttributes().src as string)).toMatch(/^\/uploads\//);
+  // AI alt text: a suggestion lands in the alt field (the built-in writer answers when no model key is configured)
+  await page.getByRole('button', { name: 'Suggest alt text' }).click();
+  await expect.poll(() => readEditor(page, (ed) => String(ed.getSelected()?.getAttributes().alt ?? ''))).not.toBe('');
 });
 
 test('links: select text, add a link in the text toolbar, and it is published as a plain anchor', async ({ page }) => {

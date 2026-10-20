@@ -1,3 +1,5 @@
+// The builder shell: editor lifecycle, dirty tracking, save (with backups), autosave, preview, publish and the drawers of the narrow layouts. New code. It offers the
+// operations the legacy builder had (save, backups and restore, preview, page settings) on this app's API; see docs/PROVENANCE.md for what was and was not carried over.
 import { useQueryClient } from '@tanstack/react-query';
 import type { Component } from 'grapesjs';
 import { Monitor, X } from 'lucide-react';

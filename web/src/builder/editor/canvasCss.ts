@@ -1,3 +1,5 @@
+// Adapted from the legacy builder (see docs/PROVENANCE.md): the editor-only canvas rules (selection and outline colours: sections green, rows and columns blue, elements
+// orange; dashed empty containers; the visibility classes shown dimmed), rewritten as one stylesheet next to the shared page CSS. No legacy stylesheet text is reproduced.
 import { BASE_CSS } from '@pagemodel';
 
 /**

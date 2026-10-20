@@ -2,9 +2,10 @@
 // CountdownSettings, CheckoutSettings with order bump and one-click upsell, FaqSettings, ImageSettings, VideoSettings, PopupSetting, ProgressBarSettings).
 // Here each is an editor for one typed GrapesJS trait; values are validated with the same schemas the server applies.
 import type { Component, Editor, Trait } from 'grapesjs';
-import { ArrowDown, ArrowUp, ImageIcon, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ImageIcon, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { CheckoutSchemaHint, FormPropsSchema, ProductPropsSchema, VideoPropsSchema, CountdownPropsSchema, parseVideoUrl, type FormProps, type ProductProps } from '../pagemodel-bridge';
+import { api, errorMessage } from '../../api/client';
 import { Button, Input, Select, Slider, Switch, Textarea } from '../../ui';
 import { randomId } from '../editor/types';
 import { useBuilder } from '../useEditor';
@@ -103,9 +104,24 @@ export function ActionTrait({ editor, component, trait }: TraitProps) {
 }
 
 /* ---------- image source (legacy: Image settings) ---------- */
-export function AssetTrait({ trait }: TraitProps) {
+export function AssetTrait({ trait, component, editor }: TraitProps) {
   const { ui } = useBuilder();
+  const [busy, setBusy] = useState(false);
   const src = String(trait.getValue() ?? '');
+  // AI alt text (POST /api/ai/alt-text): a suggestion written into the alt field, which the author reviews; nothing is applied silently.
+  const suggestAlt = async () => {
+    setBusy(true);
+    try {
+      const heading = editor.getWrapper()?.findType('fn-heading')[0]?.getEl()?.textContent?.trim();
+      const r = await api.post<{ alt: string }>('/api/ai/alt-text', { src: src.startsWith('data:') ? 'image' : src, ...(heading ? { context: heading } : {}) });
+      component.addAttributes({ alt: r.alt });
+      ui.toast('Alt text suggested. Check that it describes your image.', 'ok');
+    } catch (e) {
+      ui.toast(errorMessage(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="flex flex-col gap-2">
       <div className="grid aspect-video place-items-center overflow-hidden rounded-lg border border-border bg-surface-2">
@@ -113,6 +129,7 @@ export function AssetTrait({ trait }: TraitProps) {
       </div>
       <div className="flex gap-1.5">
         <Button size="sm" className="flex-1" onClick={() => ui.openAssets((url) => trait.setValue(url))}><ImageIcon /> Choose image</Button>
+        <Button size="sm" disabled={busy || !src} onClick={() => void suggestAlt()}><Sparkles /> {busy ? 'Thinking…' : 'Suggest alt text'}</Button>
       </div>
       <Row label="Image URL"><input aria-label="Image URL" className={inputCls} value={src.startsWith('data:') ? '(embedded image)' : src} onChange={(e) => trait.setValue(e.target.value)} placeholder="https://…" /></Row>
     </div>
