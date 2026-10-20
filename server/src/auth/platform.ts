@@ -8,12 +8,19 @@ import type { Auth } from './context.js';
  * who signs in and calls an admin route gets a row (source 'bootstrap'); removing the email from the list revokes that row on the next request. Administrators added
  * through the admin API have source 'admin' and do not depend on the list.
  */
+export type PlatformRole = 'support' | 'superadmin';
+
+/** 'superadmin' may open write-enabled support sessions and grant the role; 'support' administrators are limited to read-only access to customer data. */
+export async function platformRoleOf(deps: Deps, userId: string): Promise<PlatformRole | null> {
+  return (await deps.db.get<{ role: PlatformRole }>('SELECT role FROM platform_admins WHERE user_id = ?', userId))?.role ?? null;
+}
+
 export async function isPlatformAdmin(deps: Deps, who: { userId: string; email: string }): Promise<boolean> {
   const listed = deps.config.PLATFORM_ADMIN_EMAILS.some((e) => e.toLowerCase() === who.email.toLowerCase());
   const row = await deps.db.get<{ source: 'bootstrap' | 'admin' }>('SELECT source FROM platform_admins WHERE user_id = ?', who.userId);
   if (row) return row.source === 'admin' || listed;
   if (!listed) return false;
-  await deps.db.run(`INSERT INTO platform_admins (user_id, source, added_by, created_at) VALUES (?, 'bootstrap', NULL, ?)${deps.db.dialect.onConflictDoNothing()}`, who.userId, deps.now().toISOString());
+  await deps.db.run(`INSERT INTO platform_admins (user_id, source, role, added_by, created_at) VALUES (?, 'bootstrap', 'superadmin', NULL, ?)${deps.db.dialect.onConflictDoNothing()}`, who.userId, deps.now().toISOString());
   await audit(deps, { workspaceId: null, actorId: who.userId, action: 'admin.bootstrap', detail: { email: who.email } });
   return true;
 }

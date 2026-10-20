@@ -158,10 +158,10 @@ describe('suspension', () => {
 });
 
 describe('impersonation (support access)', () => {
-  async function acting() {
-    const w = await world();
+  async function acting(opts: { writes?: boolean; env?: Record<string, string> } = {}) {
+    const w = await world(opts.env);
     const c = await customer(w.h);
-    const start = await w.admin('POST', `/workspaces/${c.owner.wsId}/impersonate`, { reason: 'ticket 4711: cannot publish' });
+    const start = await w.admin('POST', `/workspaces/${c.owner.wsId}/impersonate`, { reason: 'ticket 4711: cannot publish', ...(opts.writes ? { allow_writes: true } : {}) });
     return { ...w, c, start, token: start.json.token as string };
   }
 
@@ -186,7 +186,7 @@ describe('impersonation (support access)', () => {
   });
 
   it('cannot use the admin area, credentials, billing, members or API keys; writes are audited with the administrator; logout ends it', async () => {
-    const { h, c, token, ops } = await acting();
+    const { h, c, token, ops } = await acting({ writes: true });
     const as = (method: string, path: string, body?: unknown) => h.call(method, path, { token, body });
     expect((await as('GET', '/api/admin/stats')).json.error.code).toBe('IMPERSONATION_FORBIDDEN');
     expect((await as('POST', '/api/auth/password', { currentPassword: 'correct horse battery', newPassword: 'another long password' })).json.error.code).toBe('IMPERSONATION_FORBIDDEN');
@@ -202,6 +202,115 @@ describe('impersonation (support access)', () => {
     expect(audit.some((a) => a.actorId === ops.userId && a.detail.method === 'POST' && a.detail.path === '/api/funnels')).toBe(true);
     expect((await as('POST', '/api/auth/logout')).status).toBe(204);
     expect((await as('GET', '/api/funnels')).status).toBe(401);
+  });
+
+  it('is read-only by default: GET and HEAD work, POST, PUT, PATCH and DELETE are refused with IMPERSONATION_READ_ONLY, nothing changes and nothing is audited as a change', async () => {
+    const { h, c, token, start } = await acting();
+    const as = (method: string, path: string, body?: unknown) => h.call(method, path, { token, body });
+    expect(start.json.allowWrites).toBe(false);
+    for (const p of ['/api/funnels', '/api/orders', '/api/leads', '/api/audit', '/api/workspace', '/api/auth/me']) expect((await as('GET', p)).status, `GET ${p}`).toBe(200);
+    expect((await h.app.request('/api/funnels', { method: 'HEAD', headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
+    const before = (await h.call('GET', '/api/funnels', { token: c.owner.token })).json.data.length;
+    const refused = [
+      await as('POST', '/api/funnels', { name: 'Nope' }),
+      await as('PUT', `/api/funnels/${c.f.id}`, { name: 'Renamed' }),
+      await as('PATCH', `/api/funnels/${c.f.id}`, { name: 'Renamed' }),
+      await as('DELETE', `/api/funnels/${c.f.id}`),
+      await as('POST', '/api/webhooks', { url: 'https://hooks.example.com/x', events: ['funnel.optin'] }),
+      await as('POST', '/api/notifications/read-all'),
+    ];
+    for (const r of refused) expect([r.status, r.json.error.code]).toEqual([403, 'IMPERSONATION_READ_ONLY']);
+    const after = (await h.call('GET', '/api/funnels', { token: c.owner.token })).json.data as { name: string }[];
+    expect(after).toHaveLength(before);
+    expect(after.some((f) => f.name === 'Renamed' || f.name === 'Nope')).toBe(false);
+    expect((await h.call('GET', '/api/audit?action=admin.impersonation.action', { token: c.owner.token })).json.data).toEqual([]);
+    // ending the session and opening the notification stream are the allow-listed exceptions
+    expect((await as('POST', '/api/events/ticket')).status).toBe(200);
+    expect((await as('POST', '/api/auth/logout')).status).toBe(204);
+    expect((await as('GET', '/api/funnels')).status).toBe(401);
+  });
+
+  it('writes need the flag AND the superadmin role AND a written reason of 20+ characters; every write performed is audited; the session is shorter', async () => {
+    const { h, admin, c, start, token, ops } = await acting({ writes: true });
+    expect(start.status).toBe(201);
+    expect(start.json.allowWrites).toBe(true);
+    expect(Date.parse(start.json.expiresAt) - h.clock.now().getTime()).toBe(10 * 60_000); // IMPERSONATION_WRITE_TTL_MINUTES, not the 30 of a read-only session
+    const as = (method: string, path: string, body?: unknown) => h.call(method, path, { token, body });
+    const made = await as('POST', '/api/funnels', { name: 'Support fix' });
+    expect(made.status).toBe(201);
+    expect((await as('PATCH', `/api/funnels/${made.json.id}`, { name: 'Support fix 2' })).status).toBe(200);
+    expect((await as('DELETE', `/api/funnels/${made.json.id}`)).status).toBe(204);
+    // a refused write (permission denied inside the session) is not audited as performed
+    expect((await as('POST', '/api/billing/subscribe', { plan: 'pro' })).status).toBe(403);
+    const rows = (await h.call('GET', '/api/audit?action=admin.impersonation.action', { token: c.owner.token })).json.data as { actorId: string; supportAccess: boolean; detail: { method: string; path: string; mode: string } }[];
+    expect(rows.map((r) => `${r.detail.method} ${r.detail.path}`).sort()).toEqual(['DELETE /api/funnels/:id', 'PATCH /api/funnels/:id', 'POST /api/funnels']);
+    for (const r of rows) expect(r).toMatchObject({ actorId: ops.userId, supportAccess: true, detail: { mode: 'read_write' } });
+    // the flag alone is not enough: a short reason, and an administrator below superadmin, are refused and open no session
+    const sessions = async () => Number((await h.deps.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM sessions WHERE impersonator_id IS NOT NULL'))!.n);
+    const n = await sessions();
+    expect(await admin('POST', `/workspaces/${c.owner.wsId}/impersonate`, { reason: 'too short reason', allow_writes: true })).toMatchObject({ status: 400, json: { error: { code: 'WRITE_REASON_REQUIRED' } } });
+    const support = await h.register('support@platform.test');
+    expect((await admin('POST', '/admins', { email: 'support@platform.test' })).json.role).toBe('support');
+    const asSupport = (body: object) => admin('POST', `/workspaces/${c.owner.wsId}/impersonate`, body, support.token);
+    const denied = await asSupport({ reason: 'ticket 4711: customer asked us to fix the funnel', allow_writes: true });
+    expect([denied.status, denied.json.error.code]).toEqual([403, 'SUPERADMIN_REQUIRED']);
+    expect(await sessions()).toBe(n);
+    // but a support administrator can still open a read-only session
+    const ro = await asSupport({ reason: 'ticket 4711: looking at the funnel' });
+    expect(ro.status).toBe(201);
+    expect(ro.json.allowWrites).toBe(false);
+    expect((await h.call('POST', '/api/funnels', { token: ro.json.token, body: { name: 'x' } })).json.error.code).toBe('IMPERSONATION_READ_ONLY');
+  });
+
+  it('platform roles: bootstrap administrators are superadmins, API-added ones are support unless a superadmin says otherwise; only a superadmin grants superadmin', async () => {
+    const { h, admin } = await world();
+    const a = await h.register('a@platform.test');
+    const b = await h.register('b@platform.test');
+    expect((await admin('POST', '/admins', { email: 'a@platform.test' })).status).toBe(201);
+    expect((await admin('POST', '/admins', { email: 'b@platform.test' }, a.token)).status).toBe(201); // support may add support
+    expect((await admin('DELETE', `/admins/${b.userId}`)).status).toBe(204);
+    const denied = await admin('POST', '/admins', { email: 'b@platform.test', role: 'superadmin' }, a.token);
+    expect([denied.status, denied.json.error.code]).toEqual([403, 'SUPERADMIN_REQUIRED']);
+    expect((await admin('POST', '/admins', { email: 'b@platform.test', role: 'superadmin' })).json.role).toBe('superadmin');
+    const list = (await admin('GET', '/admins')).json.data as { email: string; role: string }[];
+    expect(list.map((x) => [x.email, x.role])).toEqual([[OPS, 'superadmin'], ['a@platform.test', 'support'], ['b@platform.test', 'superadmin']]);
+    expect((await h.call('GET', '/api/auth/me', { token: a.token })).json.platformRole).toBe('support');
+  });
+
+  it('the banner state is in /me: read-only by default, write-enabled when allowed; the session ends at its own shorter expiry', async () => {
+    const ro = await acting();
+    const rm = (await ro.h.call('GET', '/api/auth/me', { token: ro.token })).json;
+    expect(rm.impersonation).toMatchObject({ by: OPS, readOnly: true, allowWrites: false });
+    expect(rm.platformRole).toBeNull();
+    const rw = await acting({ writes: true });
+    const wm = (await rw.h.call('GET', '/api/auth/me', { token: rw.token })).json;
+    expect(wm.impersonation).toMatchObject({ by: OPS, readOnly: false, allowWrites: true });
+    expect(Date.parse(wm.impersonation.expiresAt) - rw.h.clock.now().getTime()).toBe(10 * 60_000);
+    rw.h.clock.advance(9 * 60_000);
+    expect((await rw.h.call('GET', '/api/funnels', { token: rw.token })).status).toBe(200);
+    rw.h.clock.advance(2 * 60_000);
+    expect((await rw.h.call('POST', '/api/funnels', { token: rw.token, body: { name: 'late' } })).status).toBe(401);
+    // the read-only session is still alive after the write session's expiry
+    ro.h.clock.advance(11 * 60_000);
+    expect((await ro.h.call('GET', '/api/funnels', { token: ro.token })).status).toBe(200);
+  });
+
+  it('a write session is never longer than IMPERSONATION_TTL_MINUTES', async () => {
+    const w = await acting({ writes: true, env: { IMPERSONATION_TTL_MINUTES: '5', IMPERSONATION_WRITE_TTL_MINUTES: '20' } });
+    expect(Date.parse(w.start.json.expiresAt) - w.h.clock.now().getTime()).toBe(5 * 60_000);
+  });
+
+  it('the customer audit log shows support access: started (with the reason and mode), changes made, ended', async () => {
+    const { h, c, token, ops } = await acting({ writes: true });
+    await h.call('POST', '/api/funnels', { token, body: { name: 'Support fix' } });
+    await h.call('POST', '/api/auth/logout', { token });
+    const rows = (await h.call('GET', '/api/audit?limit=100', { token: c.owner.token })).json.data as { action: string; actorId: string; supportAccess: boolean; label?: string; detail: Record<string, unknown> }[];
+    const support = rows.filter((r) => r.supportAccess);
+    expect(support.map((r) => r.label).sort()).toEqual(['Support access ended', 'Support access started', 'Support access: change made']);
+    expect(support.every((r) => r.actorId === ops.userId)).toBe(true);
+    expect(support.find((r) => r.action === 'admin.impersonation.started')!.detail).toMatchObject({ reason: 'ticket 4711: cannot publish', mode: 'read_write' });
+    expect(rows.filter((r) => !r.supportAccess).every((r) => !r.action.startsWith('admin.impersonation'))).toBe(true);
+    expect(rows.some((r) => r.action === 'admin.impersonation.ended')).toBe(true);
   });
 
   it('refuses suspended workspaces and platform administrators as targets', async () => {

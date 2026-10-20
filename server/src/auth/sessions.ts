@@ -97,13 +97,13 @@ export async function listSessions(deps: Deps, userId: string, currentSessionId:
 
 /**
  * Support access: a session for `user` opened by platform administrator `adminId`. It has no refresh token, the access token lives exactly as long as the
- * session (IMPERSONATION_TTL_MINUTES) and nothing can extend it; ending it (logout) revokes the session row. Permissions are reduced in auth/context.ts.
+ * session (IMPERSONATION_TTL_MINUTES, or the shorter IMPERSONATION_WRITE_TTL_MINUTES when `allowWrites`) and nothing can extend it; it is read-only unless `allowWrites`; ending it (logout) revokes the session row. Permissions are reduced in auth/context.ts.
  */
-export async function startImpersonation(deps: Deps, user: { id: string; workspace_id: string }, adminId: string, meta: SessionMeta = {}): Promise<{ token: string; sessionId: string; expiresAt: string }> {
+export async function startImpersonation(deps: Deps, user: { id: string; workspace_id: string }, adminId: string, meta: SessionMeta = {}, opts: { allowWrites?: boolean; ttlMinutes?: number } = {}): Promise<{ token: string; sessionId: string; expiresAt: string }> {
   const now = deps.now();
   const id = newId('ses');
-  const ttlMs = deps.config.IMPERSONATION_TTL_MINUTES * 60_000;
+  const ttlMs = (opts.ttlMinutes ?? deps.config.IMPERSONATION_TTL_MINUTES) * 60_000;
   const expiresAt = iso(now.getTime() + ttlMs);
-  await deps.db.run('INSERT INTO sessions (id, user_id, workspace_id, created_at, last_used_at, expires_at, user_agent, ip, impersonator_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', id, user.id, user.workspace_id, now.toISOString(), now.toISOString(), expiresAt, meta.userAgent?.slice(0, 300) ?? null, meta.ip ?? null, adminId);
+  await deps.db.run('INSERT INTO sessions (id, user_id, workspace_id, created_at, last_used_at, expires_at, user_agent, ip, impersonator_id, allow_writes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', id, user.id, user.workspace_id, now.toISOString(), now.toISOString(), expiresAt, meta.userAgent?.slice(0, 300) ?? null, meta.ip ?? null, adminId, opts.allowWrites ? 1 : 0);
   return { token: await signAccessToken(deps.config, user.id, id, now, Math.floor(ttlMs / 1000)), sessionId: id, expiresAt };
 }

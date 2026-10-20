@@ -46,7 +46,11 @@ export async function listAudit(deps: Deps, ws: string, q: z.infer<typeof AuditQ
   const page = rows.slice(0, q.limit);
   const last = page[page.length - 1];
   return {
-    data: page.map((r) => ({ id: r.id, actorId: r.actor_id, action: r.action, target: r.target, detail: JSON.parse(r.detail_json) as Record<string, unknown>, ip: r.ip, createdAt: r.created_at })),
+    data: page.map((r) => ({ id: r.id, actorId: r.actor_id, action: r.action, target: r.target, detail: JSON.parse(r.detail_json) as Record<string, unknown>, ip: r.ip, createdAt: r.created_at, ...supportMarker(r.action) })),
     nextCursor: rows.length > q.limit && last ? Buffer.from(`${last.created_at}|${last.id}`).toString('base64url') : null,
   };
 }
+
+/** Rows written by platform staff acting in the workspace (support access) are labelled for the customer: `actorId` is the administrator, not one of their members. */
+const supportMarker = (action: string): { supportAccess: boolean; label?: string } =>
+  action.startsWith('admin.impersonation.') ? { supportAccess: true, label: ({ started: 'Support access started', action: 'Support access: change made', ended: 'Support access ended' } as Record<string, string>)[action.slice('admin.impersonation.'.length)] ?? 'Support access' } : { supportAccess: false };

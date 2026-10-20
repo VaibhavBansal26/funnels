@@ -5,6 +5,7 @@ import { api, ApiError, downloadFile } from '../api/client';
 import { useMutate } from '../api/hooks';
 import { useAuth } from '../auth/AuthContext';
 import { ConfirmDialog, ErrorBanner, fmtDate, Loading, Modal, TextField } from '../components/ui';
+import { SupportSessionDialog } from '../components/SupportAccess';
 import { useToast } from '../components/Toasts';
 
 const TABS = ['workspaces', 'queues', 'flags', 'announcements', 'audit', 'privacy', 'admins'] as const;
@@ -29,7 +30,7 @@ function Reason({ title, confirm, danger, extra, onClose, onSubmit, busy, error 
 }
 
 function WorkspaceDetail({ id, onClose }: { id: string; onClose: () => void }) {
-  const { startSupport } = useAuth();
+  const { startSupport, session } = useAuth();
   const toast = useToast();
   const q = useQuery({ queryKey: ['admin', 'ws', id], queryFn: () => adminGet<WsDetail>(`/workspaces/${id}`) });
   const [dialog, setDialog] = useState<'suspend' | 'impersonate' | 'delete' | null>(null);
@@ -37,7 +38,7 @@ function WorkspaceDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const done = () => { setDialog(null); void q.refetch(); };
   const suspend = useMutate((reason: string) => api.post(`/api/admin/workspaces/${id}/suspend`, { reason }), [['admin', 'workspaces']]);
   const unsuspend = useMutate(() => api.post(`/api/admin/workspaces/${id}/unsuspend`), [['admin', 'workspaces']]);
-  const impersonate = useMutate((reason: string) => api.post<{ token: string }>(`/api/admin/workspaces/${id}/impersonate`, { reason }));
+  const impersonate = useMutate((v: { reason: string; allowWrites: boolean }) => api.post<{ token: string }>(`/api/admin/workspaces/${id}/impersonate`, { reason: v.reason, allow_writes: v.allowWrites }));
   const w = q.data;
   return (
     <Modal wide title={w ? w.name : 'Workspace'} onClose={onClose}>
@@ -62,7 +63,7 @@ function WorkspaceDetail({ id, onClose }: { id: string; onClose: () => void }) {
         </div>
       ) : null}
       {dialog === 'suspend' ? <Reason title="Suspend workspace" confirm="Suspend" danger busy={suspend.isPending} error={suspend.error} onClose={() => setDialog(null)} onSubmit={(reason) => suspend.mutate(reason, { onSuccess: done })} extra={<p>Members are signed out, its pages stop being served (the edge cache is purged), public forms, checkout and API keys stop working. Nothing is deleted.</p>} /> : null}
-      {dialog === 'impersonate' ? <Reason title="Act as the owner" confirm="Start support session" busy={impersonate.isPending} error={impersonate.error} onClose={() => setDialog(null)} onSubmit={(reason) => impersonate.mutate(reason, { onSuccess: (r) => { void startSupport(r.token); onClose(); } })} extra={<p>A time-limited session as the workspace owner, recorded in the workspace's own audit log. Credentials, billing, members and API keys stay off limits.</p>} /> : null}
+      {dialog === 'impersonate' ? <SupportSessionDialog canWrite={session?.platformRole === 'superadmin'} busy={impersonate.isPending} error={impersonate.error} onClose={() => setDialog(null)} onSubmit={(reason, allowWrites) => impersonate.mutate({ reason, allowWrites }, { onSuccess: (r) => { void startSupport(r.token); onClose(); } })} /> : null}
       {dialog === 'delete' && w ? (
         <ConfirmDelete name={w.name} id={id} onClose={() => setDialog(null)} onDone={() => { setDialog(null); onClose(); }} confirmName={confirmName} setConfirmName={setConfirmName} />
       ) : null}
@@ -243,18 +244,21 @@ function Privacy() {
 }
 
 function Admins() {
-  const q = useQuery({ queryKey: ['admin', 'admins'], queryFn: () => adminGet<{ data: { userId: string; email: string; source: string; twoFactorEnabled: boolean }[]; requireTwoFactor: boolean }>('/admins') });
+  const q = useQuery({ queryKey: ['admin', 'admins'], queryFn: () => adminGet<{ data: { userId: string; email: string; source: string; role: string; twoFactorEnabled: boolean }[]; requireTwoFactor: boolean }>('/admins') });
+  const { session } = useAuth();
   const [email, setEmail] = useState('');
-  const add = useMutate(() => api.post('/api/admin/admins', { email: email.trim() }), [['admin', 'admins']]);
+  const [role, setRole] = useState<'support' | 'superadmin'>('support');
+  const add = useMutate(() => api.post('/api/admin/admins', { email: email.trim(), role }), [['admin', 'admins']]);
   const remove = useMutate((id: string) => api.delete(`/api/admin/admins/${id}`), [['admin', 'admins']]);
   return (
     <div className="stack">
       <ErrorBanner error={q.error ?? add.error ?? remove.error} />
       {q.data?.requireTwoFactor ? <p className="muted small">Two-factor authentication is required for administrators on this installation.</p> : <p className="muted small">Two-factor authentication is not required here (it always is in production).</p>}
-      <table className="table"><caption className="sr-only">Administrators</caption><thead><tr><th scope="col">Email</th><th scope="col">Source</th><th scope="col">2FA</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
-        <tbody>{q.data?.data.map((a) => <tr key={a.userId}><td>{a.email}</td><td>{a.source === 'bootstrap' ? 'PLATFORM_ADMIN_EMAILS' : 'Added here'}</td><td>{a.twoFactorEnabled ? <span className="badge ok">On</span> : <span className="badge warn">Off</span>}</td><td>{a.source === 'admin' ? <button type="button" className="btn sm danger" onClick={() => remove.mutate(a.userId)}>Remove</button> : null}</td></tr>)}</tbody></table>
+      <table className="table"><caption className="sr-only">Administrators</caption><thead><tr><th scope="col">Email</th><th scope="col">Source</th><th scope="col">Role</th><th scope="col">2FA</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+        <tbody>{q.data?.data.map((a) => <tr key={a.userId}><td>{a.email}</td><td>{a.source === 'bootstrap' ? 'PLATFORM_ADMIN_EMAILS' : 'Added here'}</td><td>{a.role === 'superadmin' ? <span className="badge primary">Superadmin</span> : <span className="badge">Support (read-only access)</span>}</td><td>{a.twoFactorEnabled ? <span className="badge ok">On</span> : <span className="badge warn">Off</span>}</td><td>{a.source === 'admin' ? <button type="button" className="btn sm danger" onClick={() => remove.mutate(a.userId)}>Remove</button> : null}</td></tr>)}</tbody></table>
       <form className="row" onSubmit={(e) => { e.preventDefault(); add.mutate(undefined, { onSuccess: () => setEmail('') }); }}>
         <TextField label="Make an existing user an administrator" hint="Their email address" value={email} onChange={setEmail} />
+        <div className="field"><label htmlFor="admin-role">Role</label><select id="admin-role" className="input" value={role} onChange={(e) => setRole(e.target.value as 'support' | 'superadmin')}><option value="support">Support (read-only support sessions)</option><option value="superadmin" disabled={session?.platformRole !== 'superadmin'}>Superadmin (may open write-enabled sessions)</option></select></div>
         <button type="submit" className="btn primary" disabled={add.isPending || !email.trim()}>Add</button>
       </form>
     </div>

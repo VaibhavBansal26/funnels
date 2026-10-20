@@ -14,6 +14,10 @@ Every platform route is checked in one place (`authenticate()` calls `assertPlat
 
 All admin routes are rate limited per user (`admin.platform`) and every state change writes `audit_log` with the administrator's id (action names `admin.*`).
 
+## Platform roles at a glance
+
+`support` administrators can see everything the admin area shows and look at any customer workspace read-only; `superadmin` administrators can additionally open write-enabled support sessions and make other superadmins. Details under [Platform roles](#platform-roles).
+
 ## Workspaces
 
 `GET /api/admin/workspaces` searches by workspace name, id or member email (keyset pages) and filters by status; `GET /api/admin/workspaces/:id` shows plan, usage against limits, members (with 2FA status), flag overrides and recent audit.
@@ -37,15 +41,34 @@ The decision is read from the database on every authenticated call and cached fo
 
 ### Impersonation (support access)
 
-`POST /api/admin/workspaces/:id/impersonate {reason, userId?}` returns an access token for the workspace owner (or the named member). Properties:
+`POST /api/admin/workspaces/:id/impersonate {reason, userId?, allow_writes?}` returns an access token for the workspace owner (or the named member). **A support session is read-only by default.**
 
-* reason required, shown to the workspace: `admin.impersonation.started` is written into **the workspace's** audit log with the reason and the administrator's id;
-* lifetime `IMPERSONATION_TTL_MINUTES` (default 30, max 240), no refresh token, cannot be extended; logout ends it early;
-* it cannot open the admin area (`403 IMPERSONATION_FORBIDDEN`), change credentials (password, 2FA, sessions), and the user's permissions are reduced by `IMPERSONATION_DENIED` (`billing:manage`, `orders:refund`, `members:manage`, `roles:manage`, `workspace:manage`, `api_keys:manage`, `analytics_identity:manage`, `funnels:purge`), whatever role the user has;
-* every write made in the session is audited as `admin.impersonation.action` (method, route, administrator id);
+| | Read-only (default) | `allow_writes: true` |
+|---|---|---|
+| Who may open it | any platform administrator | only the `superadmin` platform role (`403 SUPERADMIN_REQUIRED` for `support`) |
+| Reason | at least 5 characters | at least 20 characters (`400 WRITE_REASON_REQUIRED`): say what will change and why |
+| Lifetime | `IMPERSONATION_TTL_MINUTES` (default 30, max 240) | `IMPERSONATION_WRITE_TTL_MINUTES` (default 10, max 60), never longer than the read-only lifetime |
+| GET / HEAD | allowed | allowed |
+| POST, PUT, PATCH, DELETE | `403 IMPERSONATION_READ_ONLY` before any handler or permission check runs (also for unknown routes) | allowed within the permissions below, each one audited |
+| Banner in the web app | notice: "Support access (read-only)" | red alert: "Support access with WRITE permission", states that every change is recorded |
+| `GET /api/auth/me` | `impersonation: {by, expiresAt, readOnly: true, allowWrites: false}` | `readOnly: false, allowWrites: true` |
+
+The only non-read requests a read-only session may make are ending itself (`POST /api/auth/logout`) and opening the notification stream (`POST /api/events/ticket`; it changes no data). The list is `IMPERSONATION_SAFE` in `server/src/auth/context.ts`.
+
+Properties of every support session:
+
+* reason required, shown to the workspace: `admin.impersonation.started` is written into **the workspace's** audit log with the reason, the administrator's id and `mode` (`read_only` or `read_write`); logout writes `admin.impersonation.ended`;
+* no refresh token, cannot be extended; logout ends it early; it simply stops working at its expiry (401);
+* it cannot open the admin area (`403 IMPERSONATION_FORBIDDEN`), change credentials (password, 2FA, sessions), and the user's permissions are reduced by `IMPERSONATION_DENIED` (`billing:manage`, `orders:refund`, `members:manage`, `roles:manage`, `workspace:manage`, `api_keys:manage`, `analytics_identity:manage`, `funnels:purge`), whatever role the user has, writes enabled or not;
+* in a write-enabled session every write that passes the permission check is audited as `admin.impersonation.action` (method, route pattern, session id, administrator id) in the workspace's log; a request refused by the permission check is not recorded as a change;
+* the customer-facing audit log (`GET /api/audit`, the Audit page) marks these rows with `supportAccess: true` and a `label` ("Support access started", "Support access: change made", "Support access ended"); `actorId` is the administrator's user id, not one of the customer's members;
 * administrators cannot be impersonated; a suspended workspace cannot be acted in.
 
-The web app shows a banner with the administrator and the time left, and an "End session" button.
+### Platform roles
+
+`platform_admins.role` is `support` or `superadmin` (migration 015). Administrators from `PLATFORM_ADMIN_EMAILS` (bootstrap rows, including those that existed before the migration) are `superadmin`; administrators added with `POST /api/admin/admins {email, role?}` are `support` unless `role: "superadmin"` is given, which only a superadmin may do (`403 SUPERADMIN_REQUIRED`). There is no endpoint to change a role: remove and add again. `GET /api/admin/admins` and `GET /api/auth/me` (`platformRole`) report it. Both roles can use every other admin function; the role only gates write-enabled support sessions and granting superadmin. Existing administrators added through the API before migration 015 become `support`: a superadmin has to re-add them to restore write access.
+
+The web app shows the banner above, and the "Act as owner" dialog offers "Allow changes" only to superadmins.
 
 ### Delete a workspace
 
@@ -77,4 +100,4 @@ A flag is evaluated per workspace: explicit override, then percentage rollout (s
 
 ## What is not here
 
-No billing console beyond the plan shown per workspace (change plans in Stripe; the rate-tier override in [RATE-LIMITING.md](RATE-LIMITING.md) is separate), no bulk actions, no admin-initiated password reset, no read-only impersonation mode (the denied-permission list is the safety net), no two-person approval for deletion. Browser tests: `e2e/tests/admin.spec.ts`; server tests: `server/test/admin.test.ts` (all engines).
+No billing console beyond the plan shown per workspace (change plans in Stripe; the rate-tier override in [RATE-LIMITING.md](RATE-LIMITING.md) is separate), no bulk actions, no admin-initiated password reset, no two-person approval for write-enabled support sessions, no per-session scope narrower than the user's permissions, no two-person approval for deletion. Browser tests: `e2e/tests/admin.spec.ts`; server tests: `server/test/admin.test.ts` (all engines).

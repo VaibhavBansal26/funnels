@@ -7286,6 +7286,14 @@
                     "maxLength": 254,
                     "format": "email",
                     "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "role": {
+                    "default": "support",
+                    "type": "string",
+                    "enum": [
+                      "support",
+                      "superadmin"
+                    ]
                   }
                 },
                 "required": [
@@ -7706,7 +7714,7 @@
         "tags": [
           "admin"
         ],
-        "summary": "Open a time-limited support session as the workspace owner or a given member (reason required, audited in the workspace)",
+        "summary": "Open a time-limited, READ-ONLY support session as the workspace owner or a given member (reason required, audited in the workspace); allow_writes needs the superadmin role and a 20-character reason",
         "operationId": "post_api_admin_workspaces_id_impersonate",
         "parameters": [
           {
@@ -7734,6 +7742,10 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 64
+                  },
+                  "allow_writes": {
+                    "default": false,
+                    "type": "boolean"
                   }
                 },
                 "required": [

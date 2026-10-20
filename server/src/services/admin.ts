@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isPlatformAdmin } from '../auth/platform.js';
+import { isPlatformAdmin, platformRoleOf } from '../auth/platform.js';
 import type { Auth } from '../auth/context.js';
 import { startImpersonation as openImpersonation, type SessionMeta } from '../auth/sessions.js';
 import { PLAN_DEFS } from '../billing/plans.js';
@@ -16,9 +16,15 @@ import { forgetSuspensions } from './suspension.js';
 const reason = z.string().trim().min(5, 'Give a reason of at least 5 characters').max(500);
 
 export const SuspendInput = z.object({ reason });
-export const ImpersonateInput = z.object({ reason, userId: z.string().min(1).max(64).optional() });
+export const WRITE_REASON_MIN = 20;
+export const ImpersonateInput = z.object({
+  reason,
+  userId: z.string().min(1).max(64).optional(),
+  /** Off by default: a support session is read-only. Turning it on needs the `superadmin` platform role and a reason of at least 20 characters. */
+  allow_writes: z.boolean().default(false),
+});
 export const DeleteWorkspaceInput = z.object({ confirmName: z.string().min(1).max(200), reason });
-export const AdminAddInput = z.object({ email: z.string().trim().toLowerCase().email().max(254) });
+export const AdminAddInput = z.object({ email: z.string().trim().toLowerCase().email().max(254), role: z.enum(['support', 'superadmin']).default('support') });
 export const WorkspaceQuery = z.object({
   search: z.string().trim().max(120).optional(),
   status: z.enum(['all', 'active', 'suspended']).default('all'),
@@ -41,20 +47,21 @@ const num = (v: unknown) => Number(v ?? 0);
 // ---- platform administrators --------------------------------------------------------------------------------------------------------------------------
 
 export async function listAdmins(deps: Deps) {
-  const rows = await deps.db.all<{ user_id: string; email: string; name: string; source: string; added_by: string | null; created_at: string; totp: number }>(
-    `SELECT p.user_id, u.email, u.name, p.source, p.added_by, p.created_at, (SELECT COUNT(*) FROM user_totp t WHERE t.user_id = u.id AND t.confirmed_at IS NOT NULL) AS totp
+  const rows = await deps.db.all<{ user_id: string; email: string; name: string; source: string; role: string; added_by: string | null; created_at: string; totp: number }>(
+    `SELECT p.user_id, u.email, u.name, p.source, p.role, p.added_by, p.created_at, (SELECT COUNT(*) FROM user_totp t WHERE t.user_id = u.id AND t.confirmed_at IS NOT NULL) AS totp
      FROM platform_admins p JOIN users u ON u.id = p.user_id ORDER BY p.created_at, p.user_id`,
   );
-  return { data: rows.map((r) => ({ userId: r.user_id, email: r.email, name: r.name, source: r.source, addedBy: r.added_by, createdAt: r.created_at, twoFactorEnabled: num(r.totp) > 0 })), requireTwoFactor: deps.config.ADMIN_REQUIRE_2FA };
+  return { data: rows.map((r) => ({ userId: r.user_id, email: r.email, name: r.name, source: r.source, role: r.role, addedBy: r.added_by, createdAt: r.created_at, twoFactorEnabled: num(r.totp) > 0 })), requireTwoFactor: deps.config.ADMIN_REQUIRE_2FA };
 }
 
 export async function addAdmin(deps: Deps, auth: Auth, input: z.infer<typeof AdminAddInput>, ip?: string) {
+  if (input.role === 'superadmin' && (await platformRoleOf(deps, auth.userId)) !== 'superadmin') throw new AppError(403, 'SUPERADMIN_REQUIRED', 'Only a superadmin can make someone a superadmin');
   const u = await deps.db.get<{ id: string; email: string }>('SELECT id, email FROM users WHERE email = ?', input.email);
   if (!u) throw notFound('User');
   if (await deps.db.get('SELECT 1 FROM platform_admins WHERE user_id = ?', u.id)) throw conflict('ALREADY_ADMIN', 'That user is already a platform administrator');
-  await deps.db.run('INSERT INTO platform_admins (user_id, source, added_by, created_at) VALUES (?, ?, ?, ?)', u.id, 'admin', auth.userId, deps.now().toISOString());
-  await audit(deps, { workspaceId: null, actorId: auth.userId, action: 'admin.admin_added', target: u.id, detail: { email: u.email }, ip });
-  return { userId: u.id, email: u.email };
+  await deps.db.run('INSERT INTO platform_admins (user_id, source, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)', u.id, 'admin', input.role, auth.userId, deps.now().toISOString());
+  await audit(deps, { workspaceId: null, actorId: auth.userId, action: 'admin.admin_added', target: u.id, detail: { email: u.email, role: input.role }, ip });
+  return { userId: u.id, email: u.email, role: input.role };
 }
 
 export async function removeAdmin(deps: Deps, auth: Auth, userId: string, ip?: string): Promise<void> {
@@ -180,11 +187,17 @@ export async function unsuspendWorkspace(deps: Deps, auth: Auth, id: string, ip?
 // ---- impersonation ------------------------------------------------------------------------------------------------------------------------------------
 
 /**
- * Support access: a time-limited session as one of the workspace's users (default: its owner) with a reason on record. The user's workspace sees the start in its own
- * audit log, every write made in the session is audited with the administrator's id, the session cannot be refreshed, and it can neither change credentials, billing,
- * members or API keys nor use the admin area (see IMPERSONATION_DENIED in auth/context.ts). Administrators cannot be impersonated.
+ * Support access: a time-limited session as one of the workspace's users (default: its owner) with a reason on record. It is READ-ONLY by default: every request
+ * other than GET and HEAD is refused with 403 IMPERSONATION_READ_ONLY (except ending the session). `allow_writes` lifts that for one session and needs the `superadmin`
+ * platform role, a reason of at least 20 characters, and gets the shorter IMPERSONATION_WRITE_TTL_MINUTES lifetime. The user's workspace sees the start (and whether
+ * writes were enabled) in its own audit log, every write made in a write-enabled session is audited with the administrator's id, the session cannot be refreshed, and
+ * it can neither change credentials, billing, members or API keys nor use the admin area (see IMPERSONATION_DENIED in auth/context.ts). Administrators cannot be impersonated.
  */
 export async function impersonate(deps: Deps, auth: Auth, wsId: string, input: z.infer<typeof ImpersonateInput>, meta: SessionMeta) {
+  if (input.allow_writes) {
+    if ((await platformRoleOf(deps, auth.userId)) !== 'superadmin') throw new AppError(403, 'SUPERADMIN_REQUIRED', 'Only a superadmin can open a support session that may change data');
+    if (input.reason.length < WRITE_REASON_MIN) throw new AppError(400, 'WRITE_REASON_REQUIRED', `A write-enabled support session needs a written reason of at least ${WRITE_REASON_MIN} characters`);
+  }
   const w = await workspaceRow(deps, wsId);
   if (w.suspended_at) throw conflict('WORKSPACE_SUSPENDED', 'Unsuspend the workspace first: a suspended workspace cannot be acted in');
   const target = input.userId
@@ -192,9 +205,10 @@ export async function impersonate(deps: Deps, auth: Auth, wsId: string, input: z
     : await deps.db.get<{ id: string; workspace_id: string; email: string; name: string }>("SELECT id, workspace_id, email, name FROM users WHERE workspace_id = ? AND role = 'owner' ORDER BY created_at, id LIMIT 1", wsId);
   if (!target) throw notFound('User');
   if (await isPlatformAdmin(deps, { userId: target.id, email: target.email })) throw new AppError(403, 'CANNOT_IMPERSONATE_ADMIN', 'Platform administrators cannot be impersonated');
-  const s = await openImpersonation(deps, target, auth.userId, meta);
-  await audit(deps, { workspaceId: wsId, actorId: auth.userId, action: 'admin.impersonation.started', target: target.id, detail: { reason: input.reason, as: target.email, expiresAt: s.expiresAt, sessionId: s.sessionId }, ip: meta.ip });
-  return { token: s.token, expiresAt: s.expiresAt, user: { id: target.id, email: target.email, name: target.name }, workspace: { id: w.id, name: w.name } };
+  const ttlMinutes = input.allow_writes ? Math.min(deps.config.IMPERSONATION_WRITE_TTL_MINUTES, deps.config.IMPERSONATION_TTL_MINUTES) : deps.config.IMPERSONATION_TTL_MINUTES;
+  const s = await openImpersonation(deps, target, auth.userId, meta, { allowWrites: input.allow_writes, ttlMinutes });
+  await audit(deps, { workspaceId: wsId, actorId: auth.userId, action: 'admin.impersonation.started', target: target.id, detail: { reason: input.reason, as: target.email, expiresAt: s.expiresAt, sessionId: s.sessionId, mode: input.allow_writes ? 'read_write' : 'read_only' }, ip: meta.ip });
+  return { token: s.token, expiresAt: s.expiresAt, allowWrites: input.allow_writes, user: { id: target.id, email: target.email, name: target.name }, workspace: { id: w.id, name: w.name } };
 }
 
 // ---- deletion -----------------------------------------------------------------------------------------------------------------------------------------

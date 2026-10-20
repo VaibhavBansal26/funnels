@@ -115,6 +115,7 @@ test('admin: two-factor is required, then suspend a workspace (the customer is l
   await admin.getByRole('dialog', { name: 'Act as the owner' }).getByRole('button', { name: 'Start support session' }).click();
   const banner = admin.getByRole('status').filter({ hasText: 'Support access' });
   await expect(banner).toContainText(customerEmail);
+  await expect(banner).toContainText('read-only'); // support sessions cannot change anything unless a superadmin opted in
   await expect(admin.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Admin' })).toHaveCount(0);
   await admin.goto('/funnels');
   await expect(banner).toBeVisible(); // survives a reload: it is the session
@@ -125,6 +126,7 @@ test('admin: two-factor is required, then suspend a workspace (the customer is l
   // the customer's own audit log shows who looked and why
   await customer.goto('/audit');
   await expect(customer.getByRole('main')).toContainText('admin.impersonation.started');
+  await expect(customer.getByRole('main')).toContainText('Support access started');
   await expect(customer.getByRole('main')).toContainText('Ticket 4711: cannot publish');
   await customerCtx.close();
   await adminCtx.close();

@@ -11,7 +11,7 @@ import { badRequest, conflict, notFound, unauthorized } from '../errors.js';
 import { newId } from '../util/ids.js';
 import { denyError } from '../ratelimit/response.js';
 import { hashId } from '../ratelimit/subject.js';
-import { isPlatformAdmin } from '../auth/platform.js';
+import { isPlatformAdmin, platformRoleOf } from '../auth/platform.js';
 import { audit } from './audit.js';
 import { regenerateWorkspace } from './pages.js';
 import { assertCanGrant, findRole } from './roles.js';
@@ -140,7 +140,8 @@ export async function me(deps: Deps, auth: Auth) {
     workspace: { ...(await workspaceOf(deps, auth.workspaceId)), suspended: !!w.suspended_at, suspendedReason: w.suspended_reason },
     sessionId: auth.sessionId,
     platformAdmin: !auth.impersonatorId && (await isPlatformAdmin(deps, auth)),
-    impersonation: auth.impersonatorId ? { by: by?.email ?? auth.impersonatorId, expiresAt: session?.expires_at ?? null } : null,
+    impersonation: auth.impersonatorId ? { by: by?.email ?? auth.impersonatorId, expiresAt: session?.expires_at ?? null, readOnly: !auth.impersonationWrites, allowWrites: !!auth.impersonationWrites } : null,
+    platformRole: !auth.impersonatorId ? await platformRoleOf(deps, auth.userId) : null,
   };
 }
 

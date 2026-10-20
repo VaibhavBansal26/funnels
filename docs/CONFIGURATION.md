@@ -71,7 +71,8 @@ Generated from the zod schema in `server/src/config.ts` and the descriptions in 
 | `BILLING_ENFORCE_LIMITS` | `false` | no | `false` | Enforce plan limits (funnels, domains, members, API keys per plan, see docs/STRIPE.md). Off by default: a self-hosted install without billing has no limits. |
 | `MAX_CUSTOM_ROLES` | `50` | no | `50` | Most custom roles one workspace may define. |
 | `ADMIN_REQUIRE_2FA` | `false` | no | `true` | Platform administrators must have two-factor authentication enabled to use /api/admin. Always on when NODE_ENV=production (cannot be switched off there). **Security:** Leave on for any internet-facing installation. |
-| `IMPERSONATION_TTL_MINUTES` | `30` | no | `30` | Lifetime of an impersonation (support access) session, in minutes. It has no refresh token and cannot be extended. |
+| `IMPERSONATION_TTL_MINUTES` | `30` | no | `30` | Lifetime of a read-only impersonation (support access) session, in minutes. It has no refresh token and cannot be extended. |
+| `IMPERSONATION_WRITE_TTL_MINUTES` | `10` | no | `10` | Lifetime of a support session opened with `allow_writes` (superadmin only), in minutes; never longer than IMPERSONATION_TTL_MINUTES. Read-only support sessions use IMPERSONATION_TTL_MINUTES. **Security:** Keep short: a write-enabled session can change the customer's data. |
 | `ADMIN_QUEUE_PEEK` | `50` | no | `50` | Rows shown per list in the admin queue inspector (dead jobs, dead letters). |
 | `ANALYTICS_API_PER_MINUTE` | `60` | no | `60` | Requests per minute per API key on the analytics API (policy `analytics.read`; the workspace as a whole has its own, plan-tiered budget, `analytics.workspace`). |
 | `ANALYTICS_EXPORT_PER_MINUTE` | `10` | no | `10` | Export requests per minute per API key (policy `analytics.export`). Each request returns one page of up to 20,000 lines. |

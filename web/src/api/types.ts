@@ -2,7 +2,7 @@
 export type Role = 'owner' | 'admin' | 'member';
 export interface User { id: string; email: string; name: string; role: Role; roleId: string; roleName: string; permissions: string[]; twoFactorEnabled: boolean; workspaceId: string }
 export interface Workspace { id: string; name: string; allowCustomScripts: boolean; createdAt: string; suspended?: boolean; suspendedReason?: string | null }
-export interface Session { user: User; workspace: Workspace; platformAdmin?: boolean; impersonation?: { by: string; expiresAt: string | null } | null }
+export interface Session { user: User; workspace: Workspace; platformAdmin?: boolean; platformRole?: 'support' | 'superadmin' | null; impersonation?: { by: string; expiresAt: string | null; readOnly?: boolean; allowWrites?: boolean } | null }
 export interface AuthResponse extends Session { token: string; refreshToken: string; expiresIn: number }
 /** The password step of a sign-in when two-factor authentication is on. */
 export interface TwoFactorChallenge { twoFactorRequired: true; challengeToken: string }
@@ -62,7 +62,7 @@ export interface PermissionInfo { id: string; description: string }
 export interface Invitation { id: string; email: string; roleId: string; roleName: string; status: 'pending' | 'accepted' | 'revoked' | 'expired'; invitedBy: string; createdAt: string; expiresAt: string }
 export interface InvitationResult { invitation: Invitation; delivered: boolean; link?: string }
 export interface SessionInfo { id: string; createdAt: string; lastUsedAt: string; expiresAt: string; userAgent: string | null; ip: string | null; current: boolean }
-export interface AuditRow { id: string; actorId: string; action: string; target: string | null; detail: Record<string, unknown>; ip: string | null; createdAt: string }
+export interface AuditRow { id: string; actorId: string; action: string; target: string | null; detail: Record<string, unknown>; ip: string | null; createdAt: string; supportAccess?: boolean; label?: string }
 
 export interface TemplateSummary { id: string; slug: string; name: string; description: string; categoryId: string | null; categoryName: string | null; stepCount: number; heading: string | null }
 export interface TemplateDetail extends TemplateSummary { steps: { id: string; name: string; path: string; position: number; doc: unknown }[] }

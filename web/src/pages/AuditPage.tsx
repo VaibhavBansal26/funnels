@@ -28,7 +28,7 @@ export function AuditPage() {
         <thead><tr><th scope="col">When</th><th scope="col">Action</th><th scope="col">Actor</th><th scope="col">Target</th><th scope="col">Details</th><th scope="col">IP</th></tr></thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.id}><td className="small">{fmtDate(r.createdAt)}</td><td><code>{r.action}</code></td><td className="small mono">{r.actorId}</td><td className="small mono">{r.target ?? ''}</td><td className="small">{Object.keys(r.detail).length ? JSON.stringify(r.detail) : ''}</td><td className="small">{r.ip ?? ''}</td></tr>
+            <tr key={r.id}><td className="small">{fmtDate(r.createdAt)}</td><td><code>{r.action}</code>{r.supportAccess ? <> <span className="badge warn">{r.label ?? 'Support access'}</span></> : null}</td><td className="small mono">{r.actorId}</td><td className="small mono">{r.target ?? ''}</td><td className="small">{Object.keys(r.detail).length ? JSON.stringify(r.detail) : ''}</td><td className="small">{r.ip ?? ''}</td></tr>
           ))}
         </tbody></table></div>
       {q.hasNextPage ? <button type="button" className="btn" disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>{q.isFetchingNextPage ? 'Loading…' : 'Load more'}</button> : rows.length ? <p className="muted small">End of the log.</p> : null}

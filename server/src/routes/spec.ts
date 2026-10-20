@@ -226,7 +226,7 @@ export const OPERATIONS: Operation[] = [
   PLATFORM('GET', '/api/admin/workspaces/:id', 'admin', 'One workspace: plan, usage, members, flag overrides, recent audit'),
   PLATFORM('POST', '/api/admin/workspaces/:id/suspend', 'admin', 'Suspend a workspace: sign members out, stop serving, refuse public writes and API keys, purge the edge cache', { body: SuspendInput }),
   PLATFORM('POST', '/api/admin/workspaces/:id/unsuspend', 'admin', 'Lift a suspension'),
-  PLATFORM('POST', '/api/admin/workspaces/:id/impersonate', 'admin', 'Open a time-limited support session as the workspace owner or a given member (reason required, audited in the workspace)', { body: ImpersonateInput, status: 201 }),
+  PLATFORM('POST', '/api/admin/workspaces/:id/impersonate', 'admin', 'Open a time-limited, READ-ONLY support session as the workspace owner or a given member (reason required, audited in the workspace); allow_writes needs the superadmin role and a 20-character reason', { body: ImpersonateInput, status: 201 }),
   PLATFORM('DELETE', '/api/admin/workspaces/:id', 'admin', 'Permanently delete a suspended workspace and all its data (name must be typed)', { body: DeleteWorkspaceInput, status: 204 }),
   PLATFORM('GET', '/api/admin/workspaces/:id/export', 'admin', 'Export a workspace as NDJSON (members, funnels, pages, leads, orders, audit; no events)', { notes: 'Streamed in keyset pages of 1000 rows; memory does not grow with the workspace.' }),
   PLATFORM('GET', '/api/admin/queues', 'admin', 'Queue inspector: jobs by status and type, outbox backlog, event bus lag and dead letters, webhook deliveries'),

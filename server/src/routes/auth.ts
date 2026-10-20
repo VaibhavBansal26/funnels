@@ -36,7 +36,9 @@ export function authRoutes(deps: Deps): Hono<AppEnv> {
 
   // Sessions: sign out, list, end one, end all others.
   r.post('/auth/logout', auth, async (c) => {
-    await revokeSession(deps, authOf(c).sessionId, 'logout');
+    const a = authOf(c);
+    await revokeSession(deps, a.sessionId, 'logout');
+    if (a.impersonatorId) await audit(deps, { workspaceId: a.workspaceId, actorId: a.impersonatorId, action: 'admin.impersonation.ended', target: a.userId, detail: { sessionId: a.sessionId, mode: a.impersonationWrites ? 'read_write' : 'read_only' }, ip: ip(c) });
     return c.body(null, 204);
   });
   r.get('/auth/sessions', auth, async (c) => c.json(await listSessions(deps, authOf(c).userId, authOf(c).sessionId)));
