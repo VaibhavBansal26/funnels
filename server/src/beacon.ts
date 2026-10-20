@@ -24,14 +24,14 @@ window.addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='ob
 if(d.type==='new_form_submission'&&d.response_id)post(api+'/api/public/events',{funnelId:funnel,stepId:step,type:'optin',visitorId:vid,externalId:String(d.response_id).slice(0,100),url:location.href.slice(0,500),utms:utms},true).catch(function(){})});
 function status(el){return el.querySelector('.fn-status')}
 function say(el,msg,ok){var h=el.closest&&el.closest('[data-fn-upsell-box]')||el,p=status(h);if(!p)return;p.textContent=msg;p.className='fn-status '+(ok?'fn-ok':'fn-error')}
-function done(el){var t=el.getAttribute('data-success');
+function done(el,j){if(j&&j.redirect){location.href=j.redirect;return}var t=el.getAttribute('data-success');
 if(t==='message'||el.getAttribute('data-href')==='#'){say(el,el.getAttribute('data-message')||'Thank you!',true);return}
 location.href=el.getAttribute('data-href')}
 function fail(el,r){var e=r&&r.error||{},f=e.details&&e.details.fields,m=e.message||'Something went wrong. Please try again.';
 if(f){var parts=[];for(var k in f){parts.push(f[k]);var i=el.elements&&el.elements[k];if(i&&i.setAttribute)i.setAttribute('aria-invalid','true')}m=parts.join(' ')}
 if(e.code==='PAYMENT_FAILED')m='Your payment was declined. Please try another method.';say(el,m,false)}
 function send(el,url,payload,onOk){var b=el.querySelector('button[type=submit],button[data-fn-upsell]')||(el.matches&&el.matches('button')?el:null);if(b)b.disabled=true;say(el,'Working…',true);
-post(url,payload,false).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})}).then(function(x){if(b)b.disabled=false;if(x.ok){onOk(x.j);done(el)}else fail(el,x.j)}).catch(function(){if(b)b.disabled=false;say(el,'Network error. Please try again.',false)})}
+post(url,payload,false).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})}).then(function(x){if(b)b.disabled=false;if(x.ok){if(!(x.j&&x.j.redirect))onOk(x.j);done(el,x.j)}else fail(el,x.j)}).catch(function(){if(b)b.disabled=false;say(el,'Network error. Please try again.',false)})}
 function fields(f){var o={},i,e;for(i=0;i<f.elements.length;i++){e=f.elements[i];if(!e.name||e.name==='_hp'||e.name==='_consent'||e.name==='bump'||e.disabled)continue;o[e.name]=e.type==='checkbox'?e.checked:e.value}return o}
 document.addEventListener('submit',function(ev){var f=ev.target;if(!f||!f.hasAttribute)return;
 if(f.hasAttribute('data-fn-form')){ev.preventDefault();var hp=f.elements._hp,c=f.elements._consent;

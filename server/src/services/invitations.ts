@@ -7,6 +7,7 @@ import type { Deps } from '../deps.js';
 import { inTx } from '../db/scope.js';
 import { conflict, notFound } from '../errors.js';
 import { newId } from '../util/ids.js';
+import { assertWithinLimit } from '../billing/limits.js';
 import { audit } from './audit.js';
 import { legacyRole, me, password, type UserRow } from './accounts.js';
 import { assertCanGrant, findRole } from './roles.js';
@@ -58,6 +59,7 @@ export async function createInvitation(deps: Deps, auth: Auth, input: z.infer<ty
   if (!role) throw notFound('Role');
   assertCanGrant(auth, role.permissions);
   if ((await deps.db.get('SELECT 1 FROM users WHERE email = ?', input.email)) !== undefined) throw conflict('EMAIL_TAKEN', 'An account with this email already exists');
+  await assertWithinLimit(deps, auth.workspaceId, 'members');
   const token = randomBytes(32).toString('base64url');
   const id = newId('inv');
   const now = deps.now();

@@ -14,7 +14,6 @@ export const RoleInput = z.object({
 });
 export const RolePatch = RoleInput.partial();
 
-const MAX_CUSTOM_ROLES = 50;
 
 interface RoleRow {
   id: string;
@@ -67,7 +66,7 @@ export async function createRole(deps: Deps, auth: Auth, input: z.infer<typeof R
   assertCanGrant(auth, permissions);
   if (reservedName(input.name)) throw conflict('ROLE_NAME_TAKEN', 'That name is used by a built-in role');
   const n = Number((await deps.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM roles WHERE workspace_id = ?', auth.workspaceId))!.n);
-  if (n >= MAX_CUSTOM_ROLES) throw conflict('ROLE_LIMIT', `A workspace can have at most ${MAX_CUSTOM_ROLES} custom roles`);
+  if (n >= deps.config.MAX_CUSTOM_ROLES) throw conflict('ROLE_LIMIT', `A workspace can have at most ${deps.config.MAX_CUSTOM_ROLES} custom roles`);
   const id = newId('rol');
   const at = deps.now().toISOString();
   try {

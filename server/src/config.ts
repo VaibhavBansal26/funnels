@@ -82,6 +82,16 @@ export const EnvSchema = z.object({
   DOMAIN_VERIFY_TIMEOUT_HOURS: int(72, 1),
   ANALYTICS_DISTINCT_MODE: z.enum(['auto', 'exact', 'sketch']).default('auto'),
   ANALYTICS_EXACT_DISTINCT_MAX: int(200_000, 0),
+  PAYMENTS_PROVIDER: z.enum(['mock', 'stripe']).default('mock'),
+  STRIPE_SECRET_KEY: z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/, 'STRIPE_SECRET_KEY must look like sk_test_... or sk_live_...').optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().min(8).optional(),
+  STRIPE_CONNECT_WEBHOOK_SECRET: z.string().min(8).optional(),
+  STRIPE_API_BASE: z.string().regex(/^https?:\/\//, 'STRIPE_API_BASE must start with http:// or https://').default('https://api.stripe.com'),
+  STRIPE_WEBHOOK_TOLERANCE_SECONDS: int(300, 30, 3600),
+  STRIPE_PRICE_PRO: z.string().regex(/^price_/).optional(),
+  STRIPE_PRICE_BUSINESS: z.string().regex(/^price_/).optional(),
+  BILLING_ENFORCE_LIMITS: bool(false),
+  MAX_CUSTOM_ROLES: int(50, 1, 1000),
   ANALYTICS_API_PER_MINUTE: int(60, 1),
   ANALYTICS_EXPORT_PER_MINUTE: int(10, 1),
   ANALYTICS_READ_STORE: z.enum(['postgres', 'clickhouse']).default('postgres'),
@@ -131,6 +141,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     throw new Error('Invalid environment: JWT_SECRET is required in production');
   }
   if (rest.EVENT_BUS === 'redis' && !rest.REDIS_URL) throw new Error('Invalid environment: EVENT_BUS=redis needs REDIS_URL');
+  if (rest.PAYMENTS_PROVIDER === 'stripe' && !(rest.STRIPE_SECRET_KEY && rest.STRIPE_WEBHOOK_SECRET && rest.STRIPE_CONNECT_WEBHOOK_SECRET)) throw new Error('Invalid environment: PAYMENTS_PROVIDER=stripe needs STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET and STRIPE_CONNECT_WEBHOOK_SECRET');
   if (rest.MAIL_TRANSPORT === 'webhook' && !rest.MAIL_WEBHOOK_URL) throw new Error('Invalid environment: MAIL_TRANSPORT=webhook needs MAIL_WEBHOOK_URL');
   if (rest.ANALYTICS_READ_STORE === 'clickhouse' && !rest.CLICKHOUSE_URL) throw new Error('Invalid environment: ANALYTICS_READ_STORE=clickhouse needs CLICKHOUSE_URL');
   if (rest.EVENTSTORE_MIRROR === 'clickhouse' && !rest.CLICKHOUSE_URL) throw new Error('Invalid environment: EVENTSTORE_MIRROR=clickhouse needs CLICKHOUSE_URL');

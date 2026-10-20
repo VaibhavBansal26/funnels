@@ -12,6 +12,7 @@ import { CloudflareDomainProvider, ManualDomainProvider, type DomainProvider } f
 import { CloudflareApiPurger, NoopPurger, purgeJob, type CloudflarePurger } from './edge/purger.js';
 import { EventBuffer } from './services/eventbuffer.js';
 import { MockProvider } from './payments/provider.js';
+import { StripeClient } from './payments/stripe.js';
 import { ensureEventPartitions, maintenanceJob, scheduleMaintenance } from './services/maintenance.js';
 import { deliverWebhook } from './services/webhooks.js';
 import { verificationJob } from './services/domains.js';
@@ -72,6 +73,7 @@ export async function createDeps(config: Config, overrides: Partial<Deps> = {}):
     ai: createAi(config),
     dns: new NodeDnsResolver(),
     payments: new MockProvider(),
+    stripe: 'stripe' in overrides ? overrides.stripe : config.STRIPE_SECRET_KEY ? new StripeClient({ secretKey: config.STRIPE_SECRET_KEY, base: config.STRIPE_API_BASE }) : undefined,
     http: new NodeHttpClient(),
     lookup: systemLookup,
     jobs: new JobQueue(db, () => now().getTime()),

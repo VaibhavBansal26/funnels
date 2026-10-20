@@ -22,7 +22,7 @@ export interface ChargeRequest {
 }
 
 export type ChargeResult =
-  | { status: 'succeeded'; providerRef: string; paymentMethodRef: string }
+  | { status: 'succeeded'; providerRef: string; paymentMethodRef: string; provider?: string; customerRef?: string; account?: string }
   | { status: 'failed'; reason: string };
 
 export interface PaymentProvider {

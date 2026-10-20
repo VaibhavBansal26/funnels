@@ -15,7 +15,7 @@ interface Row {
 const serialize = (r: Row) => ({ id: r.id, type: r.type, title: r.title, body: r.body, data: JSON.parse(r.data_json) as unknown, readAt: r.read_at, createdAt: r.created_at });
 
 /** Stores an in-app notification and pushes it to connected SSE clients of the workspace. */
-export async function notify(deps: Deps, ws: string, n: { type: 'new_lead' | 'new_sale'; title: string; body: string; data: Record<string, unknown> }) {
+export async function notify(deps: Deps, ws: string, n: { type: 'new_lead' | 'new_sale' | 'refund' | 'billing'; title: string; body: string; data: Record<string, unknown> }) {
   const id = newId('ntf');
   const at = deps.now().toISOString();
   await deps.db.run('INSERT INTO notifications (id, workspace_id, type, title, body, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', id, ws, n.type, n.title, n.body, JSON.stringify(n.data), at);

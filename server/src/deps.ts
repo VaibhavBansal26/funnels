@@ -4,6 +4,7 @@ import type { Logger } from './logger.js';
 import type { AiProvider } from './ai/types.js';
 import type { DnsResolver } from './dns/resolver.js';
 import type { PaymentProvider } from './payments/provider.js';
+import type { StripeClient } from './payments/stripe.js';
 import type { HostLookup, HttpClient } from './net/ssrf.js';
 import type { JobQueue } from './jobs/queue.js';
 import type { RateLimiter } from './ratelimit/limiter.js';
@@ -28,6 +29,8 @@ export interface Deps {
   ai: AiProvider;
   dns: DnsResolver;
   payments: PaymentProvider;
+  /** Stripe API client (PAYMENTS_PROVIDER=stripe or subscriptions); absent when no STRIPE_SECRET_KEY is set. */
+  stripe?: StripeClient;
   http: HttpClient;
   lookup: HostLookup;
   jobs: JobQueue;

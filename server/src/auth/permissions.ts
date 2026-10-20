@@ -15,6 +15,7 @@ export const PERMISSIONS = {
   'leads:export': 'Export leads as CSV',
   'orders:read': 'View orders',
   'orders:export': 'Export orders as CSV',
+  'orders:refund': 'Refund orders (full or partial)',
   'analytics:read': 'View funnel and step analytics',
   'analytics:export': 'Create API keys with the export scope and read the raw analytics exports (with analytics_identity:manage: the identity pepper)',
   'ai:use': 'Use the AI assistant',

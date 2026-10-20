@@ -15,6 +15,7 @@ import { domainEvent } from '../queue/outbox.js';
 import { insertEvents } from './rollups.js';
 import { EMAIL_RE, resolvePublicBlock, sanitizeUtms } from './publicblocks.js';
 import { fireWebhookEvent } from './webhooks.js';
+import { startHostedCheckout, stripeUpsellCharge } from './stripepay.js';
 
 export const CheckoutInput = z.object({
   email: z.string().trim().max(254).optional(),
@@ -28,7 +29,7 @@ export const CheckoutInput = z.object({
   preview: z.boolean().optional(),
 });
 
-interface OrderRow {
+export interface OrderRow {
   id: string;
   workspace_id: string;
   funnel_id: string;
@@ -48,13 +49,19 @@ interface OrderRow {
   payment_method_ref: string | null;
   idem_key: string | null;
   created_at: string;
+  status?: string;
+  refunded_cents?: number;
+  provider_customer?: string | null;
+  provider_account?: string | null;
 }
 
 const cents = (price: number) => Math.round(price * 100);
-const serializeLine = (o: OrderRow) => ({ id: o.id, productName: o.product_name, amountCents: o.amount_cents, currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1 });
+export const serializeLine = (o: OrderRow) => ({ id: o.id, productName: o.product_name, amountCents: o.amount_cents, currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1, status: o.status ?? 'paid', refundedCents: o.refunded_cents ?? 0 });
 
 export interface CheckoutResult {
   ok: true;
+  /** Hosted checkout: send the visitor here (Stripe Checkout); the orders are created when the payment completes. */
+  redirect?: string;
   recorded: boolean;
   duplicate?: boolean;
   orderId?: string;
@@ -77,9 +84,11 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
   let name = input.name ?? null;
   let paymentMethodRef: string | undefined;
   let parentOrderId: string | null = null;
+  let prevOrder: OrderRow | undefined;
   if (block.oneClickUpsell) {
     const prev = input.previousOrderId ? await deps.db.get<OrderRow>('SELECT * FROM orders WHERE workspace_id = ? AND funnel_id = ? AND id = ?', ws, funnel.id, input.previousOrderId) : undefined;
     if (!prev) throw badRequest('PREVIOUS_ORDER_REQUIRED', 'A completed earlier order is required for a one-click upsell');
+    prevOrder = prev;
     email = prev.email;
     name = prev.name;
     paymentMethodRef = prev.payment_method_ref ?? undefined;
@@ -96,6 +105,10 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
   }
   if (input.preview) return { ok: true, recorded: false, orders: [], declined: [] };
 
+  if (deps.config.PAYMENTS_PROVIDER === 'stripe' && !block.oneClickUpsell) {
+    return startHostedCheckout(deps, { ws, funnel, step, block, bumps, email, name, visitorId: input.visitorId, utms: input.utms });
+  }
+
   const idemBase = input.submissionId ? `${block.id}:${input.submissionId}` : null;
   if (idemBase) {
     const main = await deps.db.get<OrderRow>('SELECT * FROM orders WHERE workspace_id = ? AND funnel_id = ? AND idem_key = ?', ws, funnel.id, `${idemBase}:${block.id}`);
@@ -111,14 +124,15 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
   for (const item of items) {
     const b = item.block;
     const idem = idemBase ? `${idemBase}:${b.id}` : null;
-    const result = await deps.payments.charge({
+    const charge = {
       amountCents: cents(b.price),
       currency: b.currency,
       description: `${b.productName} (${funnel.name})`,
       customer: { email, name: name ?? undefined },
       idempotencyKey: idem ?? newId('idem'),
       paymentMethodRef,
-    });
+    };
+    const result = deps.config.PAYMENTS_PROVIDER === 'stripe' ? await stripeUpsellCharge(deps, ws, prevOrder!, charge) : await deps.payments.charge(charge);
     if (result.status === 'failed') {
       if (!item.bump) throw new AppError(402, 'PAYMENT_FAILED', 'The payment was declined', { reason: result.reason });
       declined.push(b.id);
@@ -128,7 +142,8 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
     const row: OrderRow = {
       id: newId('ord'), workspace_id: ws, funnel_id: funnel.id, step_id: step.id, block_id: b.id, lead_id: null, email: email.toLowerCase(), name,
       product_name: b.productName, amount_cents: cents(b.price), currency: b.currency, is_bump: item.bump ? 1 : 0, is_upsell: block.oneClickUpsell && !item.bump ? 1 : 0,
-      parent_order_id: parentOrderId, provider: deps.payments.name, provider_ref: result.providerRef, payment_method_ref: result.paymentMethodRef, idem_key: idem, created_at: deps.now().toISOString(),
+      parent_order_id: parentOrderId, provider: result.provider ?? deps.payments.name, provider_ref: result.providerRef, payment_method_ref: result.paymentMethodRef, idem_key: idem, created_at: deps.now().toISOString(),
+      provider_customer: result.customerRef ?? null, provider_account: result.account ?? null,
     };
     created.push(row);
     if (!item.bump && !parentOrderId) parentOrderId = row.id;
@@ -145,7 +160,7 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
 }
 
 /** Writes orders, their `order` events (and rollups), the buyer lead, notifications and webhook deliveries in one transaction. */
-function persistOrders(
+export function persistOrders(
   deps: Deps,
   p: { ws: string; funnel: { id: string; name: string }; step: { id: string; name: string }; created: OrderRow[]; email: string; name: string | null; visitorId?: string; utms?: unknown },
 ): Promise<void> {
@@ -156,9 +171,9 @@ function persistOrders(
     for (const o of created) {
       o.lead_id = lead.id;
       await d.db.run(
-        `INSERT INTO orders (id, workspace_id, funnel_id, step_id, block_id, lead_id, email, name, product_name, amount_cents, currency, is_bump, is_upsell, parent_order_id, provider, provider_ref, payment_method_ref, idem_key, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        o.id, o.workspace_id, o.funnel_id, o.step_id, o.block_id, o.lead_id, o.email, o.name, o.product_name, o.amount_cents, o.currency, o.is_bump, o.is_upsell, o.parent_order_id, o.provider, o.provider_ref, o.payment_method_ref, o.idem_key, o.created_at,
+        `INSERT INTO orders (id, workspace_id, funnel_id, step_id, block_id, lead_id, email, name, product_name, amount_cents, currency, is_bump, is_upsell, parent_order_id, provider, provider_ref, payment_method_ref, idem_key, created_at, provider_customer, provider_account)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        o.id, o.workspace_id, o.funnel_id, o.step_id, o.block_id, o.lead_id, o.email, o.name, o.product_name, o.amount_cents, o.currency, o.is_bump, o.is_upsell, o.parent_order_id, o.provider, o.provider_ref, o.payment_method_ref, o.idem_key, o.created_at, o.provider_customer ?? null, o.provider_account ?? null,
       );
       await insertEvents(d.db, [{
         id: newId('evt'), workspace_id: ws, funnel_id: funnel.id, step_id: step.id, type: 'order', visitor_id: p.visitorId ?? null, unique_visit: 0, lead_id: lead.id, order_id: o.id,
@@ -240,5 +255,5 @@ export function ordersCsvStream(base: Deps, ws: string, q: z.infer<typeof OrderQ
 export async function getOrder(deps: Deps, ws: string, id: string) {
   const o = await deps.db.get<Joined>(`${SELECT} WHERE o.workspace_id = ? AND o.id = ?`, ws, id);
   if (!o) throw notFound('Order');
-  return { ...serializeLine(o), funnelId: o.funnel_id, email: o.email, name: o.name, createdAt: o.created_at };
+  return { ...serializeLine(o), funnelId: o.funnel_id, email: o.email, name: o.name, provider: o.provider, createdAt: o.created_at };
 }

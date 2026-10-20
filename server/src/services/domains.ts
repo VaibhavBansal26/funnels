@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Deps } from '../deps.js';
+import { assertWithinLimit } from '../billing/limits.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { isUniqueViolation } from '../db/index.js';
 import { inTx } from '../db/scope.js';
@@ -77,6 +78,7 @@ export async function enqueueVerification(deps: Deps, domainId: string, attempt 
 }
 
 export async function createDomain(deps: Deps, ws: string, input: z.infer<typeof DomainInput>) {
+  await assertWithinLimit(deps, ws, 'domains');
   const hostname = normalizeHostname(input.hostname);
   const reserved = new Set([hostOf(deps.config.APP_PUBLIC_URL), deps.config.APP_PUBLIC_CNAME_TARGET.toLowerCase(), 'localhost']);
   if (!HOST_RE.test(hostname)) throw badRequest('INVALID_HOSTNAME', 'Enter a valid hostname such as offers.example.com (no protocol, path or port)');

@@ -7,6 +7,7 @@ import { badRequest, conflict, forbidden, notFound, unauthorized } from '../erro
 import { clientIp, inCidr } from '../ratelimit/ip.js';
 import { isIP } from 'node:net';
 import { newId } from '../util/ids.js';
+import { assertWithinLimit } from '../billing/limits.js';
 import { audit } from './audit.js';
 import { assertCanGrant } from './roles.js';
 import type { Permission } from '../auth/permissions.js';
@@ -77,6 +78,7 @@ export async function createKey(deps: Deps, auth: Auth, input: z.infer<typeof Ap
   if (input.expiresAt && Date.parse(input.expiresAt) <= deps.now().getTime()) throw badRequest('INVALID_EXPIRY', 'The expiry must be in the future');
   const live = Number((await deps.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM api_keys WHERE workspace_id = ? AND revoked_at IS NULL', auth.workspaceId))!.n);
   if (live >= MAX_KEYS) throw conflict('API_KEY_LIMIT', `A workspace can have at most ${MAX_KEYS} active API keys; revoke one first`);
+  await assertWithinLimit(deps, auth.workspaceId, 'apiKeys');
   const secret = randomBytes(24).toString('base64url');
   const key = `fa_${input.mode}_${secret}`;
   const id = newId('key');

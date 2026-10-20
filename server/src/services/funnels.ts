@@ -13,6 +13,7 @@ import type { DomainRow, FunnelRow, StepRow } from '../repos/types.js';
 import { newId } from '../util/ids.js';
 import { copyName, copyPath, isValidPath, pathKey, slugPath, suggestPaths } from './paths.js';
 import { domainPathIndex, funnelDomainConflicts } from './pathconflicts.js';
+import { assertWithinLimit } from '../billing/limits.js';
 import { regenerateFunnel, scriptsAllowedFor } from './pages.js';
 import { remapStepRefs } from './docs.js';
 import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
@@ -265,6 +266,7 @@ async function resolveDomainConflicts(deps: Deps, ws: string, funnel: FunnelRow,
 
 export async function createFunnel(deps: Deps, auth: Auth, input: z.infer<typeof CreateFunnelInput>) {
   const ws = auth.workspaceId;
+  await assertWithinLimit(deps, ws, 'funnels');
   assertTrackingRole(auth, input);
   const basePath = input.base_path ?? slugPath(input.name);
   assertValidPath(basePath);
@@ -350,6 +352,7 @@ export async function duplicateFunnel(deps: Deps, auth: Auth, id: string) {
   const ws = auth.workspaceId;
   const newFunnelId = await inTx(deps, async (d) => {
     await lockWorkspace(d.db, ws); // copy names are derived from the existing names
+    await assertWithinLimit(d, ws, 'funnels');
     const source = await requireFunnel(d.db, ws, id);
     const at = iso(d);
     const fid = newId('fn');
@@ -389,6 +392,7 @@ export async function createFunnelFromSteps(deps: Deps, auth: Auth, opts: { name
   const ws = auth.workspaceId;
   const id = await inTx(deps, async (d) => {
     await lockWorkspace(d.db, ws);
+    await assertWithinLimit(d, ws, 'funnels');
     const at = iso(d);
     const fid = newId('fn');
     const name = await uniqueFunnelName(d, ws, opts.name);
@@ -431,6 +435,7 @@ export async function restoreFunnel(deps: Deps, auth: Auth, id: string) {
   await inTx(deps, async (d) => {
     const f = await lockFunnel(d.db, ws, id, true);
     if (!f.deleted_at) throw conflict('NOT_DELETED', 'The funnel is not in the trash');
+    await assertWithinLimit(d, ws, 'funnels');
     await patchFunnel(d.db, ws, id, { deleted_at: null, updated_at: iso(d) });
   });
   return getFunnelDetail(deps, ws, id);

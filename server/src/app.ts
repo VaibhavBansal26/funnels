@@ -7,6 +7,7 @@ import { createMetrics } from './metrics.js';
 import { rateLimitMiddleware } from './ratelimit/http.js';
 import { rateLimitAdminRoutes } from './routes/ratelimits.js';
 import { aiRoutes } from './routes/ai.js';
+import { billingRoutes } from './routes/billing.js';
 import { analyticsApiRoutes } from './routes/analyticsapi.js';
 import { teamRoutes } from './routes/team.js';
 import { authRoutes } from './routes/auth.js';
@@ -78,6 +79,7 @@ export function createApp(deps: Deps): Hono {
   api.route('/', authRoutes(deps));
   api.route('/', teamRoutes(deps));
   api.route('/v1', analyticsApiRoutes(deps));
+  api.route('/', billingRoutes(deps));
   api.route('/funnels', funnelRoutes(deps));
   api.route('/tags', tagRoutes(deps));
   api.route('/domains', domainRoutes(deps));

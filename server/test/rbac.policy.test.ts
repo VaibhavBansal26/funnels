@@ -4,7 +4,7 @@ import { OPERATIONS } from '../src/routes/spec.js';
 import { makeHarness } from './helpers.js';
 
 /** Permissions that exist in the catalogue before any route needs them (their features are not built yet). The list only ever shrinks: a permission that is neither used nor listed here fails the test. */
-const RESERVED = new Set<Permission>(['billing:read', 'billing:manage']);
+const RESERVED = new Set<Permission>([]);
 
 /** Permissions enforced inside a service because they depend on the request body (not on which route is called); covered by `rbac.test.ts`. */
 const ENFORCED_IN_SERVICES = new Set<Permission>(['funnels:tracking']);
@@ -45,7 +45,7 @@ describe('central route policy', () => {
   });
 
   it('every authenticated route refuses a role that has every permission EXCEPT the one it needs, and admits a role that has only that one', async () => {
-    const h = await makeHarness({ env: { API_USER_PER_MINUTE: '1000000', API_WORKSPACE_PER_MINUTE: '1000000' } }); // this test makes hundreds of requests as a few users
+    const h = await makeHarness({ env: { API_USER_PER_MINUTE: '1000000', API_WORKSPACE_PER_MINUTE: '1000000', MAX_CUSTOM_ROLES: '500' } }); // this test makes hundreds of requests as a few users
     const owner = await h.register();
     const fill = (p: string) => p.replace(/:[A-Za-z]+/g, 'x');
     const call = (o: (typeof OPERATIONS)[number], token: string) => h.call(o.method, fill(o.path), { token, body: o.method === 'GET' || o.method === 'DELETE' ? undefined : {} });

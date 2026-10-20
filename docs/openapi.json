@@ -2106,7 +2106,7 @@
                     "maxLength": 300
                   },
                   "permissions": {
-                    "maxItems": 26,
+                    "maxItems": 27,
                     "type": "array",
                     "items": {
                       "type": "string"
@@ -2187,7 +2187,7 @@
                     "maxLength": 300
                   },
                   "permissions": {
-                    "maxItems": 26,
+                    "maxItems": 27,
                     "type": "array",
                     "items": {
                       "type": "string"
@@ -5588,13 +5588,14 @@
                   },
                   "events": {
                     "minItems": 1,
-                    "maxItems": 3,
+                    "maxItems": 4,
                     "type": "array",
                     "items": {
                       "type": "string",
                       "enum": [
                         "funnel.optin",
                         "funnel.purchase",
+                        "funnel.refund",
                         "analytics.daily_rollup_ready"
                       ]
                     }
@@ -5673,13 +5674,14 @@
                   },
                   "events": {
                     "minItems": 1,
-                    "maxItems": 3,
+                    "maxItems": 4,
                     "type": "array",
                     "items": {
                       "type": "string",
                       "enum": [
                         "funnel.optin",
                         "funnel.purchase",
+                        "funnel.refund",
                         "analytics.daily_rollup_ready"
                       ]
                     }
@@ -8131,6 +8133,419 @@
         ],
         "x-auth": "user",
         "x-permission": "analytics_identity:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/stripe/webhook": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Stripe platform webhook: subscriptions and invoices (signature over the raw body)",
+        "description": "Signed with STRIPE_WEBHOOK_SECRET (Stripe-Signature, timestamped HMAC-SHA-256). Deduplicated by event id; a failure answers 500 so Stripe retries.",
+        "operationId": "post_api_stripe_webhook",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "webhook.inbound"
+        ]
+      }
+    },
+    "/api/stripe/connect-webhook": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Stripe Connect webhook: checkout, refunds and account changes of connected accounts",
+        "description": "Signed with STRIPE_CONNECT_WEBHOOK_SECRET.",
+        "operationId": "post_api_stripe_connect_webhook",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "webhook.inbound"
+        ]
+      }
+    },
+    "/api/public/checkout/return": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Where Stripe Checkout sends the visitor back: finishes the orders (idempotent) and redirects to the next page",
+        "operationId": "get_api_public_checkout_return",
+        "parameters": [],
+        "responses": {
+          "303": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "public.checkout"
+        ]
+      }
+    },
+    "/api/billing": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Plan, limits, usage and Stripe connection state",
+        "operationId": "get_api_billing",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "billing:read",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/billing/subscribe": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Start a subscription: returns a Stripe Checkout URL",
+        "operationId": "post_api_billing_subscribe",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "plan": {
+                    "type": "string",
+                    "enum": [
+                      "pro",
+                      "business"
+                    ]
+                  }
+                },
+                "required": [
+                  "plan"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "billing:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/billing/portal": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Open the Stripe billing portal (payment method, invoices, cancel)",
+        "operationId": "post_api_billing_portal",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "billing:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/billing/connect": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Connected Stripe account state (refreshed from Stripe)",
+        "operationId": "get_api_billing_connect",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "billing:read",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/billing/connect/start": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Start or resume Stripe Connect onboarding: returns the onboarding URL",
+        "operationId": "post_api_billing_connect_start",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "billing:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/billing/connect/disconnect": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Stop taking payments through the connected account",
+        "operationId": "post_api_billing_connect_disconnect",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "billing:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/orders/{id}/refund": {
+      "post": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Refund an order, in full or in part (the refundable amount is reserved atomically)",
+        "description": "Body is optional: no amount refunds what is left.",
+        "operationId": "post_api_orders_id_refund",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amountCents": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100000000
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "requested_by_customer",
+                      "duplicate",
+                      "fraudulent"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "orders:refund",
         "x-rate-limit-policies": [
           "ip.global",
           "api.write",

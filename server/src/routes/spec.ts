@@ -16,6 +16,8 @@ import { WebhookInput, WebhookPatch } from '../services/webhooks.js';
 import { LoginInput, MemberPatch, PasswordChange, RegisterInput, WorkspacePatch } from '../services/accounts.js';
 import { ApiKeyInput, ApiKeyPatch } from '../services/apikeys.js';
 import { ApiListQuery, ApiRangeQuery, ExportQuery, TimeseriesQuery } from '../services/analyticsapi.js';
+import { SubscribeInput } from '../services/billing.js';
+import { RefundInput } from '../services/stripepay.js';
 import { AuditQuery } from '../services/audit.js';
 import { AcceptInput, InvitationInput, LookupQuery } from '../services/invitations.js';
 import { ForgotInput, ResetInput } from '../services/recovery.js';
@@ -226,6 +228,17 @@ export const OPERATIONS: Operation[] = [
   A('DELETE', '/api/v1/api-keys/:id', 'api_keys:manage', 'api-keys', 'Revoke a key', { status: 204 }),
   A('GET', '/api/v1/analytics/identity-pepper', 'analytics_identity:manage', 'api-keys', 'The workspace identity pepper (a secret, shown to people only)', { also: ['analytics:export'] }),
   A('POST', '/api/v1/analytics/identity-pepper/rotate', 'analytics_identity:manage', 'api-keys', 'Replace the pepper: exported keys change, so consumers must adopt the new one', { also: ['analytics:export'] }),
+  // Stripe and billing
+  make('POST', '/api/stripe/webhook', 'public', 'billing', 'Stripe platform webhook: subscriptions and invoices (signature over the raw body)', { limits: ['ip.global', 'webhook.inbound'], notes: 'Signed with STRIPE_WEBHOOK_SECRET (Stripe-Signature, timestamped HMAC-SHA-256). Deduplicated by event id; a failure answers 500 so Stripe retries.' }),
+  make('POST', '/api/stripe/connect-webhook', 'public', 'billing', 'Stripe Connect webhook: checkout, refunds and account changes of connected accounts', { limits: ['ip.global', 'webhook.inbound'], notes: 'Signed with STRIPE_CONNECT_WEBHOOK_SECRET.' }),
+  make('GET', '/api/public/checkout/return', 'public', 'billing', 'Where Stripe Checkout sends the visitor back: finishes the orders (idempotent) and redirects to the next page', { limits: ['ip.global', 'public.checkout'], query: undefined, status: 303 }),
+  A('GET', '/api/billing', 'billing:read', 'billing', 'Plan, limits, usage and Stripe connection state'),
+  A('POST', '/api/billing/subscribe', 'billing:manage', 'billing', 'Start a subscription: returns a Stripe Checkout URL', { body: SubscribeInput }),
+  A('POST', '/api/billing/portal', 'billing:manage', 'billing', 'Open the Stripe billing portal (payment method, invoices, cancel)'),
+  A('GET', '/api/billing/connect', 'billing:read', 'billing', 'Connected Stripe account state (refreshed from Stripe)'),
+  A('POST', '/api/billing/connect/start', 'billing:manage', 'billing', 'Start or resume Stripe Connect onboarding: returns the onboarding URL'),
+  A('POST', '/api/billing/connect/disconnect', 'billing:manage', 'billing', 'Stop taking payments through the connected account', { status: 204 }),
+  A('POST', '/api/orders/:id/refund', 'orders:refund', 'orders', 'Refund an order, in full or in part (the refundable amount is reserved atomically)', { body: RefundInput, notes: 'Body is optional: no amount refunds what is left.' }),
   // AI
   A('GET', '/api/ai/status', 'ai:use', 'ai', 'Provider and daily usage'),
   A('POST', '/api/ai/funnel', 'ai:use', 'ai', 'Generate a funnel', { body: ai.FunnelRequest, status: 201, limits: ['ip.global', 'api.write', 'api.workspace'], inHandler: ['ai.minute', 'ai.daily'] }),
