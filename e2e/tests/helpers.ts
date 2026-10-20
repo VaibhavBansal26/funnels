@@ -98,3 +98,15 @@ export async function signOut(page: Page) {
   await page.getByRole('button', { name: 'Account menu' }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
 }
+
+/** The bounding box of an element once it has stopped moving (the canvas scrolls smoothly to a newly inserted block, and a drag must start where the handle really is). */
+export async function settledBox(locator: import('@playwright/test').Locator) {
+  let last = (await locator.boundingBox())!;
+  for (let i = 0; i < 40; i++) {
+    await locator.page().waitForTimeout(150);
+    const now = (await locator.boundingBox())!;
+    if (now && last && Math.abs(now.x - last.x) < 0.5 && Math.abs(now.y - last.y) < 0.5) return now;
+    last = now;
+  }
+  return last;
+}

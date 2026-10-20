@@ -12,11 +12,12 @@ export const DEVICE_WIDTH: Record<Device, string> = { desktop: '100%', tablet: '
  * Previews are pictures of the page, not the page: scripts are left out (the sandbox would refuse them and log each one) and so are embedded players
  * (YouTube, Vimeo, mp4), which would otherwise make a third-party request for every card on screen. The video box keeps its size and its dark background.
  */
+const PLAYER = '<span class="fn-video-placeholder"><span class="fn-video-play"></span></span>';
 export const inertHtml = (html: string): string =>
   html
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
-    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>/gi, '')
-    .replace(/<video\b[^>]*>[\s\S]*?<\/video\s*>/gi, '');
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>/gi, PLAYER)
+    .replace(/<video\b[^>]*>[\s\S]*?<\/video\s*>/gi, PLAYER);
 
 export function HtmlFrame({ html, title, device = 'desktop', height = 480 }: { html: string; title: string; device?: Device; height?: number }) {
   return <iframe title={title} sandbox="" srcDoc={inertHtml(html)} style={{ width: DEVICE_WIDTH[device], maxWidth: '100%', height }} className="mx-auto block rounded-lg border border-border bg-white" />;

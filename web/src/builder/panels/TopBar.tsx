@@ -1,8 +1,8 @@
 // Adapted from the legacy builder (see docs/PROVENANCE.md): the legacy top bar (back, active page dropdown, desktop / mobile switch, undo, redo, popup, X-ray (outline) toggle,
 // preview, save), reorganised with the step switcher, a tablet size, history, page settings and publish.
-import { ArrowLeft, Eye, History, Keyboard, Monitor, Pencil, Redo2, Rocket, Save, Settings2, Smartphone, Tablet, Undo2, ExternalLink, LayoutPanelLeft, SlidersHorizontal, LoaderCircle, CircleAlert, Check } from 'lucide-react';
+import { ArrowLeft, Eye, History, Keyboard, Monitor, MoreHorizontal, Pencil, Redo2, Rocket, Save, Settings2, Smartphone, Tablet, Undo2, ExternalLink, LayoutPanelLeft, SlidersHorizontal, LoaderCircle, CircleAlert, Check } from 'lucide-react';
 import { Link } from 'react-router';
-import { Badge, Button, buttonVariants, cn, Select, Tooltip } from '../../ui';
+import { Badge, Button, buttonVariants, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Select, Tooltip } from '../../ui';
 import { DEVICES, type DeviceId } from '../editor/createEditor';
 import { useBuilder, useEditorEvents } from '../useEditor';
 
@@ -37,11 +37,11 @@ export function TopBar({ funnelName, stepId, steps, onStep, device, onDevice, pr
       <div className="hidden min-w-0 max-w-44 flex-col leading-tight xl:flex">
         <span className="truncate text-[0.72rem] font-medium text-muted">{funnelName}</span>
       </div>
-      <div className="w-36 sm:w-44">
+      <div className="w-28 sm:w-44">
         <Select size="sm" aria-label="Step" value={stepId} onValueChange={onStep} options={steps.map((s) => ({ value: s.id, label: `${s.position}. ${s.name}` }))} />
       </div>
       <span className="mx-0.5 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
-      <div className="flex items-center">
+      <div className="hidden items-center sm:flex">
         <Tooltip label="Undo" shortcut="⌘Z"><Button variant="ghost" size="icon" aria-label="Undo" disabled={!um.hasUndo()} onClick={() => editor.runCommand('core:undo')}><Undo2 /></Button></Tooltip>
         <Tooltip label="Redo" shortcut="⇧⌘Z"><Button variant="ghost" size="icon" aria-label="Redo" disabled={!um.hasRedo()} onClick={() => editor.runCommand('core:redo')}><Redo2 /></Button></Tooltip>
       </div>
@@ -57,15 +57,26 @@ export function TopBar({ funnelName, stepId, steps, onStep, device, onDevice, pr
       </div>
       <span className="flex-1 sm:hidden" />
       <Tooltip label={previewing ? 'Back to editing' : 'Preview without editing tools'} shortcut="⇧⌘P">
-        <Button variant={previewing ? 'soft' : 'ghost'} size="sm" aria-pressed={previewing} onClick={onPreviewToggle}>{previewing ? <Pencil /> : <Eye />}<span className="hidden xl:inline">{previewing ? 'Edit' : 'Preview'}</span></Button>
+        <Button variant={previewing ? 'soft' : 'ghost'} size="sm" className="hidden sm:inline-flex" aria-pressed={previewing} onClick={onPreviewToggle}>{previewing ? <Pencil /> : <Eye />}<span className="hidden xl:inline">{previewing ? 'Edit' : 'Preview'}</span></Button>
       </Tooltip>
       <SaveStatus state={state} dirty={dirty} />
-      <Tooltip label="Version history"><Button variant="ghost" size="icon" aria-label="Version history" onClick={onHistory}><History /></Button></Tooltip>
-      <Tooltip label="Page settings"><Button variant="ghost" size="icon" aria-label="Page settings" onClick={onSettings}><Settings2 /></Button></Tooltip>
+      <Tooltip label="Version history"><Button variant="ghost" size="icon" className="hidden sm:inline-flex" aria-label="Version history" onClick={onHistory}><History /></Button></Tooltip>
+      <Tooltip label="Page settings"><Button variant="ghost" size="icon" className="hidden sm:inline-flex" aria-label="Page settings" onClick={onSettings}><Settings2 /></Button></Tooltip>
       <Tooltip label="Keyboard shortcuts" shortcut="?"><Button variant="ghost" size="icon" className="hidden lg:inline-flex" aria-label="Keyboard shortcuts" onClick={onShortcuts}><Keyboard /></Button></Tooltip>
-      <Tooltip label="Open the saved page in a new tab"><Button size="sm" onClick={onOpenPreview}><ExternalLink /><span className="hidden xl:inline">View</span></Button></Tooltip>
+      <Tooltip label="Open the saved page in a new tab"><Button size="sm" className="hidden sm:inline-flex" onClick={onOpenPreview}><ExternalLink /><span className="hidden xl:inline">View</span></Button></Tooltip>
       <Button size="sm" aria-label="Save" disabled={state.kind === 'saving' || (!dirty && state.kind !== 'error')} onClick={onSave}><Save /><span className="hidden xl:inline">Save</span></Button>
-      <Button size="sm" variant="primary" onClick={onPublish}><Rocket /><span className="hidden sm:inline">Publish</span></Button>
+      <Button size="sm" variant="primary" aria-label="Publish" onClick={onPublish}><Rocket /><span className="hidden sm:inline">Publish</span></Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="sm:hidden" aria-label="More actions"><MoreHorizontal /></Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem disabled={!um.hasUndo()} onSelect={() => editor.runCommand('core:undo')}><Undo2 /> Undo</DropdownMenuItem>
+          <DropdownMenuItem disabled={!um.hasRedo()} onSelect={() => editor.runCommand('core:redo')}><Redo2 /> Redo</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onPreviewToggle}>{previewing ? <Pencil /> : <Eye />} {previewing ? 'Back to editing' : 'Preview'}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onHistory}><History /> Version history</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onSettings}><Settings2 /> Page settings</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onOpenPreview}><ExternalLink /> View saved page</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       {toggles.right ? <Tooltip label="Style and settings"><Button variant="ghost" size="icon" aria-label="Open style and settings" onClick={() => onTogglePanels('right')}><SlidersHorizontal /></Button></Tooltip> : null}
       <Badge className="hidden" tone="neutral">{steps.length}</Badge>
     </header>

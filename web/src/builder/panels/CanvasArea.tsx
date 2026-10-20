@@ -28,7 +28,7 @@ export function ZoomBar({ areaRef }: { areaRef: RefObject<HTMLDivElement | null>
   }, [editor]);
   const step = (dir: 1 | -1) => apply(dir === 1 ? (ZOOMS.find((z) => z > zoom) ?? 150) : ([...ZOOMS].reverse().find((z) => z < zoom) ?? 50));
   return (
-    <div role="group" aria-label="Zoom" className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-surface/95 p-1 shadow-pop backdrop-blur">
+    <div role="group" aria-label="Zoom" className="absolute bottom-3 left-3 z-10 flex items-center gap-0.5 rounded-full border border-border bg-surface/95 p-1 shadow-pop backdrop-blur">
       <Tooltip label="Zoom out" side="top"><Button size="icon-sm" variant="ghost" aria-label="Zoom out" disabled={zoom <= 50} onClick={() => step(-1)}><ZoomOut /></Button></Tooltip>
       <button type="button" aria-label="Reset zoom to 100 percent" onClick={() => apply(100)} className="min-w-12 rounded-md px-1 text-center text-[0.78rem] font-semibold tabular-nums hover:bg-surface-2">{zoom}%</button>
       <Tooltip label="Zoom in" side="top"><Button size="icon-sm" variant="ghost" aria-label="Zoom in" disabled={zoom >= 150} onClick={() => step(1)}><ZoomIn /></Button></Tooltip>

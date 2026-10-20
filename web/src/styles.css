@@ -244,11 +244,17 @@
   .btn.primary {
     @apply border-primary bg-primary text-primary-fg shadow-sm hover:bg-primary-hover;
   }
+  /* Destructive actions sitting next to normal ones are quiet until hovered (red text on a soft red ground); the confirm dialog's button is the solid one. */
   .btn.danger {
-    @apply border-danger bg-danger text-white hover:brightness-110;
+    @apply border-danger/35 bg-danger-soft text-danger shadow-none hover:border-danger hover:bg-danger hover:text-white;
   }
-  :root[data-theme='dark'] .btn.danger {
+  :root[data-theme='dark'] .btn.danger:hover {
     @apply text-[#2a0b09];
+  }
+  :root:not([data-theme='light']) .btn.danger:hover {
+    @media (prefers-color-scheme: dark) {
+      color: #2a0b09;
+    }
   }
   .btn.ghost {
     @apply border-transparent bg-transparent shadow-none hover:bg-surface-2;
@@ -303,8 +309,20 @@
   .card {
     @apply rounded-lg border border-border bg-surface p-4 shadow-card;
   }
+  form.card,
+  section.card {
+    @apply flex flex-col gap-3;
+  }
+  form.card > .btn,
+  section.card > .btn,
+  form.card > .check {
+    @apply self-start;
+  }
   .card.flush {
     @apply overflow-hidden p-0;
+  }
+  .grid {
+    @apply gap-x-4 gap-y-1;
   }
   .grid.cards {
     @apply grid gap-4;
@@ -481,10 +499,14 @@
     @apply m-0 break-all;
   }
   .auth-page {
-    @apply grid min-h-full place-items-center bg-bg p-6;
+    @apply grid min-h-full place-items-center p-6;
+    background: radial-gradient(60rem 28rem at 50% -8rem, var(--primary-soft), transparent 70%), var(--bg);
   }
   .auth-card {
-    @apply w-full max-w-md;
+    @apply w-full max-w-md gap-4 p-7 shadow-pop;
+  }
+  .auth-card h1 {
+    @apply text-2xl font-bold tracking-tight;
   }
   .steps-wizard {
     @apply mb-4 flex gap-2;

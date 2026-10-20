@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { addVerifiedDomain, canvas, createLeadMagnet, dragBlock, goLive, openBuilder, readEditor, register } from './helpers.js';
+import { addVerifiedDomain, canvas, createLeadMagnet, dragBlock, goLive, openBuilder, readEditor, register, settledBox } from './helpers.js';
 
 // The page builder is GrapesJS rendering the page into an iframe. Every action here is real mouse and keyboard input (drags are mouse down, move, up),
 // and the assertions read what the user sees (the canvas, the panels) or what the server stored and published.
@@ -120,8 +120,7 @@ test('builder: an image is resized by dragging its handle, and the width is stor
   const w0 = await width();
   const handle = page.locator('.gjs-resizer-h-cr, .gjs-resizer-h-br').first();
   await expect(handle).toBeVisible();
-  await page.waitForTimeout(600); // the canvas scrolls the new image into view; measure the handle once it has settled
-  const hb = (await handle.boundingBox())!;
+  const hb = await settledBox(handle); // the canvas scrolls the new image into view smoothly: grab the handle where it has come to rest
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
   await page.mouse.down();
   await page.mouse.move(hb.x - 60, hb.y - 10, { steps: 4 });

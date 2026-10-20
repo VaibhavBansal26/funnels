@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
+import { Zap } from 'lucide-react';
 import { api, ApiError, errorMessage } from '../api/client';
 import type { AuthResponse } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -11,7 +12,10 @@ function Frame({ title, children, footer }: { title: string; children: React.Rea
   return (
     <div className="auth-page">
       <div className="auth-card card stack">
-        <div className="row"><svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#2563eb" /><path d="M7 8h18l-7 8.5V24l-4-2.5v-5z" fill="#fff" /></svg><strong>Funnels</strong></div>
+        <div className="mb-1 flex items-center gap-2.5 text-lg font-bold tracking-tight">
+          <span className="grid size-9 place-items-center rounded-lg bg-primary text-primary-fg shadow-sm"><Zap className="size-[18px]" aria-hidden="true" /></span>
+          Funnels
+        </div>
         <h1>{title}</h1>
         {children}
         <p className="muted small" style={{ margin: 0 }}>{footer}</p>
