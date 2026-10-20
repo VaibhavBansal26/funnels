@@ -64,3 +64,23 @@ Local: `docker compose --profile edge up` runs `wrangler dev` against the compos
 ## Cost notes
 
 Workers bill per request and CPU time; a cache hit is one request with a few ms of CPU (cookie assembly), and revalidation adds one subrequest per stale hit per colo. KV reads are billed per read (only on cache misses). Cloudflare for SaaS bills per custom hostname beyond the free allotment. Tune `CACHE_TTL_SECONDS` upward (with purge enabled) to cut origin traffic; every purge-by-URL call counts against the purge rate limit, which is why URLs are batched per job.
+
+## Rate limiting at the edge
+
+Three layers, cheapest first (design and numbers in docs/RATE-LIMITING.md):
+
+1. **Cloudflare WAF rate limiting rules** (no code, evaluated before the Worker). Recommended starting rules for the zone that serves customer hostnames:
+
+| Rule | Expression | Limit | Action |
+|---|---|---|---|
+| Event beacon flood | `http.request.method eq "POST" and starts_with(http.request.uri.path, "/api/public/events")` | 100 requests / 10 s per IP | block 60 s |
+| Form and checkout posts | `http.request.method eq "POST" and (starts_with(http.request.uri.path, "/api/public/forms/") or starts_with(http.request.uri.path, "/api/public/checkout/"))` | 20 requests / 60 s per IP | managed challenge 10 min |
+| Auth endpoints (app hostname) | `http.host eq "app.example.com" and starts_with(http.request.uri.path, "/api/auth/")` | 10 requests / 60 s per IP | block 10 min |
+| Internal endpoint | `starts_with(http.request.uri.path, "/internal/")` | any request | block (never reachable from the internet) |
+
+`deploy/cloudflare/waf.tf` is the same as Terraform (`cloudflare_ruleset`, phase `http_ratelimit`). Rule counts and periods available depend on your plan.
+
+2. **Worker limiter** (`edge/src/ratelimit.ts`): the Workers Rate Limiting binding (`RL_EVENTS`, `RL_FORMS`, configured in `wrangler.toml`) per client IP, and an optional Durable Object GCRA (`RL_DO`, `RateLimiterDO`) for exact global counts on forms and checkout. Both fail open and answer with the origin's 429 body.
+3. **Origin limiter**: authoritative, per IP and funnel, with Redis. The Worker forwards `cf-connecting-ip` plus `x-cf-origin-secret` so the origin keys on the real visitor address.
+
+Choose per endpoint: the binding is cheap and per location (a distributed attacker is counted separately in each location); the Durable Object is one extra hop but exact. Neither can be tested outside Cloudflare here: the Worker tests run in Node with fakes for the binding and the Durable Object storage, and pin the GCRA arithmetic to the origin's.

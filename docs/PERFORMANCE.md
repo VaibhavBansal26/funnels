@@ -125,3 +125,37 @@ Reading this honestly: the three "after" runs of the same code differ by 2x for 
 Write path per engine (`bench/ingest-engines.mjs`, 50,000 events in batches of 500, median of 3): SQLite 10.3 ms per 1k rows (97k rows/s), PGlite 47.3 (21k rows/s), PostgreSQL 18.4 over loopback 31.0 (32k rows/s). The PostgreSQL figure is a `postgres` binary from the `embedded-postgres` npm package running x86_64 under Rosetta on this ARM Mac, so it understates a native server; it is shown to prove the path works on a real server, not as a capacity number. HTTP load tests cannot run against PGlite (no TCP) and were not run against PostgreSQL: Docker is down here and the server used for verification was a development binary.
 
 Not run: the HTTP suite against PostgreSQL, k6, multi-node, a native or containerised `postgres:17`.
+
+## Rate limiter overhead (2026-10-20)
+
+Same machine as above (M1, 8 cores, 8 GB, Node 24, load average 8 to 21 from other processes), Redis 8.4.0 on loopback, same process tree as the app. Reproduce: `npm run build --prefix server && node bench/ratelimit.mjs 20000 <concurrency> <hotClients>`.
+
+**Per request, no HTTP** (`bench/ratelimit.mjs`: the two layers an ingestion request passes, `ip.global` + `public.events`; "added" is the wall time of the limiter calls):
+
+| scenario | variant | requests/s | p50 added | p99 added | Redis round trips per request |
+|---|---|---|---|---|---|
+| 1 in flight, every request a new client | disabled | 752,121 | 0.001 ms | 0.005 ms | 0 |
+| | in-memory store | 194,164 | 0.004 ms | 0.008 ms | 0 |
+| | Redis, exact | 5,808 | 0.163 ms | 0.301 ms | 2.00 |
+| | Redis + lease | 5,570 | 0.169 ms | 0.373 ms | 2.00 |
+| 64 in flight, every request a new client | in-memory store | 211,803 | 0.270 ms | 1.130 ms | 0 |
+| | Redis, exact | 20,310 | 2.883 ms | 5.932 ms | 2.00 |
+| | Redis + lease | 16,696 | 3.430 ms | 7.967 ms | 2.00 |
+| 64 in flight, 50 hot clients | in-memory store | 200,038 | 0.264 ms | 1.437 ms | 0 |
+| | Redis, exact | 8,969 | 6.090 ms | 21.578 ms | 2.00 |
+| | Redis + lease (10%) | 159,642 | 0.300 ms | 2.139 ms | 0.01 |
+
+Reading it: one round trip to a local Redis costs about 0.08 ms, so a request with two layers adds about 0.16 ms (p99 0.3 ms) when it is the only thing in flight. The "64 in flight" latencies are queueing on one Redis connection, not per-call cost. The lease tier only helps keys that repeat (hot clients: 99% of decisions served locally, 0.01 round trips per request); for a stream of never-seen clients it cannot help and costs a little extra (a batch is pre-paid for one use). Network distance matters more than anything here: with Redis 1 ms away, every exact decision adds about 2 ms per layer, which is the reason the lease tier exists.
+
+**Through HTTP** (`bench/ingest.mjs`, 30,000 `POST /api/public/events`, 64 concurrent, one client IP, so a hot key; 5 interleaved rounds, median; machine loaded):
+
+| limiter | req/s | server CPU ms per 1k requests |
+|---|---|---|
+| disabled (`RATELIMIT_ENABLED=false`) | 2,960 | 444 |
+| in-memory | 2,567 | 501 |
+| Redis + lease | 2,741 | 476 |
+| Redis exact | 2,266 | 551 |
+
+Round-to-round spread (753 to 3,237 req/s for "disabled") is larger than the differences, so the honest reading is: the in-memory and leased limiters are within noise of no limiter at this level (about 30 to 60 CPU ms per 1k requests, 7 to 13%), exact Redis costs about 25% more CPU per request than disabled (two round trips with awaits). One outlier round (84 req/s, 3 errors, redis-exact round 1) coincided with leftover Redis test processes on the machine and is included in the medians' input but not their result.
+
+**Correctness at scale** (tests, not benchmarks): 1,000 concurrent calls over 8 connections and 4 OS processes admit exactly the burst; 3 server processes sharing one Redis admit burst plus refill and never more; the lease tier strands at most `nodes x lease` tokens (measured: a bug where concurrent refills each pre-paid a batch admitted only a third of the burst; fixed with a single-flight refill, covered by `ratelimit.cluster.test.ts`).
