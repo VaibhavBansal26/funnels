@@ -30,7 +30,8 @@ export interface PenaltyConfig {
 
 export const DEFAULT_PENALTY: PenaltyConfig = { threshold: 5, strikeWindowMs: 10 * 60_000, stepsMs: [60_000, 5 * 60_000, 30 * 60_000, 24 * 3_600_000], decayMs: 24 * 3_600_000 };
 
-export type FailMode = 'open' | 'closed';
+/** What to do when the store fails: admit (`open`), refuse with 503 (`closed`), or decide with this process's own in-memory store (`local`: per-process enforcement, so protection survives a Redis outage at N x the limit across N processes). */
+export type FailMode = 'open' | 'closed' | 'local';
 
 export interface Policy {
   id: string;
@@ -59,7 +60,7 @@ export interface Policy {
   leaseTtlMs?: number;
 }
 
-export type Outcome = 'allowed' | 'limited' | 'blocked' | 'denied' | 'bypassed' | 'shed' | 'error' | 'fail_open' | 'replayed';
+export type Outcome = 'fallback' | 'allowed' | 'limited' | 'blocked' | 'denied' | 'bypassed' | 'shed' | 'error' | 'fail_open' | 'replayed';
 
 export interface Decision {
   policyId: string;

@@ -51,6 +51,7 @@ export const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-5-5'),
   AI_DAILY_CAP: int(50, 0),
+  INGEST_WORKSPACE_PER_MINUTE: int(600_000, 1),
   AI_RATE_LIMIT_PER_MINUTE: int(10, 1),
   RATELIMIT_ENABLED: bool(true),
   RATELIMIT_LEASE_FRACTION: z.string().optional().transform((v) => (v === undefined || v === '' ? 0.1 : Number(v))).pipe(z.number().min(0).max(0.5)),

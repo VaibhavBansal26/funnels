@@ -86,7 +86,8 @@ export class EventBuffer {
       this.shed++;
       throw new AppError(503, 'INGEST_BACKPRESSURE', 'Event ingestion is catching up, retry shortly');
     }
-    await q.bus.publish(TOPIC_INGEST, row.funnel_id, row, row.id);
+    // Partition by workspace: one tenant's burst fills one partition's backlog, and per-funnel order is kept (a funnel belongs to one workspace).
+    await q.bus.publish(TOPIC_INGEST, row.workspace_id, row, row.id);
     this.published++;
   }
 
@@ -108,7 +109,7 @@ export class EventBuffer {
         const at = new Date().toISOString();
         for (let i = 0; i < stored.length; i += MIRROR_CHUNK) {
           const chunk = stored.slice(i, i + MIRROR_CHUNK);
-          await writeOutbox(tx, TOPIC_EVENTS_STORED, chunk[0]!.funnel_id, chunk, at);
+          await writeOutbox(tx, TOPIC_EVENTS_STORED, chunk[0]!.workspace_id, chunk, at);
         }
       }
     });

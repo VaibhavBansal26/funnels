@@ -9,7 +9,7 @@ Targets, the architecture that is meant to meet them, a capacity model with the 
 | Public pages | 50,000 req/s at the edge with >= 99% cache hit; origin >= 2,000 req/s on misses with single-flight; a viral funnel must not take the origin down |
 | Event ingestion | 20,000 events/s sustained, 100,000/s peak absorbed by queues; exactly-once effect via idempotency keys |
 | Retention and reads | 1B+ events retained with rollups; analytics over any date range < 300 ms p95 from rollups/sketches |
-| Fairness | Heavy tenants do not starve others: per-workspace limits, fair partitions, shedding order defined below |
+| Fairness | Heavy tenants do not starve others: per-workspace limits, fair partitions, shedding order defined below; measured in "Per-workspace fairness" |
 
 ## Architecture in one picture
 
@@ -28,7 +28,7 @@ flowchart LR
 ```
 
 * Request path: validate, check the (funnel, step) positive cache, `XADD`. No database read or write (ADR 0015). Without `INGEST_QUEUE` the in-process write-behind buffer is used (ADR 0007).
-* Write path: a consumer group splits 16 partition streams (ordering key = funnel id); each batch is one transaction doing dedupe claims, first-view decisions, event inserts, rollup upserts, HyperLogLog sketch updates and (with the mirror on) outbox rows (ADR 0013, 0014, 0016).
+* Write path: a consumer group splits 16 partition streams (ordering key = workspace id); each batch is one transaction doing dedupe claims, first-view decisions, event inserts, rollup upserts, HyperLogLog sketch updates and (with the mirror on) outbox rows (ADR 0013, 0014, 0016).
 * Read path: rollups and sketches, bounded by time so partitions prune; replicas through `db.read()` with a lag guard and read-your-writes.
 * Pages: edge cache, `stale-while-revalidate`, single-flight at the origin (in process and through a short Redis lock), purge on publish ([CLOUDFLARE.md](CLOUDFLARE.md)).
 
@@ -103,7 +103,35 @@ GC pause distribution was not collected (the sampled GC metric name did not matc
 
 ### Not measured (no number exists)
 
-GC pause distribution, reconnect behaviour of the beacon under load, GC pause distribution, cloud-scale anything, ClickHouse (no server was available and downloading one was not authorised), the HTTP suite behind PgBouncer, Postgres failover, Redis failover, a noisy-neighbour run (the limiter keys per IP and funnel and the design is described, but no 100x test was run), more than 4 server processes, more than 10M events.
+GC pause distribution, reconnect behaviour of the beacon under load, time-to-visible per tenant under a flood, cloud-scale anything, ClickHouse (no server was available and downloading one was not authorised), the HTTP suite behind PgBouncer, Postgres failover, Redis failover, more than 4 server processes, more than 10M events.
+
+## Per-workspace fairness
+
+One tenant must not be able to move another tenant's acceptance or latency. Four mechanisms, each tested:
+
+| Where | Mechanism | Test |
+|---|---|---|
+| Admission (public events) | `ingest.workspace`: GCRA per workspace, burst one second of quota, plan tiers (free x1, pro x5, business x20, per-workspace override); a refusal is `429` + `Retry-After` for that workspace only. `onFail: local`: if Redis is slow or down the quota is still enforced per process instead of lifting the guard | `fairness.test.ts` (10 tenants, one at 100x), `ratelimit.local.test.ts` |
+| Ingest queue | partition key is the workspace id (was the funnel id): a flood fills its own partition's backlog; per-funnel order is unchanged because a funnel belongs to one workspace | `queue.test.ts`, `eventbus.test.ts` |
+| Outbox relay | each pass ranks the oldest 20,000 unpublished rows per key (workspace) and publishes rank 1 of every key, then rank 2, ...; per-key order is unchanged | `fairness.test.ts` |
+| Webhook / background jobs | `jobs.group_key` (migration 009) = workspace; the claim takes rank 1 of every group, then rank 2, ... within the oldest 2,000 due jobs, and a lone group still fills the whole claim | `fairness.test.ts` |
+
+What is not fair: two workspaces whose keys hash to the same ingest partition still share that partition's consumer, so a workspace that stays under its quota but is large (the default is 10,000 events/s) can raise another workspace's time-to-visible on that partition (the number of partitions is `EVENT_BUS_PARTITIONS`, default 16). Lower `INGEST_WORKSPACE_PER_MINUTE` or the workspace's tier if that matters. Delivery latency per tenant (time-to-visible in analytics) was not measured; acceptance and accept latency were.
+
+### Measured: noisy neighbour on the real stack
+
+`node loadtest/noisy.mjs --seconds 15 --normal-rate 2 --quota 600`: 2 server processes, private Redis, real PostgreSQL 18.4, 10 workspaces. Nine normal tenants send 2 req/s each; tenant 0 floods with 48 connections as fast as the machine allows (the free-plan quota is lowered to 600/min = 10/s so that this machine, which cannot generate 100x of a large quota, exceeds it by far). Phase A is the nine alone, B adds the flood, C is the nine alone again (to show run-to-run noise). Apple M1, 8 cores shared with the load generator, servers, Redis and PostgreSQL; load average at start in the table. Raw: `loadtest/results/noisy-run1.json`, `noisy-run2.json`.
+
+| Run | Load avg | A: nine alone (202 / 429 / p99 median) | **B: nine + flood** | C: nine alone | Flooding tenant (202 / 429) |
+|---|---|---|---|---|---|
+| run 1 | 6.7 | 270 / 0 / 53 ms | **270 / 0 / 30 ms** (worst tenant 48 ms) | 270 / 0 / 26 ms | 159 / 69050 (offered 4,614 req/s) |
+| run 2 | 4.6 | 270 / 0 / 49 ms | **270 / 0 / 30 ms** (worst tenant 51 ms) | 270 / 0 / 26 ms | 159 / 85661 (offered 5,721 req/s) |
+
+Read it this way: in both runs every request of the nine normal tenants was accepted with the flood running (270 of 270, zero 429, zero errors) and every accepted event of every tenant, including the flood's, was found in the database (zero lost). The flood was offered at about 2,000x a normal tenant's rate and was held to its quota (159 accepted = 15 s x 10/s + burst 10). The nine tenants' p99 with the flood (30 ms) is not worse than their p99 alone (26 to 53 ms); differences of this size are run-to-run noise on this machine, not an effect. An earlier run on a heavily loaded machine (load average 20 to 28) is **not** reported as a result: the flood there got through 11x its quota because Redis calls exceeded the 25 ms budget and the then fail-open policy admitted everything. That run found the bug fixed by `onFail: local`.
+
+### PgBouncer
+
+Not checked: no `pgbouncer` binary is installed on this machine and none was downloaded. What the code assumes is documented (transaction pooling needs `DATABASE_PREPARED_STATEMENTS=false`; the advisory locks used for migrations, the outbox relay and maintenance are transaction-scoped, which is the property transaction pooling requires; no session-level `SET`, `LISTEN` or temporary tables are used). Verify on the real pooler with the procedure in [CLOUD-LOADTEST.md](CLOUD-LOADTEST.md) before relying on it.
 
 ## Capacity model
 
@@ -156,14 +184,14 @@ Defined and implemented: per-IP and per-funnel limits at the edge and origin (42
 
 ## Known limits
 
-* Ordering key is the funnel id: one funnel is one partition and one consumer at a time.
+* Ordering key is the workspace id: one workspace is one partition and one consumer at a time (order per funnel is kept). Its throughput is bounded by `ingest.workspace` and by one consumer.
 * The ingest queue makes events visible after consumer lag; analytics endpoints do not wait for the queue (the in-process buffer's `flush()` guarantee does not exist in queue mode).
 * `unique` opt-in dedupe through `externalId` is decided at write time in queue mode: the response says `recorded: true` optimistically; a duplicate is dropped later.
 * Redis failover with asynchronous replication can lose up to about a second of acknowledged events (not measured).
 * The ClickHouse path is implemented to the HTTP and SQL level described in ADR 0016 but was never run against a ClickHouse server; the analytics API does not read from it.
 * Kafka and NATS adapters are stubs that fail loudly.
 * Single region. Multi-region design hooks are in the Conversations app (home region routing); for Funnels the edge is global and the origin is one region.
-* No noisy-neighbour measurement; no 100M-event measurement; the soak ran at a low rate (about 600 req/s).
+* no 100M-event measurement; the soak ran at a low rate (about 600 req/s).
 
 ## Measured vs extrapolated
 
@@ -182,3 +210,5 @@ Defined and implemented: per-IP and per-funnel limits at the edge and origin (42
 | ClickHouse insert rate, dedupe under replay, rollup views | **Not measured**, never run | ADR 0016 |
 | Redis memory per queued event (500 B) | **Extrapolated** | |
 | Cost estimate | **Rough, from remembered list prices** | CLOUD-LOADTEST.md |
+| Noisy neighbour: others fully accepted, flood held to quota, nothing lost (2 runs, 2 nodes) | **Measured** | `noisy-run*.json` |
+| PgBouncer compatibility | **Not checked** (no binary) | |

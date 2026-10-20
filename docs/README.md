@@ -65,3 +65,4 @@ Start with the [README](../README.md) for what this is and how to run it.
 | [0014](adr/0014-hll-sketches.md) | HyperLogLog sketches for distinct visitors over long ranges | Accepted |
 | [0015](adr/0015-event-bus-outbox-ingest-queue.md) | Durable event bus, transactional outbox and the ingest queue | Accepted |
 | [0016](adr/0016-clickhouse-secondary-store.md) | ClickHouse as a secondary analytics store behind the EventStore interface | Accepted |
+| [0017](adr/0017-fair-queueing.md) | Per-workspace fairness: admission quota, partition by workspace, round-robin claims | Accepted |

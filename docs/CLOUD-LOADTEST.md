@@ -23,7 +23,7 @@ Terraform is deliberately not included: the three managed services differ per cl
 ## 2. Prepare
 
 1. Build and push the image; fill `deploy/k8s-scale/kustomization.yaml` (`images`) and the `funnels-secrets` Secret: `JWT_SECRET`, `DATABASE_URL` (via PgBouncer), `DATABASE_REPLICA_URLS`, `REDIS_URL`, `EDGE_SHARED_SECRET`, `CF_ORIGIN_SECRET`, `METRICS_TOKEN`.
-2. `kubectl kustomize deploy/k8s-scale | kubectl apply -f -`; wait for `/readyz`. Migrations (001 to 008) run at boot under an advisory lock.
+2. `kubectl kustomize deploy/k8s-scale | kubectl apply -f -`; wait for `/readyz`. Migrations (001 to 009) run at boot under an advisory lock.
 3. Seed: register one workspace per simulated tenant through the API (10 tenants for the noisy-neighbour test, 1 for the rest), create one live funnel per tenant on a real hostname behind the Worker, and record the `funnelId:stepId` pairs for k6 (`FUNNELS=fn_1:stp_1,...`).
 4. Deploy the Worker with the queue binding enabled (`edge/wrangler.toml`, "Event queue" block) and `ORIGIN_URL` pointing at the app's ingress.
 5. Apply `deploy/clickhouse/schema.sql` if running step 5.

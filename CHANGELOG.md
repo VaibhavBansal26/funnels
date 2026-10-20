@@ -5,6 +5,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 ## [Unreleased]
 
 ### Added
+- Per-workspace fairness: `ingest.workspace` admission policy (`INGEST_WORKSPACE_PER_MINUTE`, plan tiers, `onFail: local`), ingest partitions keyed by workspace, round-robin per-workspace claims for the outbox relay and the job queue (`jobs.group_key`, migration 009), `loadtest/noisy.mjs` and `test/fairness.test.ts`. Rate-limit policies gain `onFail: local` and the `fallback` outcome.
 - `docs/SCALING.md`, `docs/CLOUD-LOADTEST.md`, capacity playbooks in the runbook; `loadtest/scale.mjs` (N nodes + Redis + PostgreSQL with loss/duplicate verification and node kill), `loadtest/k6/*` and `deploy/k6/testrun.yaml`, `deploy/k8s-scale/` overlay, `bench/volume.mjs`.
 - Durable `EventBus` (Redis Streams with partition leases, consumer groups, retry with jitter, dead letters, batch handlers, lag; in-memory implementation; Kafka and NATS stubs) with one contract suite, including a SIGKILL test.
 - Ingest queue (`INGEST_QUEUE=true`): the events endpoint publishes and a consumer group writes batches idempotently; `503 INGEST_BACKPRESSURE` above `INGEST_MAX_LAG`.

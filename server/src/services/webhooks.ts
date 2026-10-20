@@ -115,7 +115,7 @@ async function queueDelivery(deps: Deps, w: WebhookRow, event: WebhookEvent, dat
   const at = deps.now().toISOString();
   const payload = JSON.stringify({ id, event, createdAt: at, data });
   await deps.db.run('INSERT INTO webhook_deliveries (id, workspace_id, webhook_id, event, payload_json, status, attempts, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)', id, w.workspace_id, w.id, event, payload, 'queued', at, at);
-  await deps.jobs.enqueue('webhook.deliver', { deliveryId: id }, { maxAttempts: deps.config.WEBHOOK_MAX_ATTEMPTS });
+  await deps.jobs.enqueue('webhook.deliver', { deliveryId: id }, { maxAttempts: deps.config.WEBHOOK_MAX_ATTEMPTS, group: w.workspace_id });
   return id;
 }
 
@@ -135,7 +135,7 @@ export async function retryDelivery(deps: Deps, ws: string, deliveryId: string) 
   const d = await deps.db.get<DeliveryRow>('SELECT * FROM webhook_deliveries WHERE workspace_id = ? AND id = ?', ws, deliveryId);
   if (!d) throw notFound('Delivery');
   await deps.db.run(`UPDATE webhook_deliveries SET status = 'queued', error = NULL, updated_at = ? WHERE id = ?`, deps.now().toISOString(), deliveryId);
-  await deps.jobs.enqueue('webhook.deliver', { deliveryId }, { maxAttempts: deps.config.WEBHOOK_MAX_ATTEMPTS });
+  await deps.jobs.enqueue('webhook.deliver', { deliveryId }, { maxAttempts: deps.config.WEBHOOK_MAX_ATTEMPTS, group: ws });
   return { ok: true };
 }
 

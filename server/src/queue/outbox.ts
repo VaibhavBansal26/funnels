@@ -25,10 +25,21 @@ export async function writeOutbox(tx: Db, topic: string, key: string, payload: u
  * any number of replicas can run this and only one publishes at a time (order is preserved). A crash between publish and mark publishes the
  * rows again on the next pass (at-least-once; consumers dedupe on the event id). A bus failure rolls back and leaves every row for the next pass.
  */
+/** How many of the oldest unpublished rows one relay pass ranks for fairness (bounds the query cost during a long bus outage). */
+const RELAY_WINDOW = 20_000;
+
 export async function relayOutbox(db: Db, bus: EventBus, now: () => Date, batch = 500): Promise<number> {
   return db.transaction(async (tx) => {
     if (tx.dialect.name === 'postgres' && !(await tx.get<{ ok: boolean }>('SELECT pg_try_advisory_xact_lock(?) AS ok', RELAY_LOCK))!.ok) return 0;
-    const rows = await tx.all<{ ord: number | string; id: string; topic: string; key: string; payload: string }>('SELECT ord, id, topic, key, payload FROM outbox_events WHERE published_at IS NULL ORDER BY ord LIMIT ?', batch);
+    // Fair read: among the oldest RELAY_WINDOW unpublished rows take rank 1 of every key (a workspace), then rank 2, ... up to `batch` rows, so one tenant that
+    // wrote a million rows cannot delay everybody else's by a million rows. Per key the order is unchanged (ranks ascend with ord), which is what consumers rely on.
+    const rows = await tx.all<{ ord: number | string; id: string; topic: string; key: string; payload: string }>(
+      `SELECT ord, id, topic, key, payload FROM (
+         SELECT ord, id, topic, key, payload, ROW_NUMBER() OVER (PARTITION BY key ORDER BY ord) AS rn
+         FROM (SELECT ord, id, topic, key, payload FROM outbox_events WHERE published_at IS NULL ORDER BY ord LIMIT ${RELAY_WINDOW}) head
+       ) ranked ORDER BY rn, ord LIMIT ?`,
+      batch,
+    );
     if (!rows.length) return 0;
     // XADDs are issued in order on one connection, so per-key order holds even though replies are awaited together.
     await Promise.all(rows.map((r) => bus.publish(r.topic, r.key, JSON.parse(r.payload), r.id)));
@@ -93,5 +104,5 @@ export function startRelay(o: { db: Db; bus: EventBus; log: Logger; now: () => D
 /** Domain event (`lead.created`, `order.created`) in the caller's transaction (`deps` must be the transaction-scoped deps). No-op when OUTBOX_DOMAIN_EVENTS is off. */
 export async function domainEvent(deps: Deps, type: string, funnelId: string, data: Record<string, unknown>): Promise<void> {
   if (!deps.config.OUTBOX_DOMAIN_EVENTS) return;
-  await writeOutbox(deps.db, TOPIC_DOMAIN, funnelId, { type, funnelId, at: deps.now().toISOString(), ...data }, deps.now().toISOString());
+  await writeOutbox(deps.db, TOPIC_DOMAIN, String(data.workspaceId ?? funnelId), { type, funnelId, at: deps.now().toISOString(), ...data }, deps.now().toISOString());
 }

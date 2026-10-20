@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { type BreakerState, StoreUnavailable } from './guarded.js';
 import type { TierResolver } from './tiers.js';
+import { MemoryStore } from './memory.js';
 import { PENALTY } from './policies.js';
 import { subjectFor } from './subject.js';
 import type { Decision, Outcome, Plan, Policy, Principal, Store, StoreResult } from './types.js';
@@ -56,6 +57,7 @@ export class RateLimiter {
   private recorded = new Map<string, number>();
   private refills = new Map<string, { promise: Promise<void> }>();
   private seq = 0;
+  private localStore?: MemoryStore;
   readonly store: Store;
   readonly hooks: LimiterHooks;
   readonly tiers?: TierResolver;
@@ -121,7 +123,7 @@ export class RateLimiter {
   private failure(p: Policy, e: unknown, limit: number): Decision {
     const reason = e instanceof StoreUnavailable ? e.reason : 'error';
     void reason;
-    if (p.onFail === 'open') return this.finish(p, 'fail_open', true, { limit, remaining: limit });
+    if (p.onFail === 'open' || p.onFail === 'local') return this.finish(p, 'fail_open', true, { limit, remaining: limit });
     return this.finish(p, 'error', false, { limit, retryAfterMs: 5000, status: 503 });
   }
 
@@ -157,8 +159,25 @@ export class RateLimiter {
       if (!d.allowed) this.limitedSideEffects(p, d, subject);
       return d;
     } catch (e) {
+      if (p.onFail === 'local') {
+        const d = await this.decideLocally(p, subject, limit, burst, cost).catch(() => null);
+        if (d) return d;
+      }
       return this.failure(p, e, limit);
     }
+  }
+
+  /** The store failed for a policy marked `local`: same arithmetic on this process's own memory store, so a flood is still refused (at most N x the limit across N processes). */
+  private async decideLocally(p: Policy, subject: string, limit: number, burst: number, cost: number): Promise<Decision | null> {
+    if (p.algo === 'concurrency' || this.store.kind === 'memory') return null;
+    const local = (this.localStore ??= new MemoryStore(this.now));
+    const r = p.algo === 'window'
+      ? await local.window({ subject, policyId: p.id, limit, windowMs: p.windowMs, cost, mode: 'consume' })
+      : await local.gcra({ subject, policyId: p.id, emissionMs: p.windowMs / limit, capacity: burst, cost });
+    this.hooks.decision?.(p.id, 'fallback');
+    const d = this.fromStore(p, r, limit, burst);
+    if (!d.allowed) this.limitedSideEffects(p, d, '');
+    return d;
   }
 
   /**

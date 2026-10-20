@@ -1,0 +1,85 @@
+{
+  "when": "2026-10-20T13:53:41.738Z",
+  "nodes": 2,
+  "tenants": 10,
+  "quota_per_min_free_plan": 600,
+  "burst": 10,
+  "normal_rate_per_tenant": 2,
+  "seconds": 15,
+  "baseline_before": {
+    "label": "A",
+    "withHeavy": false,
+    "load_average_at_start": [
+      4.6,
+      12.9,
+      20.2
+    ],
+    "drain_s": 0,
+    "normal_tenants": {
+      "requests": 270,
+      "accepted_202": 270,
+      "refused_429": 0,
+      "errors": 0,
+      "p50_ms_median": 7,
+      "p99_ms_worst": 62,
+      "p99_ms_median": 49
+    },
+    "heavy_tenant": null,
+    "rows_match_acknowledged": true,
+    "lost": 0
+  },
+  "with_noisy_neighbour": {
+    "label": "B",
+    "withHeavy": true,
+    "load_average_at_start": [
+      4.5,
+      12.4,
+      19.9
+    ],
+    "drain_s": 0,
+    "normal_tenants": {
+      "requests": 270,
+      "accepted_202": 270,
+      "refused_429": 0,
+      "errors": 0,
+      "p50_ms_median": 7,
+      "p99_ms_worst": 51,
+      "p99_ms_median": 30
+    },
+    "heavy_tenant": {
+      "tenant": 0,
+      "sent": 85820,
+      "ok": 159,
+      "limited": 85661,
+      "errors": 0,
+      "p50": 7,
+      "p99": 18,
+      "rps": 5721
+    },
+    "rows_match_acknowledged": true,
+    "lost": 0
+  },
+  "baseline_after": {
+    "label": "C",
+    "withHeavy": false,
+    "load_average_at_start": [
+      4.3,
+      12,
+      19.6
+    ],
+    "drain_s": 0,
+    "normal_tenants": {
+      "requests": 270,
+      "accepted_202": 270,
+      "refused_429": 0,
+      "errors": 0,
+      "p50_ms_median": 8,
+      "p99_ms_worst": 49,
+      "p99_ms_median": 26
+    },
+    "heavy_tenant": null,
+    "rows_match_acknowledged": true,
+    "lost": 0
+  },
+  "machine": "Apple M1, 8 cores shared with load generator, servers, Redis and PostgreSQL"
+}

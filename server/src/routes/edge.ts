@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Deps } from '../deps.js';
 import { NonceCache, verifyEdge } from '../edge/signing.js';
 import type { PageRow } from '../repos/types.js';
+import { AppError } from '../errors.js';
 import { PublicEventInput, recordPublicEvent } from '../services/events.js';
 import { resolveLive } from './serve.js';
 
@@ -49,6 +50,7 @@ export function edgeRoutes(deps: Deps): Hono {
     if (!Array.isArray(list) || list.length > 500) return c.json({ error: { code: 'VALIDATION_ERROR', message: 'events must be an array of at most 500' } }, 400);
     let accepted = 0;
     let rejected = 0;
+    let limited = 0;
     for (const e of list as { id?: unknown; at?: unknown; ua?: unknown; body?: unknown }[]) {
       const parsed = PublicEventInput.safeParse(e?.body);
       if (!parsed.success || typeof e.id !== 'string' || !/^[A-Za-z0-9]{8,64}$/.test(e.id)) {
@@ -56,11 +58,16 @@ export function edgeRoutes(deps: Deps): Hono {
         continue;
       }
       // An INGEST_BACKPRESSURE error propagates: the whole batch is answered 503 and retried by the queue (already-published events dedupe on id and time).
-      const res = await recordPublicEvent(deps, parsed.data, typeof e.ua === 'string' ? e.ua : undefined, { eventId: e.id, at: typeof e.at === 'number' ? e.at : undefined });
-      if (res.recorded) accepted++;
-      else rejected++;
+      try {
+        const res = await recordPublicEvent(deps, parsed.data, typeof e.ua === 'string' ? e.ua : undefined, { eventId: e.id, at: typeof e.at === 'number' ? e.at : undefined });
+        if (res.recorded) accepted++;
+        else rejected++;
+      } catch (err) {
+        if (err instanceof AppError && err.status === 429) limited++; // that workspace is over its ingest quota: drop its event, keep the batch
+        else throw err;
+      }
     }
-    return c.json({ accepted, rejected });
+    return c.json({ accepted, rejected, limited });
   });
   return r;
 }

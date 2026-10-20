@@ -29,6 +29,7 @@ Generated from the zod schema in `server/src/config.ts` and the descriptions in 
 | `ANTHROPIC_API_KEY` | (unset) | no |  | Enables the Anthropic provider for AI features. Unset = offline heuristic provider. **Security:** Secret. Prompts never contain it. |
 | `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | no |  | Model used by the Anthropic provider. |
 | `AI_DAILY_CAP` | `50` | no | `50` | AI calls per workspace per UTC day (0 disables AI). Enforced by the `ai.daily` sliding-window policy (shared across replicas with REDIS_URL, scaled by plan tier); `ai_usage` meters. |
+| `INGEST_WORKSPACE_PER_MINUTE` | `600000` | no | `600000` | Public events one workspace may send per minute (policy `ingest.workspace`, free plan; pro x5, business x20, overridable per workspace). Beyond it that workspace gets 429 with Retry-After while every other workspace is unaffected. The default (10,000/s) is a noisy-neighbour guard, not a billing limit. |
 | `AI_RATE_LIMIT_PER_MINUTE` | `10` | no | `10` | AI calls per workspace per minute (policy `ai.minute`, each call costs 10 units). |
 | `RATELIMIT_ENABLED` | `true` | no | `true` | Master switch for the rate limiter. `false` admits everything (emergency use, benchmarks). **Security:** Disabling removes flood and credential-stuffing protection. |
 | `RATELIMIT_LEASE_FRACTION` | `0.1` | no | `0.1` | Fraction of a token bucket a process pre-pays from Redis and spends locally (0 disables the local tier; max 0.5). Error bound in docs/RATE-LIMITING.md. |

@@ -28,6 +28,10 @@ export function retryDelayMs(attempt: number): number {
 }
 
 const STALE_LOCK_MS = 5 * 60_000;
+/** How many of the oldest due jobs a claim ranks for fairness. Bounds the cost of the claim query regardless of the backlog size. */
+const FAIR_WINDOW = 2000;
+/** Serialises the (millisecond-long) claim transaction across workers on PostgreSQL: without it every worker ranks the same oldest candidates and all but one lose them to SKIP LOCKED. */
+const CLAIM_LOCK = 724_309_120;
 
 export class JobQueue {
   constructor(
@@ -40,16 +44,16 @@ export class JobQueue {
     return new JobQueue(db, this.now);
   }
 
-  async enqueue(type: string, payload: unknown, opts: { delayMs?: number; maxAttempts?: number; dedupeKey?: string } = {}): Promise<string | null> {
+  async enqueue(type: string, payload: unknown, opts: { delayMs?: number; maxAttempts?: number; dedupeKey?: string; group?: string } = {}): Promise<string | null> {
     const id = newId('job');
     const t = this.now();
     try {
       // A duplicate dedupe key is an expected outcome, so it is skipped inside the statement: a failed statement
       // would abort an enclosing PostgreSQL transaction.
       const { changes } = await this.db.run(
-        `INSERT INTO jobs (id, type, payload_json, status, attempts, max_attempts, run_at, dedupe_key, created_at, updated_at)
-         VALUES (?, ?, ?, 'queued', 0, ?, ?, ?, ?, ?)${this.db.dialect.onConflictDoNothing()}`,
-        id, type, JSON.stringify(payload), opts.maxAttempts ?? 5, t + (opts.delayMs ?? 0), opts.dedupeKey ?? null, new Date(t).toISOString(), new Date(t).toISOString(),
+        `INSERT INTO jobs (id, type, payload_json, status, attempts, max_attempts, run_at, dedupe_key, group_key, created_at, updated_at)
+         VALUES (?, ?, ?, 'queued', 0, ?, ?, ?, ?, ?, ?)${this.db.dialect.onConflictDoNothing()}`,
+        id, type, JSON.stringify(payload), opts.maxAttempts ?? 5, t + (opts.delayMs ?? 0), opts.dedupeKey ?? null, opts.group ?? null, new Date(t).toISOString(), new Date(t).toISOString(),
       );
       return changes === 1 ? id : null;
     } catch (e) {
@@ -62,12 +66,25 @@ export class JobQueue {
   async claimDue(limit = 10): Promise<Job[]> {
     const t = this.now();
     return this.db.transaction(async (tx) => {
+      if (tx.dialect.name === 'postgres') await tx.run('SELECT pg_advisory_xact_lock(?)', CLAIM_LOCK);
       // A crashed worker leaves jobs 'running'. Re-queue them, unless a newer job with the same dedupe key is already waiting.
       for (const s of await tx.all<{ id: string; dedupe_key: string | null }>(`SELECT id, dedupe_key FROM jobs WHERE status = 'running' AND locked_at < ? ORDER BY id${tx.dialect.forUpdateSkipLocked()}`, t - STALE_LOCK_MS)) {
         const superseded = s.dedupe_key && (await tx.get(`SELECT 1 FROM jobs WHERE dedupe_key = ? AND status = 'queued'`, s.dedupe_key));
         await tx.run(`UPDATE jobs SET status = ?, last_error = ? WHERE id = ?`, superseded ? 'dead' : 'queued', superseded ? 'superseded by a newer job' : 'worker lost', s.id);
       }
-      const rows = await tx.all<JobRow>(`SELECT id, type, payload_json, attempts, max_attempts FROM jobs WHERE status = 'queued' AND run_at <= ? ORDER BY run_at, id LIMIT ?${tx.dialect.forUpdateSkipLocked()}`, t, limit);
+      // Fair claim: look at the oldest FAIR_WINDOW due jobs, rank them within their group (workspace; ungrouped jobs are their own group) and take rank 1 of every
+      // group, then rank 2 of every group, and so on. One tenant that queues 100,000 deliveries therefore gets the same share of every claim as a tenant with one,
+      // while a lone tenant still fills the whole claim. Candidates are then locked (SKIP LOCKED cannot be combined with a window function in one statement).
+      const cand = await tx.all<{ id: string }>(
+        `SELECT id FROM (
+           SELECT id, run_at, ROW_NUMBER() OVER (PARTITION BY COALESCE(group_key, id) ORDER BY run_at, id) AS rn
+           FROM (SELECT id, run_at, group_key FROM jobs WHERE status = 'queued' AND run_at <= ? ORDER BY run_at, id LIMIT ${FAIR_WINDOW}) due
+         ) ranked ORDER BY rn, run_at, id LIMIT ?`,
+        t, limit,
+      );
+      const rows = cand.length
+        ? await tx.all<JobRow>(`SELECT id, type, payload_json, attempts, max_attempts FROM jobs WHERE id IN (${cand.map(() => '?').join(', ')}) AND status = 'queued' ORDER BY run_at, id${tx.dialect.forUpdateSkipLocked()}`, ...cand.map((c) => c.id))
+        : [];
       for (const r of rows) await tx.run(`UPDATE jobs SET status = 'running', locked_at = ?, attempts = attempts + 1, updated_at = ? WHERE id = ?`, t, new Date(t).toISOString(), r.id);
       return rows.map((r) => ({ id: r.id, type: r.type, payload: JSON.parse(r.payload_json), attempts: r.attempts + 1, maxAttempts: r.max_attempts }));
     });

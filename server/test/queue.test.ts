@@ -305,7 +305,7 @@ describe('POST /internal/edge/events (batches from the edge queue consumer)', ()
     const { h, post, ev } = await edgeWorld();
     const batch = [ev('aaaaaaaa1', 'v1'), ev('aaaaaaaa2', 'v2'), { id: 'aaaaaaaa3', at: 1, ua: 'x', body: { nonsense: true } }, { id: '!!', at: 1, ua: 'Mozilla/5.0 Chrome', body: {} }];
     const r1 = await post(batch);
-    expect(r1.json).toEqual({ accepted: 2, rejected: 2 });
+    expect(r1.json).toEqual({ accepted: 2, rejected: 2, limited: 0 });
     await h.deps.events.flush();
     expect(await countEvents(h)).toBe(2);
     expect((await post(batch)).json.accepted).toBe(2); // the queue redelivered everything
@@ -318,7 +318,7 @@ describe('POST /internal/edge/events (batches from the edge queue consumer)', ()
     const { h, post, ev } = await edgeWorld();
     const now = h.clock.now().getTime();
     const resp = await post([ev('bbbbbbbb1', 'v1', now - 3_600_000), ev('bbbbbbbb2', 'v2', now - 10 * 86_400_000), ev('bbbbbbbb3', 'v3', now + 3_600_000)]);
-    expect(resp.json, JSON.stringify(resp.json)).toEqual({ accepted: 3, rejected: 0 });
+    expect(resp.json, JSON.stringify(resp.json)).toEqual({ accepted: 3, rejected: 0, limited: 0 });
     await h.deps.events.flush();
     const times = Object.fromEntries((await h.deps.db.all<{ id: string; created_at: string }>('SELECT id, created_at FROM events')).map((r) => [r.id, r.created_at]));
     expect(Object.keys(times).sort(), `dropped=${h.deps.events.dropped}`).toEqual(['evt_bbbbbbbb1', 'evt_bbbbbbbb2', 'evt_bbbbbbbb3']);

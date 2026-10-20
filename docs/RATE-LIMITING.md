@@ -60,7 +60,8 @@ Every Redis call has a budget (`REDIS_TIMEOUT_MS`, default 25 ms) and sits behin
 
 | policy `onFail` | when the store fails | policies |
 |---|---|---|
-| `open` | admit, count `outcome="fail_open"`, log | ip.global, public.events, public.page, public.preview, api.*, ai.minute, edge.resolve, webhook.inbound |
+| `open` | admit, count `outcome="fail_open"`, log | ip.global, public.events, public.page, public.preview, api.*, ai.minute, ai.daily, edge.resolve, webhook.inbound |
+| `local` | decide with this process's own in-memory store (same arithmetic, `outcome="fallback"` counted), so a flood is still refused; across N processes the effective limit is N x | ingest.workspace |
 | `closed` | answer `503 RATE_LIMITER_UNAVAILABLE` with `Retry-After` | public.forms, public.checkout, auth.*, admin.platform |
 
 Fail-open means a Redis outage removes protection (flood protection falls back to the edge layer and Cloudflare WAF); fail-closed means a Redis outage stops sign-ups, logins and form posts. That trade is deliberate: spam floods and credential stuffing are worse than a short outage of those four endpoints. Change it per policy in `policies.ts`.
@@ -95,7 +96,7 @@ IPv6 clients are keyed by their /64; IPv4-mapped addresses are unwrapped.
 
 ## Observability
 
-Prometheus (`/metrics`): `funnels_ratelimit_decisions_total{policy,outcome}` (outcomes: allowed, limited, blocked, denied, bypassed, shed, error, fail_open, replayed), `funnels_ratelimit_store_seconds{ok}` (Redis call latency), `funnels_ratelimit_lease_total{policy,result}` (hit, refill, direct), `funnels_ratelimit_breaker_state` (0 closed, 1 half-open, 2 open), `funnels_ratelimit_penalty_box` (in-memory store only; with Redis watch `outcome="blocked"`). Labels are policy ids and a fixed outcome set only. One in 20 limited decisions is logged with the policy id, never a key or address.
+Prometheus (`/metrics`): `funnels_ratelimit_decisions_total{policy,outcome}` (outcomes: allowed, limited, blocked, denied, bypassed, shed, error, fail_open, replayed, and `fallback`, an extra count next to the allowed/limited one when a `local` policy decided on the process's own store), `funnels_ratelimit_store_seconds{ok}` (Redis call latency), `funnels_ratelimit_lease_total{policy,result}` (hit, refill, direct), `funnels_ratelimit_breaker_state` (0 closed, 1 half-open, 2 open), `funnels_ratelimit_penalty_box` (in-memory store only; with Redis watch `outcome="blocked"`). Labels are policy ids and a fixed outcome set only. One in 20 limited decisions is logged with the policy id, never a key or address.
 
 Alerts worth setting: `rate(funnels_ratelimit_decisions_total{outcome="fail_open"}[5m]) > 0` (Redis trouble, protection off), `funnels_ratelimit_breaker_state > 0`, `outcome="error"` (fail-closed endpoints refusing), and a sudden rise of `limited` for `auth.attempts`.
 
@@ -124,6 +125,7 @@ Defaults, before environment overrides and plan multipliers (this table is gener
 | `api.workspace` | workspace | workspace | gcra | 600 / 1 min, burst 200 | open | free x1, pro x5, business x20 | lease | Workspace quota across all its users, tiered by plan (free x1, pro x5, business x20, overridable per workspace). |
 | `api.export` | concurrency | workspace | concurrency | 2 in flight | open | free x1, pro x2, business x4 |  | Concurrent CSV exports per workspace (in-flight cap, lease with TTL, released in finally). |
 | `api.stream` | concurrency | user | concurrency | 5 in flight | open |  |  | Open SSE streams per user. |
+| `ingest.workspace` | workspace | workspace | gcra | 600000 / 1 min, burst 10000 | local | free x1, pro x5, business x20 | lease | Public events per workspace (noisy-neighbour guard, checked before an event is queued). GCRA with a one-second burst, scaled by plan tier; a refusal affects only that workspace. |
 | `ai.minute` | workspace | workspace | gcra | 100 / 1 min, burst 100, cost 10 | open | free x1, pro x5, business x20 |  | AI calls per workspace per minute; each call costs 10 units. The daily cap is `ai.daily`; ai_usage only meters. |
 | `ai.daily` | workspace | workspace | window | 50 / 24 h | open | free x1, pro x5, business x20 |  | AI calls per workspace per day (sliding window over two adjacent UTC days, AI_DAILY_CAP, scaled by plan tier). Refusals answer AI_DAILY_CAP_REACHED. A cap of 0 disables AI. |
 | `edge.resolve` | class | ip | gcra | 120000 / 1 min, burst 12000 | open |  | lease | Signed requests from the Cloudflare worker (all traffic arrives from few IPs, so the limit is high). |
@@ -142,3 +144,7 @@ Defaults, before environment overrides and plan multipliers (this table is gener
 ## Not done
 
 Socket.IO limits (the app has no sockets; SSE is capped by `api.stream`), per-API-key limits (the policy model supports `apiKey`; no API keys exist yet), event-loop-lag load shedding, Redis Cluster verification (keys and scripts are written for it; only a single Redis was available here), Redis Sentinel/failover testing.
+
+## Noisy neighbours (per-workspace fairness)
+
+`ingest.workspace` caps one workspace's public events (default 600,000 per minute on the free plan, burst one second, pro x5, business x20, overridable per workspace), checked before an event is queued, so a flooding tenant is answered 429 with `Retry-After` and costs nobody else anything. It is the one policy with `onFail: local`: measured on this repository's stack, a Redis that is slow under load (calls over `REDIS_TIMEOUT_MS`, breaker open) made a fail-open version admit 1,026 requests where 110 were allowed; with `local` the quota still holds per process. The queue, the outbox relay and the job claim are fair per workspace as well, see [SCALING.md](SCALING.md#per-workspace-fairness).
