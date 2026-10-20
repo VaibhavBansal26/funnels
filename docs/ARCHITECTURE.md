@@ -25,7 +25,7 @@ flowchart TB
     Pub[/api/public: events forms checkout/]
     Prev[/preview/:funnelId/]
     Svc[Services + repositories]
-    Block[blocks: schema, sanitiser, renderer]
+    Page[pagemodel: clean, render, sanitisers, converter]
     Worker[JobWorker poll loop]
     Bus[EventBus -> SSE]
     Cache[PageCache LRU]
@@ -34,7 +34,7 @@ flowchart TB
   Web[web/dist React SPA]
   Router --> Host --> API & Pub & Prev
   API --> Svc --> DB
-  Svc --> Block
+  Svc --> Page
   Worker --> DB
   Worker --> Hooks2[Webhook delivery, domain re-verify]
   Svc --> Bus
@@ -42,7 +42,7 @@ flowchart TB
   Router --> Web
 ```
 
-* `server/src/blocks` is pure TypeScript (only `zod` imported). The server renders with it and the web builder imports the very same files through a Vite alias, so the canvas is the same renderer that publishes.
+* `server/src/pagemodel/shared` is pure TypeScript (only `zod` imported). The server renders and sanitises with it and the web builder imports the very same files through a Vite alias (`@pagemodel`), so the canvas shows exactly what is published. See [Page builder](#page-builder). `server/src/blocks` keeps the legacy block-document schema and builders: they guard the old input paths (API clients, the AI generator, older templates), and a block document is only ever converted, never rendered.
 * Everything with side effects is injected through `Deps` (`DnsResolver`, `PaymentProvider`, `HttpClient`, `AiProvider`, clock, rate limiter, job queue). Tests swap fakes in.
 
 ## Data model
@@ -54,7 +54,8 @@ erDiagram
   workspaces ||--o{ domains : registers
   workspaces ||--o{ tags : defines
   funnels ||--|{ steps : contains
-  steps ||--|| step_pages : "doc_json + html + checksum"
+  steps ||--|| step_pages : "doc_json (GrapesJS project) + html + checksum"
+  workspaces ||--o{ assets : "uploaded images"
   steps ||--o{ step_backups : "newest 10"
   funnels }o--o{ tags : funnel_tags
   funnels }o--o| domains : "attached (active only)"
@@ -106,11 +107,12 @@ sequenceDiagram
   participant UI as Builder
   participant API as PUT /steps/:id/page
   participant DB as SQLite
-  UI->>API: { doc, version, backup }
-  API->>API: zod-validate doc (limits, depth, ids)
+  UI->>API: { doc: { version: 2, project }, version, backup }
+  API->>API: cleanProject(project): allow-lists, zod props, limits, ids
+  API->>API: derive forms + products from typed props
   API->>DB: BEGIN
   API->>DB: insert step_backups (previous doc/html)
-  API->>API: renderPage(doc, ctx) -> html, checksum
+  API->>API: renderProject(project, ctx) -> sanitised html (css in a style element), checksum
   API->>DB: update step_pages, bump steps.version
   API->>DB: prune backups to newest 10
   API->>DB: COMMIT
@@ -153,6 +155,39 @@ sequenceDiagram
     W->>DB: requeue, 30s * 2^n backoff, dead after max attempts
   end
 ```
+
+## Page builder
+
+The builder is [GrapesJS](https://grapesjs.com) (npm `grapesjs`, pinned, loaded as its own lazy chunk) with all of its panels switched off: the interface is React (Radix primitives, Tailwind) and talks to the editor through its API. The canvas is GrapesJS's own iframe, so dragging from the Blocks panel, reordering, nesting, resizing and inline text editing are real canvas interactions. Decision record: [ADR 0022](adr/0022-grapesjs-page-builder.md); where parts of the old builder were carried over: [PROVENANCE.md](PROVENANCE.md).
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    UI["React panels: top bar, Blocks, Layers, Pages, Images, Inspector"]
+    GJS["GrapesJS editor + canvas iframe (CSP: no script, no frames)"]
+    PM1["@pagemodel (shared): cleanProject, props, markup, css"]
+    UI <-->|"editor API + events"| GJS
+    GJS -->|"loadDoc: cleanProject first"| PM1
+  end
+  subgraph Server
+    PUT["PUT /steps/:id/page"]
+    PM2["pagemodel: cleanProject, derive forms and products, renderProject"]
+    SAN["sanitize-html + postcss on custom code, markup and css"]
+    DB[("step_pages: doc_json, html with its css, checksum")]
+    PUB["live page / signed preview (sandboxed)"]
+  end
+  UI -->|"project JSON only"| PUT --> PM2 --> SAN --> DB --> PUB
+  PM1 -.same files.- PM2
+```
+
+* **Source of truth.** `step_pages.doc_json` is `{ version: 2, project, forms, products }`: the GrapesJS project (`editor.getProjectData()`, cleaned by the server before it is stored) plus two lists the **server derives** from typed component props on every save. The request never carries `forms`, `products`, HTML or CSS; the public form and checkout endpoints read the derived lists, so a client cannot invent a field, a price or a success URL (price integrity: the order amount comes from `products`, never from the browser).
+* **Typed dynamic components.** Forms, checkouts (offer, order bump, one-click upsell), video, countdown, progress bar, custom code and button actions are component types (`fn-form`, `fn-checkout`, ...) whose behaviour lives in one typed prop (`fnForm`, `fnProduct`, `fnVideo`, `fnCountdown`, `fnProgress`, `fnCode`, `fnAction`) validated with zod in `shared/props.ts`. The builder, the canvas and the server render the inner markup from the same function (`shared/markup.ts`), so there is nothing to keep in sync.
+* **Structure.** Section (small / medium / wide / full) > Row > Column > elements, as in the old builder. Content dropped on the page or into a section is wrapped in the scaffolding it needs, in the same undo step. One rule table (`web/src/builder/editor/rules.ts`, `canDrop`) is used by the canvas, the Layers panel and click-to-insert, so the three cannot disagree.
+* **Rendering.** `renderProject` walks the *cleaned* project only. Layers, in order: (1) `cleanProject` rebuilds every node from allow-lists (tags, attributes, classes, ids, style properties and values, selectors, media text) and enforces limits (3,000 nodes, depth 24, 2 MB, 6,000 rules); (2) the renderer escapes text and attribute values; (3) a final `sanitize-html` pass over the whole body; (4) `postcss` for free-form CSS; (5) custom code HTML and CSS are sanitised too unless the saver may author scripts. Base page CSS is written with `:where()` so any rule of the author wins; dark and accent sections flip the inherited text colour, which is what fixes the old dark-on-dark text (the converter also drops explicit text colours below 4.5:1 on their section).
+* **Persistence and concurrency** are unchanged: optimistic version per step (`PUT .../page` with the expected version, `409 VERSION_CONFLICT`), newest 10 backups, restore, checksum as ETag. `GET .../html` and `GET /api/templates/:id/html` return the stored/rendered page for thumbnails; the web app shows them in `sandbox=""` iframes with scripts and players removed.
+* **Migration.** `convertDocument` turns a version-1 block document into a project deterministically (same input, same ids, never throws; unknown blocks are skipped with a note). At start-up `migrateLegacyPages` converts every stored page and template step once, keeping the original in `legacy_doc_json`; backups and old documents also convert lazily when read or restored. Details and the GrapesJS mapping: [MIGRATION-NOTES.md](MIGRATION-NOTES.md).
+* **Assets.** `/api/assets` stores uploaded images in the database (PNG, JPEG, GIF, WebP sniffed by magic bytes, SVG refused, 1.5 MB each, 200 per workspace) and `/uploads/:id/:name` serves them with `nosniff`, a restrictive CSP and long caching; customer domains reach them through the same edge passthrough as `/beacon.js`.
+* **Bundle.** The builder (about 380 KB gzip with GrapesJS) loads only on the builder route; the rest of the app is the entry chunk plus per-page chunks. Budgets are enforced by `npm run build` (`web/scripts/check-bundle-size.mjs`): entry 125 KB, shared UI vendor chunk 90 KB, builder chunk 450 KB, total 700 KB (gzip).
 
 ## Domain state machine
 

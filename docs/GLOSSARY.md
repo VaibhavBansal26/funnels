@@ -5,8 +5,12 @@
 | Workspace | The tenant. Owns users, funnels, domains, tags, leads, orders, webhooks. Every business row has `workspace_id`; a resource of another workspace is a 404. |
 | Funnel | An ordered set of steps published as a unit. Has a status (`test` or `live`), optional domain, tags, soft delete (trash). |
 | Step | One page of a funnel with a path (`base_path`, compared through `path_key`), a position, a `version`. |
-| Page / document | The block document (`step_pages.doc_json`) is the source of truth; `html` is the cached render with a `checksum` (also the ETag). |
-| Block | One element of a page document (heading, form, checkout, button, columns, custom HTML...). Schema in `server/src/blocks`. |
+| Page / document | `step_pages.doc_json` is the source of truth: `{ version: 2, project, forms, products }`. `html` is the server's sanitised render, with a `checksum` (also the ETag). |
+| Project | The GrapesJS project data of a page: a tree of components plus CSS rules. The editable source of truth; the browser sends nothing else when saving. |
+| Block | A tile in the builder's Blocks panel that inserts one or more components (Hero, Heading, Checkout, ...). Also the old *block document* element (version 1), which only exists as an input to the converter (`server/src/blocks`). |
+| Component | One node of a project: a section, row, column, text, image, form, ... Dynamic ones (`fn-form`, `fn-checkout`, ...) carry typed props. |
+| Converter | `pagemodel/convert.ts`: block document (version 1) to project (version 2), deterministic. |
+| Derived lists | `forms` and `products` in the stored document, computed by the server from the typed props on every save; what the public endpoints trust. |
 | Domain | A customer hostname with DNS verification (`pending`, `active`, `failed`) that funnels can be attached to. |
 | Live / test | A live funnel is served on its active domain. A test funnel is only visible through a signed preview. |
 | Path key | Lower-cased path without trailing slash; the unit of path uniqueness inside a funnel and on a domain. |
@@ -36,7 +40,7 @@
 | Legacy product | This app |
 |---|---|
 | Collections (`funnels`, `lightning.domains`, `funnels.analytics`) | Tables (see [MIGRATION-NOTES.md](MIGRATION-NOTES.md)) |
-| GrapesJS components / `raw_html` | Block documents rendered by the shared renderer |
+| GrapesJS components / `raw_html` | GrapesJS project data; the server renders and sanitises the HTML (see [MIGRATION-NOTES.md](MIGRATION-NOTES.md#page-builder-the-grapesjs-rebuild-adr-0022)) |
 | `getrollbackversion` / backups | Backups and restore |
 | Cloudflare "hosts" | Domains with a `DomainProvider` |
 | Global funnel templates | `templates` + `template_steps`, platform-admin managed |

@@ -5,10 +5,10 @@ All features go through `AiProvider` (`server/src/ai/types.ts`). `AnthropicProvi
 | Feature | Endpoint | UI entry point |
 |---|---|---|
 | Generate funnel from a prompt | `POST /api/ai/funnel` | New funnel wizard, "Generate with AI" |
-| Rewrite copy (tone, length) | `POST /api/ai/rewrite` | Builder inspector for heading/paragraph |
-| 5 headline variants | `POST /api/ai/headlines` | Builder inspector for headings |
+| Rewrite copy (tone, length) | `POST /api/ai/rewrite` | Builder: the sparkle button in the floating toolbar of a heading, text or button, and the Rewrite button in the Settings tab |
+| 5 headline variants | `POST /api/ai/headlines` | Builder: same dialog, for headings ("Headline ideas") |
 | Analytics insights | `POST /api/ai/insights` | Funnel > Analytics > "Explain performance" |
-| Alt text suggestion | `POST /api/ai/alt-text` | Builder inspector for images |
+| Alt text suggestion | `POST /api/ai/alt-text` | Builder: Settings tab of an image, "Suggest alt text" |
 | Usage | `GET /api/ai/status` | Settings |
 
 ## Pipeline
@@ -26,6 +26,15 @@ flowchart LR
 ```
 
 Responses carry `source`: `model`, `heuristic` (no key configured) or `fallback` (model failed validation).
+
+## How AI output reaches the page builder
+
+The builder stores GrapesJS project data, and no AI path writes that directly.
+
+* **Generated funnels** (`POST /api/ai/funnel`): `buildSteps` still assembles each step as a version-1 *block document* from the model's copy (the server decides structure, forms, prices and the checkout). Saving it goes through `validateDoc`, which runs the deterministic converter (`pagemodel/convert.ts`) and then the same `cleanProject` allow-list as any save, so a generated page is an ordinary project the author can open, drag around and restyle. The model never sees or produces component JSON, HTML or CSS, which keeps the "copy only" safety property of the old pipeline.
+* **Rewrite and headline ideas** work on the plain text of the selected element. *Apply* replaces that element's text content; its structure, classes and styles are untouched, and the result is escaped by the same renderer as any typed text (a model reply containing `<script>` is shown as text). Suggestions are never applied without the click, and the apply is one undo step.
+* **Alt text**: the suggestion fills the image's `alt` attribute for the author to review.
+* A funnel built from a prompt, a template or by hand is the same kind of document, so everything in [the page builder section](ARCHITECTURE.md#page-builder) (limits, sanitising, price integrity) applies to AI output without a special case.
 
 ## Prompts and safety
 

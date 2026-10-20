@@ -6,7 +6,7 @@
 |---|---|
 | `funnels` (`global:true` templates mixed in) | `funnels`; templates are `templates` + `template_steps` |
 | `funnel.step` (`raw_html`, `settings`, thumbnails) | `steps` (settings as columns) + `step_pages` (`doc_json`, cached `html`, `checksum`) |
-| `funnel.step.components` | `step_pages.doc_json` (block document, not GrapesJS) |
+| `funnel.step.components` | `step_pages.doc_json`: the GrapesJS project (`{ version: 2, project, forms, products }`); earlier builds of this app stored a block document (version 1), converted on upgrade |
 | `funnel.step.backups` | `step_backups`, pruned on save |
 | `funnel.tags` | `tags` + `funnel_tags` (`name_lower` unique per workspace) |
 | `funnel.blocks` / `funnel.global.blocks` | `custom_blocks` (per workspace); global blocks dropped |
@@ -60,6 +60,46 @@
 16. GET used for a mutation (`/global/templates/save`). Mutations use POST.
 17. Funnel creation did not check cross-funnel path conflicts. Creating onto a domain runs the same check and resolution flow.
 18. Dead code not migrated: `updatePageSettings`, `uploadtoWasabi` route publishing, beacon `trackEvent`, `funnels.domains`, unused template collections.
+
+## Page builder: the GrapesJS rebuild (ADR 0022)
+
+Two movements are described here. (1) The legacy product's GrapesJS editor, which stored client-rendered HTML and trusted it, is rebuilt on GrapesJS again but with the server as the authority. (2) Pages stored by the intermediate builds of this app (a block document, version 1) are converted to GrapesJS projects. Which legacy code was read and reused is listed in [PROVENANCE.md](PROVENANCE.md).
+
+### Legacy GrapesJS to this builder
+
+| Legacy | Here |
+|---|---|
+| The browser sent `raw_html` and `components`; the server stored and served them as given (trusted client HTML) | The browser sends only the project JSON. The server rebuilds it from allow-lists, derives forms and products, renders and sanitises the HTML itself ([SECURITY.md](SECURITY.md#page-builder-and-published-pages)). Existing legacy HTML is therefore *sanitised on the way in*, not trusted: scripts, handlers and unsafe CSS in old pages do not survive unless the page belongs to an owner of a workspace that allows custom scripts. |
+| Section > Row > Column structure, with those names in the layer tree | Same structure and names; one drop-rule table (`canDrop`) shared by canvas, Layers and click-to-insert; loose content is wrapped automatically |
+| Outline colours (section green, row and column blue, element orange) | Kept in the canvas stylesheet |
+| Block library in the left panel (sections, columns, text, media, forms, checkout, custom code) | More than 40 blocks in categories (Sections, Layout, Text, Media, Interactive, Conversion, Cards, Navigation, Advanced) built from one DSL, searchable, draggable; *My blocks* are the workspace's saved blocks |
+| Layer manager with visibility toggle and drag | Layers panel with visibility, lock, keyboard moves and the canvas's drop rules |
+| Per-element settings panels (button action, form, countdown, checkout with order bump and one-click upsell, FAQ, image, video, popup, progress bar) | Typed trait editors validated by the same zod schemas as the server |
+| Component versions reconciled when a page is opened | `COMPONENT_VERSION` and `COMPONENT_MIGRATIONS` in `shared/clean.ts`: every node carries `fnV`, older nodes are migrated when loaded |
+| Visibility classes `show-none`, `show-desktop-only`, `show-mobile-only` | Kept (Settings, Advanced, Visibility); written into the page CSS |
+| Desktop and mobile device switch | Desktop, tablet and mobile; the canvas really resizes and responsive rules go to media queries |
+| Undo, redo, preview, page settings, backups | All kept; backups are the newest 10 per step, restore creates a backup of the current page first |
+| A form block that posted to an external host | **Not ported** (no credentials, hosts or analytics ids were carried over). Forms post to `/api/public/forms/...` with fields the server derived from the saved page |
+| Dark text on dark sections | Fixed at the source: sections declare a light or dark surface, base CSS is written with `:where()` so any author rule still wins, and the converter drops explicit text colours below 4.5:1 on their section |
+| Plain GrapesJS component types from other tools | `text`, `link`, `image`, `default` and the table family are accepted; any other type becomes a plain element (the tag allow-list still applies), because the server only knows the component types it can validate |
+
+### Block document (version 1) to project (version 2)
+
+`convertDocument` (`server/src/pagemodel/convert.ts`) is deterministic (same input, same output, ids derived from block ids), total (it never throws; unknown blocks are skipped and reported in `notes`), and idempotent (a version-2 document is returned unchanged).
+
+| Block | Component |
+|---|---|
+| `section` (width narrow / medium / wide / full, padding, background, align, anchor) | `fn-section` (small / medium / wide / full), theme light or dark chosen from the background |
+| `columns` (gap, column widths) | `fn-row` with `fn-column` children; widths become flex grow |
+| consecutive loose blocks in a section | one row with one column |
+| `heading`, `paragraph` | `fn-heading`, `fn-text` (alignment, colour kept when readable, anchor) |
+| `image` (with link) | `image`, wrapped in a `link` when it had an `href` |
+| `button` (style, size, full width, action) | `fn-button` with `fnAction` (`next_step`, `step`, `link`, `anchor`, none) |
+| `video`, `divider`, `spacer`, `list`, `faq`, `countdown` | `fn-video`, `fn-divider`, `fn-spacer`, `fn-list`, `fn-faq`, `fn-countdown` |
+| `form`, `checkout` | `fn-form`, `fn-checkout` **keeping the block id**, so published forms and checkouts keep working and orders keep pointing at the same offer |
+| `html` | `fn-code` (sanitised unless the page owner may author scripts) |
+
+At start-up `migrateLegacyPages` converts every stored page and every template step once and re-renders the affected funnels; the original document is kept in `step_pages.legacy_doc_json` (migration 016) so a conversion can be audited or redone. A page that cannot be converted (it is malformed or beyond the limits) becomes an empty page and a warning with the step id is logged; its original stays in `legacy_doc_json`. Backups written by earlier builds are converted when they are read or restored. The seeded templates are authored natively as projects (`server/src/templates/seed.ts`). `POST /api/ai/funnel` still builds block documents, which pass through the converter on save ([AI.md](AI.md)).
 
 ## Left out on purpose
 

@@ -64,6 +64,14 @@ Migrations are forward-only. To roll back the application, deploy the previous i
 
 **Migration failed at boot.** The failing file's transaction rolled back; the process exits. Fix forward (new migration) or restore; other replicas keep running the old version. Never edit an applied migration.
 
+## Page builder rollout (GrapesJS, ADR 0022)
+
+* **First start after the upgrade** converts every stored page and template step from the old block document to a GrapesJS project (`migrateLegacyPages`, logged; it re-renders the affected funnels, so published pages change to the new base design) and applies migrations 016 (`legacy_doc_json`) and 018 (`assets`). It is idempotent, so a crash halfway is resumed by the next start. Take a database backup first: **an older image cannot read version-2 pages**, so the rollback of this release is a database restore (the originals are kept in `step_pages.legacy_doc_json`, which allows a manual conversion back only for pages not edited since).
+* **A page that could not be converted** is replaced by an empty page and a `legacy page could not be converted` warning with the step id is logged. The log line is the reliable list; as a heuristic, converted pages that are now empty are short: `SELECT step_id FROM step_pages WHERE legacy_doc_json IS NOT NULL AND length(doc_json) < 300`. Rebuild them, or re-convert from `legacy_doc_json` after fixing the cause.
+* **Images** are rows in `assets` (base64 text, 1.5 MB each, 200 per workspace): watch table size with the rest of the database; there is no garbage collection of images no page uses, deleting is manual (Images panel or `DELETE /api/assets/{id}`).
+* **Customer domains and the Worker**: `/uploads/*` must pass through like `/beacon.js` (the bundled Worker and `hostRouting` do); a custom proxy needs the same rule or images break on customer domains.
+* **Stuck editor for one user**: the builder is a lazy chunk; after a deploy a tab opened before it may fail to load the new chunk, a reload fixes it. Saves from a stale tab get `409 VERSION_CONFLICT`.
+
 ## Capacity
 
 Numbers, formulas and sizing tables: [SCALING.md](SCALING.md) (each figure labelled measured or extrapolated). Per-node microbenchmarks: [PERFORMANCE.md](PERFORMANCE.md). Cloud validation procedure: [CLOUD-LOADTEST.md](CLOUD-LOADTEST.md).

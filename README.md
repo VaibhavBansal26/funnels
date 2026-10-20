@@ -1,6 +1,10 @@
 # Funnels
 
-Build, publish and measure marketing funnels: a block-based page builder, templates, custom domains with DNS verification, public serving, analytics, leads and orders, signed webhooks and AI assistance. TypeScript, Hono, SQLite or PostgreSQL, React 19.
+Build, publish and measure marketing funnels: a drag-and-drop page builder on [GrapesJS](https://grapesjs.com), templates, custom domains with DNS verification, public serving, analytics, leads and orders, signed webhooks and AI assistance. TypeScript, Hono, SQLite or PostgreSQL, React 19, Tailwind.
+
+![The page builder](docs/design/builder-1440-light.webp)
+
+More screens, light and dark, at three sizes: [docs/design/DESIGN.md](docs/design/DESIGN.md).
 
 ## Run
 
@@ -36,14 +40,15 @@ Configuration is environment-only, see `.env.example` and `docs/CONFIGURATION.md
 ## Layout
 
 ```
-server/  Hono API, services, repositories, SQL migrations, block renderer, tests
-web/     React app, builder, tests
-docs/    ARCHITECTURE, APPROACH, AI, TESTING, PERFORMANCE, MIGRATION-NOTES
+server/  Hono API, services, repositories, SQL migrations, page model (cleaning, rendering, sanitising, converter), tests
+web/     React app, design system (src/ui), page builder (src/builder), tests
+e2e/     Playwright browser tests (real mouse drags in the builder) and the screenshot generator
+docs/    ARCHITECTURE, APPROACH, AI, TESTING, PERFORMANCE, MIGRATION-NOTES, PROVENANCE, SECURITY, design/
 ```
 
 ## Try it
 
-1. Register, create a funnel (blank, template or AI), open a step in the builder.
+1. Register, create a funnel (blank, template or AI), open a step in the builder. Drag blocks from the left panel onto the page, drag elements to reorder or nest them, double-click text to edit it, resize images by their handles, press `?` for the shortcuts, Save (Cmd or Ctrl+S) and View to see the saved page. The builder needs a screen of at least tablet size; see [docs/design/DESIGN.md](docs/design/DESIGN.md).
 2. Add a domain on the Domains page; add the shown CNAME and TXT records and verify. Set a funnel live on it.
 3. Funnels in test mode are viewable through the signed preview (Settings tab > Open signed preview).
 

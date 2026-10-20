@@ -5,6 +5,14 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 ## [Unreleased]
 
 ### Added
+- **Page builder on GrapesJS** (docs/ARCHITECTURE.md#page-builder, ADR 0022, docs/PROVENANCE.md): a real canvas editor with drag and drop of blocks onto the page with live placeholders, reorder and nesting on the canvas and in a Layers panel, image and column resize handles, inline text editing with a formatting bar and a link dialog, shift-click multi-select, copy, paste, duplicate and delete by keyboard, Alt+Arrow moves, undo and redo, a floating toolbar (move, select parent, duplicate, AI rewrite, delete), a context menu, zoom, desktop, tablet and mobile canvas sizes, preview mode, a block library of more than 40 blocks, saved blocks, a Pages panel, an image library, an Inspector (Style, Settings, Advanced) and a shortcuts dialog. Works from 1024 px; panels become drawers on tablets and phones.
+- Page documents are GrapesJS projects (`{ version: 2, project, forms, products }`). The server cleans every saved project against allow-lists, derives `forms` and `products` from typed component props, renders and sanitises the HTML itself (`sanitize-html`, `postcss`), and limits pages to 3,000 components, depth 24, 6,000 CSS rules and 2 MB (`413 DOCUMENT_TOO_LARGE`).
+- Deterministic converter from block documents (version 1) to projects, run once at start-up over stored pages and template steps (migration 016 keeps the original in `step_pages.legacy_doc_json`); backups convert when read or restored.
+- Image uploads for the builder: `GET|POST /api/assets`, `DELETE /api/assets/{id}`, public `GET /uploads/{id}/{name}` (also on customer domains and through the edge Worker); PNG, JPEG, GIF and WebP by magic bytes, 1.5 MB each, 200 per workspace (migration 018).
+- `GET /api/funnels/{id}/steps/{sid}/html` and `GET /api/templates/{id}/html`: the stored or rendered page for thumbnails and previews. Funnel cards, step lists and the templates gallery show the real page.
+- AI alt text suggestion in the builder's image settings (`POST /api/ai/alt-text` was already there).
+- **Design system for the whole web app**: Tailwind v4 tokens with light, dark and system themes, Radix-based components in `web/src/ui/`, lucide icons, Inter; WCAG AA contrast of every token pair is a test. `docs/design/DESIGN.md` with screenshots at 1440, 1024 and 390 px in both themes (`npm run design:shots` in `e2e/`).
+- Tests: XSS corpus, converter, limits and contrast tests, API tests for save, derive, permission and restore, asset tests (server); token contrast and panel tests on a headless editor (web); 23 new Playwright tests with real mouse drags (e2e). Bundle budgets are enforced for the new lazy builder chunk (docs/PERFORMANCE.md).
 - **Shareable identity pepper**: `PUT /api/v1/analytics/identity-pepper` imports a validated pepper (audited, `version` bumps; migration 017 adds `workspaces.identity_pepper_version`) so two apps of one customer derive the same `contact_key`; every response carries a `fingerprint` (first 8 hex characters of SHA-256) to compare apps without showing the pepper. `GET` takes a person or an API key with the new scope `analytics_identity:manage` plus `analytics:export`; response `{pepper, version, algorithm: "HMAC-SHA256", fingerprint, rotatedAt}` (same in Conversations); schema `docs/analytics-api/identity-pepper.schema.json`. See [docs/ANALYTICS-API.md](docs/ANALYTICS-API.md).
 - The pepper is encrypted at rest under `DATA_ENCRYPTION_KEY` (key id in the ciphertext, bound to the workspace; `DATA_ENCRYPTION_KEY_PREVIOUS` for rotation). **Production now requires `DATA_ENCRYPTION_KEY` once the analytics API is used**; a pepper stored in clear by earlier versions is encrypted on its first read. An unreadable pepper answers `409 PEPPER_UNREADABLE`.
 - `render.yaml` blueprint, manual `deploy-check` workflow, manual `deploy-edge` workflow and `docs/DEPLOY.md` for a free Render deployment.
@@ -35,6 +43,11 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - Benchmarks: `bench/ingest.mjs`, `ingest-db.mjs`, `ingest-engines.mjs`, `ratelimit.mjs`.
 
 ### Changed
+- **Behaviour change (pages):** the server no longer stores or serves HTML sent by the browser. Pages are rendered from the saved project, so scripts, event handlers and unsafe CSS in old pages are removed unless the page belongs to the owner of a workspace that allows custom scripts. `PUT /api/funnels/{id}/steps/{sid}/page` takes `{ doc: { version: 2, project }, version, backup }`; the old block-document body is still accepted and converted. `GET .../page` returns `{ format: 'grapesjs', scriptsAllowed, doc }`.
+- Custom code and tracking code are enforced on the server for every save: a saver who may not author scripts cannot add or change a code block (an owner-saved one is kept as it was).
+- The seeded templates are native projects with a new base design (readable text on dark and accent sections), and the generated funnels and legacy pages are re-rendered at start-up.
+- Fixed: text on dark sections could be dark on dark; base page CSS is now written with `:where()` so any rule of the author wins and dark, accent and soft sections flip the inherited text colour.
+- The web bundle budgets are entry 125 KB, shared UI chunk 90 KB, builder chunk 450 KB and total 700 KB gzip (previously 125 / 60 / 280): the builder is a separate lazy chunk of about 370 KB.
 - **Behaviour change:** support (impersonation) sessions can no longer write unless opened with `allow_writes` by a superadmin; administrators added through the API before migration 015 become `support` and must be re-added as `superadmin` to open write-enabled sessions. See docs/ADMIN.md.
 - **Breaking:** `POST /api/members` (temporary password) removed in favour of invitations; `PATCH /api/members/{id}` takes `{ roleId }`; access tokens are 15 minutes by default and carry a session id (everyone signs in once after the upgrade); a workspace may have several owners. See MIGRATION-NOTES.md.
 - Fixed: clicking a block in the builder canvas did nothing when the app was served with its own Content-Security-Policy (`script-src 'self'` blocked the canvas's inline editor script). The script is now the static file `/editor-bridge.js`. Found by the new browser suite; jsdom tests cannot see CSP.
@@ -50,10 +63,14 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - Page saves, step changes and domain attachment take row locks in a fixed order, so concurrent writers on PostgreSQL produce exactly one winner and no duplicate paths.
 
 ### Removed
+- The block renderer and sanitiser (`server/src/blocks/render.ts`, `sanitize.ts`), `services/docs.ts` and the old builder (outline list, form inspector, canvas script): nothing renders a block document any more, only the converter reads it.
 - `visitor_days` table and both SQLite maintenance triggers (migration 004).
 - The per-process in-memory token bucket (`util/ratelimit.ts`).
 
 ### Security
+- Stored XSS in pages: every saved project is rebuilt from allow-lists, the rendered body goes through `sanitize-html`, free-form CSS through `postcss`; the editor canvas has a no-script CSP; previews are `sandbox`ed (no `allow-same-origin`) and previews of funnels in the app are script-free. Details and tests in docs/SECURITY.md.
+- Prices, form fields and success URLs are derived by the server from typed props at every save and read from there by the public endpoints.
+- Uploaded images are content-sniffed, SVG is refused, and served with `nosniff` and a locked-down CSP.
 - Unauthenticated `CF-Connecting-IP` and the leftmost `X-Forwarded-For` entry are no longer believed for rate limiting.
 
 ## [1.0.0]

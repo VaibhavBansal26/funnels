@@ -50,14 +50,29 @@ Reading the numbers honestly:
 
 ## Worker threads: measured, not adopted
 
+Measured 2026-10-20 with `node bench/render.mjs` after `npm run build` (Apple M1, 8 cores, Node 24.11.1, 30 runs after a warm-up, a second run is within 30%). The input is the page builder's worst case: a 120 KB project with about 2,070 components (the limit is 3,000 components and 2 MB).
+
 | Function (hard-limit input) | median | p95 |
 |---|---|---|
-| `renderPage`, 400 blocks | 0.89 ms | 1.27 ms |
-| `parseDocument` (zod), 400 blocks | 0.70 ms | 1.33 ms |
-| `sanitizeHtml`, 47 KB | 1.80 ms | 2.25 ms |
-| CSV formatting, 1000 rows | 0.28 ms | 0.31 ms |
+| `cleanProject` (allow-list rebuild plus zod props) | 1.4 to 1.7 ms | 2.1 to 7 ms |
+| `renderProject` (clean, render, `sanitize-html`, CSS) | 4.2 to 6.3 ms | 6.8 to 8.8 ms |
+| `sanitizeUserHtml`, 47 KB (the custom code limit is 50 KB) | 3.5 to 3.7 ms | 4.8 to 6.1 ms |
+| `sanitizeCss` (`postcss`), 14 KB | 1.5 ms | 2.4 to 3.9 ms |
+| CSV formatting, 1000 rows | 0.3 ms | 0.3 to 0.4 ms |
 
-The input limits (400 blocks, 50 KB HTML, 1.5 MB document) keep every CPU-bound step under a few milliseconds, which is less than the cost of posting the work to a thread. Exports are already streamed in pages, so the event loop is released between pages. A `worker_threads` pool and Web Workers for the builder were therefore **not** added; revisit if the limits are raised.
+The page limits (3,000 components, 50 KB of custom HTML, 2 MB document) keep every CPU-bound step under about ten milliseconds, which is less than the cost of posting the work to a thread. A save runs `cleanProject` once for validation and once inside `renderProject`. The earlier block renderer measured 0.9 ms for 400 blocks; the project renderer does more (allow-lists, three sanitising passes, free-form CSS) on a page about five times larger. Exports are already streamed in pages, so the event loop is released between pages.
+
+## Web bundle (gzip, `npm run check:size` in `web/`, 2026-10-20)
+
+| Chunk | Size | Budget | Loaded |
+|---|---|---|---|
+| entry (React, router, query, app shell, styles) | 110.6 KB | 125 KB | every page |
+| shared UI vendor chunk (Radix primitives, lucide icons, cva) | 72.5 KB | 90 KB | pages that use dialogs, menus, selects |
+| builder (GrapesJS 0.23, the editor, panels, `@pagemodel`) | 369.6 KB | 450 KB | only the builder route |
+| every other page chunk | 0.2 to 9.1 KB each | 90 KB | per page |
+| total JavaScript | 586.9 KB | 700 KB | |
+
+The builder budget is large on purpose: GrapesJS's own minified build is 294 KB gzip (`gzip -9 grapes.min.js`) and is the price of a real canvas editor; it is a separate lazy chunk, so the funnel list, analytics and settings do not pay for it (the previous budgets were entry 125, chunk 60, total 280 KB). Inter is self-hosted as variable WOFF2 files split by script; the browser fetches only the Latin one (48 KB, not counted above). The builder CSS (GrapesJS base styles plus ours) is 12.5 KB gzip and loads with the builder chunk. Not measured: runtime frame rate while dragging on a low-end device.
 
 ## Ingestion semantics to know
 

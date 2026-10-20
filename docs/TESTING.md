@@ -4,8 +4,8 @@ Vitest in both packages. Server tests are HTTP integration tests through `app.re
 
 ```
 npm test                  # server + web
-npm test --prefix server  # whole suite on SQLite AND PGlite (~480 tests each), about 80 s
-npm test --prefix web     # ~50 tests (jsdom + Testing Library)
+npm test --prefix server  # whole suite on SQLite AND PGlite (892 tests on SQLite, 1,687 across both, 2026-10-20), about 4 minutes while other work runs, 80 s alone
+npm test --prefix web     # 112 tests (jsdom + Testing Library)
 npm run typecheck         # tsc --noEmit in both packages
 npm run build             # tsc + vite build
 ```
@@ -39,8 +39,13 @@ Test helpers (`server/test/helpers.ts`): `makeHarness()` builds an app with a co
 
 | Area | File | Covered |
 |---|---|---|
-| Renderer XSS | `blocks.render.test.ts` | script tags, attribute injection, `javascript:`/`data:`/tab-split/fullwidth URLs, CSS injection, unicode, empty doc, unknown block, 400-block limit, nesting limit, columns cap, determinism |
-| Sanitiser and schema | `blocks.sanitize-schema.test.ts` | handlers, entity/whitespace URL tricks, malformed nesting, style filtering, hostile 50,000-deep JSON, versions |
+| Page cleaning and XSS | `pagemodel.xss.test.ts` (49) | about 40 OWASP-style payloads pushed through every attacker-controlled entry point (text, attributes, typed props, custom code, style rules, link and image URLs) with the rendered page parsed by jsdom for anything executable; CSS filtering (`expression()`, `behavior`, `-moz-binding`, foreign `url()` and `@import`); structure cleaning from allow-lists; idempotence (the rendered output of a hostile page equals that of its cleaned form); custom code for permitted and non-permitted savers; page CSS and tracking code; form actions always point at the app |
+| Limits, contrast, component versions | `pagemodel.limits.test.ts` (26) | element, depth, byte and rule limits (named in the message; pathological depth does not overflow the stack), oversized text truncated, unknown versions and invalid typed props refused with a path, duplicate or missing form and product ids repaired, video sources, WCAG AA contrast of the theme colours, seeded templates never setting their own text colour, the converter dropping dark-on-dark text colours, component version reconciliation |
+| Renderer | `pagemodel.render.test.ts` (25) | determinism, empty and garbage projects, beacon in live and preview mode, accessible structure (skip link, landmark, labelled controls), responsive CSS and reduced motion, media-query order, the element limit, escaping and URL schemes, every component (button actions, video allow-list, FAQ, tabs and popups, countdowns, forms with honeypot and consent, checkout with bump and upsell from validated products, currencies), page variables, custom API base for customer domains |
+| Converter | `pagemodel.convert.test.ts` (11) | every block type, form and checkout ids kept, columns and ratios, loose blocks, page settings, button actions and step remapping, unknown blocks and malformed values (never throws), determinism and idempotence, AI generated funnels, every seeded template |
+| Page API | `pagemodel.api.test.ts` (15) | the server derives `forms` and `products` and renders from the project only; client-supplied HTML, CSS, forms and products are ignored (a tampered price never reaches a buyer); validation errors name the component and store nothing; 413 above the size limit; optimistic concurrency, newest-10 backups, restore and autosave; legacy pages converted on first open with the original kept; the start-up migration (idempotent, re-renders published HTML); seeding; legacy backups listed and restored; the old API body still accepted; the custom code permission rule; sandboxed previews and no editor chrome in published HTML; `/html` endpoints scoped to the workspace |
+| Images | `assets.test.ts` (6) | PNG, JPEG, GIF and WebP stored by content and served publicly with hardened headers; raw-body uploads; anything that is not a raster refused whatever its name or declared type says (SVG, HTML, scripts, polyglots); per-workspace limit and permission; URL-safe names; reachable on customer domains |
+| Legacy block schema and URL rules | `blocks.schema.test.ts` (11) | what the legacy input path still accepts and refuses (schema, URL and colour safety); only the converter reads these documents now |
 | Paths | `steps.test.ts` | accept/reject table, intra-funnel and cross-funnel collisions, `/path-NNNN` suggestions, resolution subset validation, create-with-domain |
 | Reorder | `steps.test.ts` | duplicate ids/orders, partial set, foreign ids, bad numbers, gap normalisation, link re-render |
 | State machine | `funnels.test.ts`, `domains.test.ts` | live needs active domain, test detaches, domain loss/deletion revert in one transaction, rollback when the delete or the status update fails (a trigger injects the failure, written per dialect by `failOn`) |
@@ -60,38 +65,56 @@ Test helpers (`server/test/helpers.ts`): `makeHarness()` builds an app with a co
 
 ## Web tests
 
-`builder.test.ts` (undo/redo reducer, coalescing, dirty tracking, tree operations, serialisation round trip), `components.test.tsx` (block inspector, keyboard reorder of steps with rollback, API error display, login validation, modal focus trap, toasts), `pages.test.ts` (reorder model, validators, settings patch, chart helpers), `api/client.test.ts`.
+112 tests in 8 files (Vitest, jsdom, Testing Library), 2026-10-20:
+
+* `ui/tokens.test.ts` (64): parses `styles.css` and checks every text and background pair of the design tokens for WCAG AA (4.5:1) in the light set, the dark set and the `prefers-color-scheme` copy, that the two dark sets are identical, and the focus ring contrast.
+* `builder/panels.test.tsx` (11): the builder panels on a **headless GrapesJS editor** (no iframe) inside the real providers: the drop rules, Layers (tree, selection, lock and unlock, empty state), Blocks (categories, search, the custom code block hidden unless permitted, click-to-insert following the drop rules), Inspector (empty state, tabs, a style change writes one rule on the element and one undo step), and a regression test for two quick edits of one product (the second must not overwrite the first with a stale copy; it fails if the fix is removed).
+* `builder/headless.test.ts` (1): the editor boots headless, loads a project through `cleanProject` and registers the blocks.
+* `components.test.tsx`, `pages/pages.test.ts`, `pages/orders.test.tsx`, `components/supportAccess.test.tsx`, `api/client.test.ts`: step reordering by keyboard with rollback, API error display, login validation, modal focus trap, toasts, reorder model and validators, order status and dispute badges, support banner.
 
 ## Not covered
 
-Real browsers (drag and drop, the sandboxed canvas script), real DNS, real Anthropic calls, concurrent multi-process access to the SQLite file, Redis, PostgreSQL versions other than 17 (CI) and 18 (PGlite and the local verification run), PostgreSQL behind a connection pooler such as pgbouncer in transaction mode (named prepared statements would need to be disabled there).
+Browsers other than Chromium (Firefox and WebKit), touch input (HTML5 drag events do not fire on touch screens), screen readers, real DNS, real Anthropic calls, concurrent multi-process access to the SQLite file, Redis, PostgreSQL versions other than 17 (CI) and 18 (PGlite and the local verification run), PostgreSQL behind a connection pooler such as pgbouncer in transaction mode (named prepared statements would need to be disabled there).
 
 ## Phase 2 additions
 
-`server/test/phase2.test.ts` covers the edge signing contract (skew, replay, fail-closed), the edge endpoint, purge jobs and the Cloudflare adapters (mocked `fetch`), CF-Connecting-IP trust, the event buffer (batching, overflow, shutdown flush, read-your-writes), batched rollup maintenance (compared with a raw `GROUP BY` per local day in UTC, New York, Kolkata and Auckland), `EXPLAIN` index checks on every engine (PostgreSQL runs them with sequential scans disabled), an N+1 guard, gzip/metrics, 2,600-row streaming CSV, and `Promise.all` concurrency tests: same-version saves (one winner), parallel duplicates/reorders/domain attach, parallel identical submissions and exact rate limiting. `edge/test/edge.test.ts` tests the worker with fake Cache/KV, verifying each signed call with the origin's real verifier. These run in the normal `npm test` (about 480 server tests per backend, 14 edge tests, 51 web tests). Not covered: workerd/miniflare, Redis.
+`server/test/phase2.test.ts` covers the edge signing contract (skew, replay, fail-closed), the edge endpoint, purge jobs and the Cloudflare adapters (mocked `fetch`), CF-Connecting-IP trust, the event buffer (batching, overflow, shutdown flush, read-your-writes), batched rollup maintenance (compared with a raw `GROUP BY` per local day in UTC, New York, Kolkata and Auckland), `EXPLAIN` index checks on every engine (PostgreSQL runs them with sequential scans disabled), an N+1 guard, gzip/metrics, 2,600-row streaming CSV, and `Promise.all` concurrency tests: same-version saves (one winner), parallel duplicates/reorders/domain attach, parallel identical submissions and exact rate limiting. `edge/test/edge.test.ts` tests the worker with fake Cache/KV, verifying each signed call with the origin's real verifier. These run in the normal `npm test` (892 server tests on SQLite, 22 edge tests, 112 web tests on 2026-10-20). Not covered: workerd/miniflare, Redis.
 
-## Browser smoke tests (Playwright)
+## Browser tests (Playwright)
 
-`e2e/` drives real Chromium against the **built** server serving the **built** web app (`npm run build` first), with an in-memory SQLite database and a fake DNS resolver (`e2e/server.mjs`, so `*.e2e.test` domains can be verified; the browser maps that suffix to 127.0.0.1). Run: `npm run e2e:install` once (downloads Chromium, about 100 MB), then `npm run e2e` (about 40 s). One worker, no retries (a retry would hide flakiness); traces and screenshots are kept for failures (`npx playwright show-trace e2e/test-results/.../trace.zip`). CI job `e2e` runs it and uploads the report on failure.
+`e2e/` drives real Chromium against the **built** server serving the **built** web app (`npm run build` first), with an in-memory SQLite database and a fake DNS resolver (`e2e/server.mjs`, so `*.e2e.test` domains can be verified; the browser maps that suffix to 127.0.0.1). Run: `npm run e2e:install` once (downloads Chromium, about 100 MB), then `npm run e2e` (35 tests, about 2 minutes on an Apple M1). One worker, no retries (a retry would hide flakiness); traces and screenshots are kept for failures (`npx playwright show-trace e2e/test-results/.../trace.zip`). CI job `e2e` runs it and uploads the report on failure.
+
+**How the builder is driven.** Drags are real mouse input: `mouse.down`, `mouse.move` in steps, `mouse.up`, from a tile in the Blocks panel across into the canvas iframe, from the floating toolbar's move handle, and between rows of the Layers panel; handles are grabbed where they have come to rest (`settledBox`) because the canvas scrolls smoothly to a new block. The editor instance (`window.__editor`) is only read in assertions (component types, selection, rules), never used to perform an action.
+
+`builder.spec.ts` (13):
 
 | Test | What it proves |
 |---|---|
-| register, sign out, sign in | auth screens and session handling |
-| funnel from a template; steps reorder with Alt+Arrow | template gallery, steps tab, keyboard reorder persisted on the server |
-| canvas click selects a block | the builder canvas script is not blocked by the app CSP (regression for a real bug the unit tests could not see) |
-| edit, undo, redo, save, reload | builder state, save, persistence |
-| structure list reorder by keyboard and by drag and drop | both reorder paths in the real DOM |
+| selecting in the canvas fills the inspector | no CSP violation, no page error, GrapesJS makes no outbound request (telemetry and CDN icon font are off) |
+| a block dragged from the panel lands where it is dropped | live placeholder visible while dragging, one block added, undo and redo through the buttons |
+| reorder with the toolbar move handle | canvas reorder and undo |
+| nest a block into a column | drop on an empty column puts the block inside it |
+| reorder sections by dragging in Layers | drag between layers |
+| resize an image by its handle | the width is stored as a percentage |
+| edit text in place, change a style, switch device, undo and redo, save, reload | double-click editing, Style tab (alignment) on this element, tablet 768 px and mobile canvas widths, undo and redo, persistence |
+| copy, paste, duplicate, delete, shift-click | keyboard operations and multi-select |
+| context menu and shortcuts dialog | open and close with Escape |
+| unsafe input is refused or stays text; the published page equals the editor | a `javascript:` address blocks saving with the reason; markup typed into a headline is published as text; the signed preview has the editor's text, no `gjs-`, `data-gjs`, `contenteditable` or event-handler attribute, and no `javascript:` |
+| a form and a checkout built in the editor | checkout dropped and priced in the Settings tab; on a live domain the visitor sees the server-stored name and price, submits the opt-in form, and the lead is in the Leads tab |
 | Save keeps the replaced version; History lists, previews and restores it | version history |
-| signed preview and form submit | preview rendering; preview submissions are intentionally not recorded |
-| live funnel on a verified domain, visitor submits the form | domain add and verify, go live, public serving by Host header, form submit, lead in the Leads tab, analytics tab |
-| analytics tab renders | no console or page errors |
-| invite a viewer by email (`access.spec.ts`) | the permission picker-free invite flow, accept page, the signed-in role in the UI, UI gating (no "Add domain", no "Invite member") **and** the server refusing the same action sent directly (403 naming the permission), the audit log page |
-| custom role | build a role with the permission picker, assign it through an invitation, and the member can exactly what the role grants |
-| two-factor authentication | enrol with a code computed from the setup key, recovery codes shown once, sign-in needs the code (wrong code refused), a recovery code works once |
-| forgotten password | the emailed link (read from the e2e server's capture mailer), new password works, old one does not, another browser's session ends |
-| expired access token | an access token the server rejects is renewed from the refresh token in the background |
+| layout at 1024 and 700 px; preview hides the tools | the inspector is a drawer at tablet width and both panels at phone width; preview mode |
 
-Not covered (yet): checkout, the AI assistant UI, webhooks UI, mobile layouts, other browsers (Firefox, WebKit are not installed), accessibility audits beyond role-based selectors.
+`builder-flows.spec.ts` (10): Pages panel (add, duplicate, delete, switch), page settings (title and accent reach the published HTML), image upload, a disguised SVG refused, picker, alt text suggestion, link dialog (applied as a plain anchor, `javascript:` refused), saved blocks (saved, dropped back with its text, forms refused), publish dialog, keyboard-only moves (Alt+Arrow, Shift+Up, `?`), the mobile notice, dragging a section down in Layers, and saving while still typing in the page.
+
+Other specs: `smoke.spec.ts` (sign-in and out, template and step reorder, a live funnel on a verified domain with a visitor's form submit and the lead, analytics), `access.spec.ts` (5), `admin.spec.ts`, `analytics-api.spec.ts`, `billing.spec.ts` (an order from a sales funnel refunded in part, the audit log).
+
+**Bugs this suite found in the builder** (each is fixed and has a test): moving an element down one place did nothing, dragging a section down in Layers landed one place early, two quick edits of one product or form overwrote each other, Ctrl+S while typing saved without the typed text, links could not be applied to selected text, the saved-blocks list did not refresh, previews made third-party requests for embedded players, and GrapesJS telemetry and an icon-font CDN request were on by default.
+
+**Known test quirks.** The very first synthesised drag after the editor loads is ignored unless the pointer has crossed the canvas once (the second drag always works); the `dragBlock` helper moves over the canvas first, and it has not been seen by hand, so it is listed as a known issue rather than explained away. Playwright's own injected script is refused inside sandboxed preview frames and logged as "Blocked script execution in 'about:srcdoc'"; the console checks ignore that message. A page behind an open modal dialog is not editable (the search field loses typed text), which is correct: tests wait for the dialog to close.
+
+`e2e/design-shots.mjs` is not a test: it generates the screenshots in `docs/design/` ([design/DESIGN.md](design/DESIGN.md)).
+
+Not covered (yet): the AI assistant dialog beyond the alt-text button, webhooks UI, the new-funnel wizard in the browser, other browsers, accessibility audits beyond role-based selectors.
 
 ## Stripe tests
 
