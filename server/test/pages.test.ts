@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createBuilder, documentOf } from '../src/blocks/index.js';
 import { MAX_BACKUPS } from '../src/services/pages.js';
-import { makeFunnel, makeHarness, type Harness } from './helpers.js';
+import { headingText, makeFunnel, makeHarness, type Harness } from './helpers.js';
 
 async function setup() {
   const h = await makeHarness();
@@ -26,7 +26,7 @@ describe('page save', () => {
     const row = (await h.deps.db.get<{ html: string; checksum: string }>('SELECT html, checksum FROM step_pages WHERE step_id = ?', stepId))!;
     expect(row.html).toContain('Hello &lt;b&gt;World&lt;/b&gt;');
     expect(row.checksum).toBe(r.json.checksum);
-    expect((await h.call('GET', `${url}/page`, { token: u.token })).json.doc.blocks[0].text).toBe('Hello <b>World</b>');
+    expect(headingText((await h.call('GET', `${url}/page`, { token: u.token })).json.doc)).toBe('Hello <b>World</b>');
   });
 
   it('versions are strictly increasing even within the same millisecond', async () => {
@@ -85,7 +85,7 @@ describe('backups', () => {
     expect(list).toHaveLength(2);
     expect(list[0].label).toMatch(/^Landing page \d{4}-\d{2}-\d{2}$/);
     const newest = (await h.call('GET', `${url}/backups/${list[0].id}`, { token: u.token })).json;
-    expect(newest.doc.blocks[0].text).toBe('one'); // backup holds the version that was replaced
+    expect(headingText(newest.doc)).toBe('one'); // backup holds the version that was replaced
     const oldest = (await h.call('GET', `${url}/backups/${list[1].id}`, { token: u.token })).json;
     expect(JSON.stringify(oldest.doc)).toContain('My funnel'); // the auto-created default page
     expect(list[0].version).toBeGreaterThan(list[1].version);
@@ -134,11 +134,11 @@ describe('backups', () => {
     const target = list[0]; // holds "original"
     const r = await h.call('POST', `${url}/backups/${target.id}/restore`, { token: u.token });
     expect(r.status).toBe(200);
-    expect((await h.call('GET', `${url}/page`, { token: u.token })).json.doc.blocks[0].text).toBe('original');
+    expect(headingText((await h.call('GET', `${url}/page`, { token: u.token })).json.doc)).toBe('original');
     const after = await backups();
     expect(after).toHaveLength(3);
     const newest = (await h.call('GET', `${url}/backups/${after[0].id}`, { token: u.token })).json;
-    expect(newest.doc.blocks[0].text).toBe('changed'); // the replaced version can be restored again
+    expect(headingText(newest.doc)).toBe('changed'); // the replaced version can be restored again
   });
 
   it('restore at the pruning limit still keeps 10', async () => {
@@ -176,6 +176,6 @@ describe('custom html scripts policy', () => {
     await h.call('PATCH', '/api/workspace', { token: u.token, body: { allowCustomScripts: false } });
     expect(await html(h, stepId)).not.toContain('RUN()');
     // the stored document still has the original html (source of truth)
-    expect((await h.call('GET', `${url}/page`, { token: u.token })).json.doc.blocks[0].html).toContain('RUN()');
+    expect(JSON.stringify((await h.call('GET', `${url}/page`, { token: u.token })).json.doc.project)).toContain('RUN()');
   });
 });

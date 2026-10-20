@@ -209,7 +209,7 @@ describe('public forms', () => {
     const u = await h.register();
     const f = (await h.call('POST', '/api/templates/book-a-call/use', { token: u.token })).json;
     const doc = (await h.deps.db.get<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE step_id = ?', f.steps[0].id))!.doc_json;
-    const block = /"id":"(bc\d+)","type":"form"/.exec(doc)![1];
+    const block = JSON.parse(doc).forms[0].id as string;
     const t = { path: `/api/public/forms/${f.id}/${f.steps[0].id}/${block}` };
     const ok = { name: 'Ada', email: 'ada@example.com', phone: '+1 (555) 010-9999', topic: 'More leads', notes: 'hello', _consent: true };
     const errs = async (over: object, consent: unknown = true) => {

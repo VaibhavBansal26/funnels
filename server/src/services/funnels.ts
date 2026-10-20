@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { can, type Auth } from '../auth/context.js';
-import { defaultStepDocument, firstHeading, safeUrl, type PageDocument } from '../blocks/index.js';
+import { safeUrl } from '../blocks/index.js';
+import { defaultStepDoc, headingOfJson, loadDoc, remapStepRefs } from '../pagemodel/doc.js';
 import type { Deps } from '../deps.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { inTx } from '../db/scope.js';
@@ -14,8 +15,7 @@ import { newId } from '../util/ids.js';
 import { copyName, copyPath, isValidPath, pathKey, slugPath, suggestPaths } from './paths.js';
 import { domainPathIndex, funnelDomainConflicts } from './pathconflicts.js';
 import { assertWithinLimit } from '../billing/limits.js';
-import { regenerateFunnel, scriptsAllowedFor } from './pages.js';
-import { remapStepRefs } from './docs.js';
+import { regenerateFunnel, scriptsAllowedFor, validateDoc } from './pages.js';
 import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 import { insertStep, assertValidPath, serializeStep } from './steps.js';
 
@@ -96,7 +96,7 @@ async function thumbnails(deps: Deps, ids: string[]): Promise<Map<string, string
   );
   for (const r of rows) {
     try {
-      map.set(r.funnel_id, firstHeading(JSON.parse(r.doc_json) as PageDocument));
+      map.set(r.funnel_id, headingOfJson(r.doc_json));
     } catch {
       map.set(r.funnel_id, null);
     }
@@ -297,7 +297,7 @@ export async function createFunnel(deps: Deps, auth: Auth, input: z.infer<typeof
         funnel.base_path = resolved;
       }
     }
-    await insertStep(d, ws, funnel, { name: 'Landing page', base_path: funnel.base_path, doc: defaultStepDocument(input.name), scriptsOk: false });
+    await insertStep(d, ws, funnel, { name: 'Landing page', base_path: funnel.base_path, doc: defaultStepDoc(input.name), scriptsOk: false });
     if (input.tags?.length) await setFunnelTags(d.db, ws, fid, input.tags);
     await regenerateFunnel(d, ws, fid);
     return fid;
@@ -379,13 +379,13 @@ async function cloneSteps(deps: Deps, auth: Auth, sourceId: string, target: Funn
   const canScripts = await scriptsAllowedFor(deps, auth);
   for (const s of steps) {
     const page = pages.get(s.id);
-    const doc = remapStepRefs(page ? JSON.parse(page.doc_json) : defaultStepDocument(s.name), idMap);
+    const doc = remapStepRefs(page ? loadDoc(page.doc_json) : defaultStepDoc(s.name), idMap);
     const copy = await insertStep(deps, ws, target, { name: s.name, base_path: s.base_path, doc, scriptsOk: page?.scripts_ok === 1 && canScripts }, idMap.get(s.id));
     await deps.db.run('UPDATE steps SET title = ?, seo_description = ?, custom_css = ?, header_tracking_code = ?, footer_tracking_code = ? WHERE id = ?', s.title, s.seo_description, s.custom_css, s.header_tracking_code, s.footer_tracking_code, copy.id);
   }
 }
 
-export type TemplateStepInput = { name: string; base_path: string; doc: PageDocument };
+export type TemplateStepInput = { name: string; base_path: string; doc: unknown };
 
 /** Creates a funnel with the given steps (templates, AI generation). Step ids in "go to step" actions are remapped by position index key. */
 export async function createFunnelFromSteps(deps: Deps, auth: Auth, opts: { name: string; basePath: string; steps: (TemplateStepInput & { refId?: string })[] }) {
@@ -403,7 +403,7 @@ export async function createFunnelFromSteps(deps: Deps, auth: Auth, opts: { name
     const funnel = await requireFunnel(d.db, ws, fid);
     const idMap = new Map(opts.steps.map((s) => [s.refId ?? s.base_path, newId('stp')]));
     for (const s of opts.steps) {
-      await insertStep(d, ws, funnel, { name: s.name, base_path: s.base_path, doc: remapStepRefs(s.doc, idMap), scriptsOk: false }, idMap.get(s.refId ?? s.base_path));
+      await insertStep(d, ws, funnel, { name: s.name, base_path: s.base_path, doc: remapStepRefs(validateDoc(s.doc), idMap), scriptsOk: false }, idMap.get(s.refId ?? s.base_path));
     }
     await regenerateFunnel(d, ws, fid);
     return fid;

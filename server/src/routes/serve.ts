@@ -136,7 +136,9 @@ export function previewRoutes(deps: Deps): Hono {
     const funnelId = c.req.param('funnelId') as string;
     const token = c.req.query('token') ?? '';
     const claims = token ? await verifyPreviewToken(deps.config, token, funnelId, deps.now()) : null;
-    const noStore = { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-robots-tag': 'noindex, nofollow' };
+    // Previews are served from the app's own origin, so they are sandboxed: the page gets an opaque origin and can never read the admin app's
+    // storage or call its API as the signed-in user (it can still run its own scripts, submit its forms to the public endpoints and open links).
+    const noStore = { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-robots-tag': 'noindex, nofollow', 'content-security-policy': 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox', 'x-content-type-options': 'nosniff' };
     if (!claims) return messagePage(401, 'Preview link expired', 'Open the preview again from the builder to get a fresh link.');
     const funnel = await deps.db.get<FunnelRow>('SELECT * FROM funnels WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL', funnelId, claims.workspaceId);
     if (!funnel) return messagePage(404, 'Funnel not found', 'This funnel no longer exists.');

@@ -110,7 +110,7 @@ const Countdown = z
     expiredText: z.string().max(200).default('This offer has ended'),
   })
   .refine((c) => (c.mode === 'fixed' ? !!c.endsAt : !!c.minutes), 'Fixed countdowns need endsAt, evergreen ones need minutes');
-const Form = z
+export const FormSchema = z
   .object({
     id: blockId,
     type: z.literal('form'),
@@ -129,7 +129,7 @@ const Form = z
     }
     if (!f.fields.some((x) => x.type === 'email')) ctx.addIssue({ code: 'custom', message: 'A form needs an email field' });
   });
-const Checkout = z.object({
+export const CheckoutSchema = z.object({
   id: blockId,
   type: z.literal('checkout'),
   productName: z.string().min(1).max(200),
@@ -169,8 +169,8 @@ export type LeafBlock =
   | z.infer<typeof List>
   | z.infer<typeof Faq>
   | z.infer<typeof Countdown>
-  | z.infer<typeof Form>
-  | z.infer<typeof Checkout>
+  | z.infer<typeof FormSchema>
+  | z.infer<typeof CheckoutSchema>
   | z.infer<typeof Html>;
 export type SectionBlock = z.infer<typeof SectionBase> & { children: Block[] };
 export type Column = { id: string; width?: number; children: Block[] };
@@ -182,8 +182,8 @@ export const BLOCK_TYPES: BlockType[] = [
   'section', 'columns', 'heading', 'paragraph', 'image', 'button', 'video', 'divider', 'spacer', 'list', 'faq', 'countdown', 'form', 'checkout', 'html',
 ];
 
-export type FormBlock = z.infer<typeof Form>;
-export type CheckoutBlock = z.infer<typeof Checkout>;
+export type FormBlock = z.infer<typeof FormSchema>;
+export type CheckoutBlock = z.infer<typeof CheckoutSchema>;
 
 const lazyBlock: z.ZodType<Block> = z.lazy(() => BlockSchema);
 
@@ -196,7 +196,7 @@ const ColumnsSchema: z.ZodType<ColumnsBlock> = ColumnsBase.extend({
 });
 
 export const BlockSchema: z.ZodType<Block> = z.union([
-  Heading, Paragraph, Image, Button, Video, Divider, Spacer, List, Faq, Countdown, Form, Checkout, Html, SectionSchema, ColumnsSchema,
+  Heading, Paragraph, Image, Button, Video, Divider, Spacer, List, Faq, Countdown, FormSchema, CheckoutSchema, Html, SectionSchema, ColumnsSchema,
 ]);
 
 export interface PageDocument {

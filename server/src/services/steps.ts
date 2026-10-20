@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Auth } from '../auth/context.js';
 import { can } from '../auth/context.js';
-import { defaultStepDocument, type PageDocument } from '../blocks/index.js';
+import { defaultStepDoc, loadDoc } from '../pagemodel/doc.js';
 import type { Deps } from '../deps.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { inTx } from '../db/scope.js';
@@ -58,7 +58,7 @@ export async function assertPathFree(deps: Deps, ws: string, funnel: FunnelRow, 
 export interface NewStep {
   name: string;
   base_path: string;
-  doc: PageDocument;
+  doc: unknown;
   scriptsOk?: boolean;
 }
 
@@ -93,7 +93,7 @@ export async function createStep(deps: Deps, auth: Auth, funnelId: string, input
     const path = input.base_path ?? slugPath(input.name);
     assertValidPath(path);
     await assertPathFree(d, ws, funnel, path);
-    const doc = input.doc === undefined ? defaultStepDocument(input.name) : validateDoc(input.doc);
+    const doc = input.doc === undefined ? defaultStepDoc(input.name) : validateDoc(input.doc);
     const created = await insertStep(d, ws, funnel, { name: input.name, base_path: path, doc, scriptsOk: await scriptsAllowedFor(d, auth) });
     await d.db.run('UPDATE funnels SET updated_at = ? WHERE id = ?', iso(d), funnelId);
     await regenerateFunnel(d, ws, funnelId);
@@ -178,7 +178,7 @@ export async function duplicateStep(deps: Deps, auth: Auth, funnelId: string, st
     const copy = await insertStep(d, ws, funnel, {
       name: copyName(source.name, steps.map((s) => s.name)),
       base_path: copyPath(source.base_path, taken),
-      doc: JSON.parse(page.doc_json),
+      doc: loadDoc(page.doc_json),
       scriptsOk: page.scripts_ok === 1 && (await scriptsAllowedFor(d, auth)),
     });
     await d.db.run('UPDATE steps SET title = ?, seo_description = ?, custom_css = ? WHERE id = ?', source.title, source.seo_description, source.custom_css, copy.id);

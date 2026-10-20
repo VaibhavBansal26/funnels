@@ -1,15 +1,16 @@
 import { isSuspended } from './suspension.js';
-import { findBlock, type Block, type CheckoutBlock, type FormBlock, type PageDocument } from '../blocks/index.js';
+import type { CheckoutBlock, FormBlock } from '../blocks/index.js';
+import { loadDoc, type ProjectDoc } from '../pagemodel/doc.js';
 import type { Deps } from '../deps.js';
 import { AppError, notFound } from '../errors.js';
 import type { FunnelRow, StepRow } from '../repos/types.js';
 
-export interface PublicTarget<B extends Block> {
+export interface PublicTarget<B extends FormBlock | CheckoutBlock> {
   funnel: FunnelRow;
   step: StepRow;
   block: B;
   workspaceId: string;
-  doc: PageDocument;
+  doc: ProjectDoc;
 }
 
 /**
@@ -28,9 +29,10 @@ export async function resolvePublicBlock<T extends 'form' | 'checkout'>(
   const page = step ? await deps.db.get<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE step_id = ?', stepId) : undefined;
   if (!funnel || !step || !page) throw notFound('Form');
   if (await isSuspended(deps, funnel.workspace_id)) throw new AppError(503, 'SITE_UNAVAILABLE', 'This site is currently unavailable');
-  const doc = JSON.parse(page.doc_json) as PageDocument;
-  const block = findBlock(doc.blocks, blockId);
-  if (!block || block.type !== type) throw notFound('Form');
+  // The definitions come from the server-derived lists stored with the document (never from page HTML or the request).
+  const doc = readDoc(page.doc_json);
+  const block = type === 'form' ? doc.forms.find((f) => f.id === blockId) : doc.products.find((p) => p.id === blockId);
+  if (!block) throw notFound('Form');
   return { funnel, step, block: block as never, workspaceId: funnel.workspace_id, doc };
 }
 
@@ -44,4 +46,15 @@ export function sanitizeUtms(input: unknown): Record<string, string> | null {
     if (typeof v === 'string' && v.trim()) out[k] = v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 100);
   }
   return Object.keys(out).length ? out : null;
+}
+
+/** Stored version-2 documents are used as they are (their lists were derived and validated on save); anything older is converted first. */
+function readDoc(json: string): ProjectDoc {
+  try {
+    const raw = JSON.parse(json) as Partial<ProjectDoc>;
+    if (raw.version === 2 && Array.isArray(raw.forms) && Array.isArray(raw.products)) return raw as ProjectDoc;
+  } catch {
+    /* converted below */
+  }
+  return loadDoc(json);
 }

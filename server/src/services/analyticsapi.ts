@@ -1,3 +1,4 @@
+import { childrenOf, wrapperOf, type GjsNode, type GjsProject } from '../pagemodel/shared/clean.js';
 import { createHmac, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import type { Auth } from '../auth/context.js';
@@ -371,7 +372,8 @@ interface Blk {
 const words = (s: unknown) => (typeof s === 'string' ? s.trim().split(/\s+/).filter(Boolean).length : 0);
 
 /** Counts what the content-aware ranking needs from a page document: block counts, visible copy (headings, paragraphs, buttons, lists, FAQ) and offer features. */
-export function summarizeDoc(doc: { blocks?: Blk[] }) {
+export function summarizeDoc(doc: { blocks?: Blk[]; project?: GjsProject }) {
+  if (doc.project) return summarizeProject(doc.project);
   const counts = { form: 0, checkout: 0, video: 0, countdown: 0 };
   let wordCount = 0;
   let bump = false;
@@ -409,9 +411,9 @@ export async function funnelStructure(deps: Deps, api: ApiAuth, q: z.infer<typeo
   return {
     data: page.map((f) => {
       const list = (by.get(f.id) ?? []).map((s, i) => {
-        let doc: { blocks?: Blk[] } = {};
+        let doc: { blocks?: Blk[]; project?: GjsProject } = {};
         try {
-          doc = s.doc_json ? (JSON.parse(s.doc_json) as { blocks?: Blk[] }) : {};
+          doc = s.doc_json ? (JSON.parse(s.doc_json) as { blocks?: Blk[]; project?: GjsProject }) : {};
         } catch {
           /* an unreadable document counts as empty */
         }
@@ -422,3 +424,26 @@ export async function funnelStructure(deps: Deps, api: ApiAuth, q: z.infer<typeo
     next_cursor: rows.length > q.limit && page.length ? encode({ id: page[page.length - 1]!.id }) : null,
   };
 }
+const FN_COUNT: Record<string, 'form' | 'checkout' | 'video' | 'countdown'> = { 'fn-form': 'form', 'fn-checkout': 'checkout', 'fn-video': 'video', 'fn-countdown': 'countdown' };
+
+/** The same summary for GrapesJS project documents: element counts by type and the words of all visible text. */
+function summarizeProject(project: GjsProject) {
+  const counts = { form: 0, checkout: 0, video: 0, countdown: 0 };
+  let wordCount = 0;
+  let bump = false;
+  let upsell = false;
+  const visit = (n: GjsNode) => {
+    if (n.type === 'textnode') wordCount += words(n.content);
+    const kind = typeof n.type === 'string' ? FN_COUNT[n.type] : undefined;
+    if (kind) counts[kind]++;
+    if (n.type === 'fn-checkout') {
+      const p = n.fnProduct as { orderBump?: boolean; oneClickUpsell?: boolean } | undefined;
+      bump ||= p?.orderBump === true;
+      upsell ||= p?.oneClickUpsell === true;
+    }
+    for (const c of childrenOf(n)) visit(c);
+  };
+  visit(wrapperOf(project));
+  return { blocks: counts, word_count: wordCount, has_order_bump: bump, has_upsell: upsell };
+}
+

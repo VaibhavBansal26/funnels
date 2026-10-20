@@ -5,7 +5,7 @@ import { heuristicAltText, heuristicHeadlines, heuristicRewrite, HeuristicProvid
 import { cleanText, LIMITS, untrusted } from '../src/ai/prompts.js';
 import { narrativeUsesOnlyKnownNumbers, weakestStep } from '../src/ai/service.js';
 import type { AiProvider, InsightInput } from '../src/ai/types.js';
-import { parseDocument } from '../src/blocks/index.js';
+import { normalizeDoc } from '../src/pagemodel/doc.js';
 import { makeFunnel, makeHarness, seedEvents, type Harness } from './helpers.js';
 
 /** Provider whose answers are scripted per feature. */
@@ -53,7 +53,7 @@ describe('generate funnel: offline heuristic', () => {
     expect(r.json.source).toBe('heuristic');
     expect(r.json.funnel.steps).toHaveLength(steps);
     expect(r.json.funnel.status).toBe('test');
-    for (const doc of await funnelDocs(h, r.json.funnel)) expect(parseDocument(doc).ok).toBe(true);
+    for (const doc of await funnelDocs(h, r.json.funnel)) expect(normalizeDoc(doc).ok).toBe(true);
     expect(planSteps(goal, steps)).toEqual(kinds);
     const html = (await h.deps.db.get<{ html: string }>('SELECT html FROM step_pages WHERE step_id = ?', r.json.funnel.steps[0].id))!.html;
     expect(html).toContain(kinds[0] === 'sales' ? 'data-fn-checkout' : '<form');
@@ -115,7 +115,7 @@ describe('generate funnel: model output handling', () => {
     expect(r.status).toBe(201);
     expect(r.json.source).toBe('fallback');
     expect(r.json.funnel.steps).toHaveLength(2);
-    for (const doc of await funnelDocs(h, r.json.funnel)) expect(parseDocument(doc).ok).toBe(true);
+    for (const doc of await funnelDocs(h, r.json.funnel)) expect(normalizeDoc(doc).ok).toBe(true);
   });
 
   it('pads short model output and truncates long output to the planned structure', async () => {

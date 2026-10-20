@@ -168,16 +168,8 @@ export async function fromTemplate(h: Harness, token: string, slug: string) {
 
 export async function blocksOf(h: Harness, token: string, funnelId: string, stepId: string, type: string): Promise<any[]> {
   const page = await h.call('GET', `/api/funnels/${funnelId}/steps/${stepId}/page`, { token });
-  const out: any[] = [];
-  const walk = (list: any[]) => {
-    for (const b of list) {
-      if (b.type === type) out.push(b);
-      if (b.children) walk(b.children);
-      if (b.columns) b.columns.forEach((c: any) => walk(c.children));
-    }
-  };
-  walk(page.json.doc.blocks);
-  return out;
+  // Forms and products are the server-derived definitions stored with the version-2 document.
+  return type === 'form' ? page.json.doc.forms : type === 'checkout' ? page.json.doc.products : [];
 }
 
 /** A funnel with a lead form on step 1. */
@@ -222,4 +214,20 @@ export function tamperSignature(jwt: string): string {
   const [h, p, sig] = jwt.split('.');
   const i = 10;
   return `${h}.${p}.${sig!.slice(0, i)}${sig![i] === 'A' ? 'B' : 'A'}${sig!.slice(i + 1)}`;
+}
+
+/** Text of the first heading of a page document returned by the API (version 2). */
+export function headingText(doc: any): string | null {
+  const find = (n: any): string | null => {
+    if (n && typeof n.tagName === 'string' && /^h[1-6]$/.test(n.tagName)) return textOf(n);
+    for (const c of n?.components ?? []) {
+      const hit = find(c);
+      if (hit !== null) return hit;
+    }
+    return null;
+  };
+  return find(doc.project.pages[0].frames[0].component);
+}
+export function textOf(n: any): string {
+  return n.type === 'textnode' ? n.content : (n.components ?? []).map(textOf).join('');
 }

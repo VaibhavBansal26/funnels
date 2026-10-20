@@ -10,7 +10,7 @@ describe('funnel create and read', () => {
     expect(f).toMatchObject({ name: 'Spring Sale', status: 'test', basePath: '/spring-sale', domain: null, stepCount: 1 });
     expect(f.steps[0]).toMatchObject({ path: '/spring-sale', position: 1 });
     const page = await h.call('GET', `/api/funnels/${f.id}/steps/${f.steps[0].id}/page`, { token: u.token });
-    expect(page.json.doc.blocks.length).toBeGreaterThan(0);
+    expect(page.json.doc.project.pages[0].frames[0].component.components.length).toBeGreaterThan(0);
     expect(f.thumbnail.heading).toBe('Spring Sale');
   });
 
@@ -163,7 +163,7 @@ describe('duplicate', () => {
     const newSecond = dup1.steps[1].id;
     expect(newSecond).not.toBe(s2.id);
     const page = (await h.call('GET', `/api/funnels/${dup1.id}/steps/${dup1.steps[0].id}/page`, { token: u.token })).json;
-    expect(page.doc.blocks[0].action.stepId).toBe(newSecond); // points at the clone, not the original
+    expect(JSON.stringify(page.doc.project)).toContain(`"stepId":"${newSecond}"`); // points at the clone, not the original
     expect(new Set(dup1.steps.map((s: any) => s.path)).size).toBe(2);
     expect((await h.call('GET', `/api/funnels/${f.id}`, { token: u.token })).json.status).toBe('live'); // original untouched
   });

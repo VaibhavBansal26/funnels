@@ -449,7 +449,7 @@ describe('concurrency: no lost updates or duplicate rows', () => {
     expect(losers[0]!.json.error).toMatchObject({ code: 'VERSION_CONFLICT', details: { currentVersion: expect.any(Number) } });
     const winner = results.findIndex((r) => r.status === 200);
     const stored = (await h.call('GET', url, { token: u.token })).json;
-    expect(stored.doc.blocks[0].text).toBe(`v${winner}`);
+    expect(JSON.stringify(stored.doc.project)).toContain(`"v${winner}"`);
     expect(await h.deps.db.get('SELECT COUNT(*) AS n FROM step_backups')).toEqual({ n: 1 });
   });
 

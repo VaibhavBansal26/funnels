@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { Auth } from '../auth/context.js';
 import { isPlatformAdmin } from '../auth/platform.js';
-import { BlockSchema, firstHeading, type PageDocument } from '../blocks/index.js';
+import { headingOfJson, loadDoc } from '../pagemodel/doc.js';
+import { customBlockFromInput, customBlockToNode } from '../pagemodel/customblocks.js';
 import type { Deps } from '../deps.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { isUniqueViolation } from '../db/index.js';
@@ -33,7 +34,7 @@ const serialize = async (deps: Deps, t: TemplateRow) => {
   const first = await deps.db.get<{ doc_json: string }>('SELECT doc_json FROM template_steps WHERE template_id = ? ORDER BY position LIMIT 1', t.id);
   return {
     id: t.id, slug: t.slug, name: t.name, description: t.description, categoryId: t.category_id, categoryName: t.category_name,
-    stepCount: t.steps, heading: first ? firstHeading(JSON.parse(first.doc_json) as PageDocument) : null, createdAt: t.created_at, updatedAt: t.updated_at,
+    stepCount: t.steps, heading: first ? headingOfJson(first.doc_json) : null, createdAt: t.created_at, updatedAt: t.updated_at,
   };
 };
 
@@ -73,7 +74,7 @@ async function requireTemplate(deps: Deps, id: string): Promise<TemplateRow> {
 export async function getTemplate(deps: Deps, id: string) {
   const t = await requireTemplate(deps, id);
   const steps = await deps.db.all<{ id: string; name: string; base_path: string; position: number; doc_json: string }>('SELECT * FROM template_steps WHERE template_id = ? ORDER BY position', t.id);
-  return { ...(await serialize(deps, t)), steps: steps.map((s) => ({ id: s.id, name: s.name, path: s.base_path, position: s.position, doc: JSON.parse(s.doc_json) as PageDocument })) };
+  return { ...(await serialize(deps, t)), steps: steps.map((s) => ({ id: s.id, name: s.name, path: s.base_path, position: s.position, doc: loadDoc(s.doc_json) })) };
 }
 
 /** Clones a template into the caller's workspace as a new test funnel. Names are uniquified ("Lead magnet", "Lead magnet 2", ...). */
@@ -170,20 +171,19 @@ const MAX_CUSTOM_BLOCKS = 200;
 export async function listCustomBlocks(deps: Deps, ws: string) {
   return {
     data: (await deps.db.all<{ id: string; name: string; block_json: string; created_at: string }>('SELECT * FROM custom_blocks WHERE workspace_id = ? ORDER BY created_at DESC, id DESC', ws))
-      .map((b) => ({ id: b.id, name: b.name, block: JSON.parse(b.block_json) as unknown, createdAt: b.created_at })),
+      .map((b) => ({ id: b.id, name: b.name, block: customBlockToNode(b.block_json), createdAt: b.created_at })),
   };
 }
 
+/** Saved blocks are component subtrees of the page builder. They are cleaned like page content, so a saved block can never carry anything a page could not. */
 export async function saveCustomBlock(deps: Deps, ws: string, input: z.infer<typeof CustomBlockInput>) {
-  const parsed = BlockSchema.safeParse(input.block);
-  if (!parsed.success) throw badRequest('INVALID_BLOCK', 'The block is not valid', parsed.error.issues.slice(0, 10).map((i) => ({ path: i.path.join('.'), message: i.message })));
-  // Wrap in a document so size/depth/id rules are enforced exactly as for pages.
-  validateDoc({ version: 1, blocks: [parsed.data] });
+  const node = customBlockFromInput(input.block);
+  if (!node.ok) throw badRequest('INVALID_BLOCK', 'The block is not valid', node.issues);
   if ((await deps.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM custom_blocks WHERE workspace_id = ?', ws))!.n >= MAX_CUSTOM_BLOCKS) throw conflict('LIMIT_REACHED', `A workspace can save at most ${MAX_CUSTOM_BLOCKS} custom blocks`);
   const id = newId('blk');
   const at = deps.now().toISOString();
-  await deps.db.run('INSERT INTO custom_blocks (id, workspace_id, name, block_json, created_at) VALUES (?, ?, ?, ?, ?)', id, ws, input.name, JSON.stringify(parsed.data), at);
-  return { id, name: input.name, block: parsed.data, createdAt: at };
+  await deps.db.run('INSERT INTO custom_blocks (id, workspace_id, name, block_json, created_at) VALUES (?, ?, ?, ?, ?)', id, ws, input.name, JSON.stringify(node.node), at);
+  return { id, name: input.name, block: node.node, createdAt: at };
 }
 
 export async function deleteCustomBlock(deps: Deps, ws: string, id: string): Promise<void> {

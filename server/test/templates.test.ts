@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createBuilder, parseDocument, renderPage, collectBlocks } from '../src/blocks/index.js';
+import { createBuilder } from '../src/blocks/index.js';
+import { normalizeDoc } from '../src/pagemodel/doc.js';
+import { renderProject } from '../src/pagemodel/render.js';
+import { walk, wrapperOf } from '../src/pagemodel/shared/clean.js';
 import { isValidPath } from '../src/services/paths.js';
 import { CATEGORIES, SEED_TEMPLATES, seedTemplates } from '../src/templates/seed.js';
 import { makeFunnel, makeHarness, type Harness } from './helpers.js';
@@ -16,24 +19,26 @@ describe('seeded templates', () => {
       expect(new Set(t.steps.map((s) => s.path)).size).toBe(t.steps.length);
       for (const [i, s] of t.steps.entries()) {
         expect(isValidPath(s.path), `${t.slug} path ${s.path}`).toBe(true);
-        const parsed = parseDocument(s.doc);
+        const parsed = normalizeDoc(s.doc);
         expect(parsed.ok, `${t.slug}/${s.name}: ${JSON.stringify(parsed.ok ? '' : parsed.issues)}`).toBe(true);
-        const html = renderPage(s.doc, { funnelId: 'f', stepId: `s${i}`, stepName: s.name, steps: t.steps.map((x, j) => ({ id: `s${j}`, href: x.path })) });
+        expect(JSON.stringify(s.doc.project)).toBe(JSON.stringify((parsed as { doc: typeof s.doc }).doc.project)); // already native and clean: cleaning changes nothing
+        const { html } = renderProject(s.doc.project, { funnelId: 'f', stepId: `s${i}`, stepName: s.name, steps: t.steps.map((x, j) => ({ id: `s${j}`, href: x.path })) });
         expect(html).toContain('<h1');
-        expect(html).not.toContain('unsupported block');
-        expect(html).not.toContain('limit reached');
+        expect(html).not.toContain('<script>alert');
       }
     }
   });
 
   it('the sales template contains an offer with order bump plus a one-click upsell; the launch one a fixed countdown', () => {
     const sales = SEED_TEMPLATES.find((t) => t.slug === 'sales-page-bump-upsell')!;
-    const kinds = sales.steps.flatMap((s) => collectBlocks(s.doc.blocks).filter((b) => b.type === 'checkout')) as { orderBump: boolean; oneClickUpsell: boolean }[];
+    const kinds = sales.steps.flatMap((s) => s.doc.products);
     expect(kinds.some((c) => c.orderBump)).toBe(true);
     expect(kinds.some((c) => c.oneClickUpsell)).toBe(true);
     expect(kinds.some((c) => !c.orderBump && !c.oneClickUpsell)).toBe(true);
     const launch = SEED_TEMPLATES.find((t) => t.slug === 'product-launch')!;
-    expect(launch.steps.flatMap((s) => collectBlocks(s.doc.blocks)).some((b) => b.type === 'countdown' && b.mode === 'fixed')).toBe(true);
+    let fixed = false;
+    for (const s of launch.steps) walk(wrapperOf(s.doc.project), (n) => { if (n.type === 'fn-countdown' && (n.fnCountdown as { mode: string }).mode === 'fixed') fixed = true; });
+    expect(fixed).toBe(true);
   });
 
   it('seeding is idempotent and templates are workspace-less rows in their own tables', async () => {
@@ -65,7 +70,7 @@ describe('templates API', () => {
     expect((await h.call('GET', '/api/templates?search=%25', { token: u.token })).json.data).toHaveLength(0);
     const detail = (await h.call('GET', '/api/templates/book-a-call', { token: u.token })).json;
     expect(detail.steps).toHaveLength(2);
-    expect(detail.steps[0].doc.version).toBe(1);
+    expect(detail.steps[0].doc.version).toBe(2);
     expect((await h.call('GET', '/api/templates/nope', { token: u.token })).status).toBe(404);
     expect((await h.call('GET', '/api/templates')).status).toBe(401);
   });
@@ -85,9 +90,9 @@ describe('templates API', () => {
     expect((await use(b.token)).json.name).toBe('Lead magnet'); // names are unique per workspace only
     const page = (await h.call('GET', `/api/funnels/${first.id}/steps/${first.steps[0].id}/page`, { token: a.token })).json;
     await h.call('PUT', `/api/funnels/${first.id}/steps/${first.steps[0].id}/page`, { token: a.token, body: { doc: { version: 1, blocks: [] } } });
-    expect(page.doc.blocks.length).toBeGreaterThan(0);
+    expect(page.doc.project.pages[0].frames[0].component.components.length).toBeGreaterThan(0);
     const fresh = (await h.call('GET', '/api/templates/lead-magnet', { token: a.token })).json;
-    expect(fresh.steps[0].doc.blocks.length).toBeGreaterThan(0); // template untouched
+    expect(fresh.steps[0].doc.project.pages[0].frames[0].component.components.length).toBeGreaterThan(0); // template untouched
     expect(first.steps[0].path).toBe('/free-guide');
     expect((await h.call('POST', '/api/templates/nope/use', { token: a.token })).status).toBe(404);
     expect((await h.call('GET', '/api/funnels', { token: b.token })).json.data).toHaveLength(1);
@@ -152,7 +157,8 @@ describe('saved custom blocks', () => {
     const b = await h.register();
     const saved = await h.call('POST', '/api/blocks', { token: a.token, body: { name: 'Hero heading', block } });
     expect(saved.status).toBe(201);
-    expect(saved.json.block).toMatchObject({ type: 'heading', text: 'Reusable headline' });
+    expect(saved.json.block).toMatchObject({ type: 'fn-heading', tagName: 'h1' });
+    expect(JSON.stringify(saved.json.block)).toContain('Reusable headline');
     expect((await h.call('GET', '/api/blocks', { token: a.token })).json.data).toHaveLength(1);
     expect((await h.call('GET', '/api/blocks', { token: b.token })).json.data).toHaveLength(0);
     expect((await h.call('DELETE', `/api/blocks/${saved.json.id}`, { token: b.token })).status).toBe(404);

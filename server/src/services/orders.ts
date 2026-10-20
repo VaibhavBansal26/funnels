@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import type { CheckoutBlock } from '../blocks/index.js';
-import { findBlock } from '../blocks/index.js';
 import type { Deps } from '../deps.js';
 import { isUniqueViolation } from '../db/index.js';
 import { inTx } from '../db/scope.js';
@@ -101,8 +100,8 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
 
   const bumps: CheckoutBlock[] = [];
   for (const id of new Set(input.bumpBlockIds)) {
-    const b = findBlock(doc.blocks, id);
-    if (!b || b.type !== 'checkout' || !b.orderBump) throw badRequest('INVALID_BUMP', 'Unknown order bump');
+    const b = doc.products.find((p) => p.id === id);
+    if (!b || !b.orderBump) throw badRequest('INVALID_BUMP', 'Unknown order bump');
     bumps.push(b);
   }
   if (input.preview) return { ok: true, recorded: false, orders: [], declined: [] };

@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { parseDocument, renderPage, type PageDocument, type RenderContext, LIMITS } from '../blocks/index.js';
+import { loadDoc, normalizeDoc, isStoredAsProject, type ProjectDoc } from '../pagemodel/doc.js';
+import { renderProject, type PageRenderContext } from '../pagemodel/render.js';
+import { PROJECT_LIMITS } from '../pagemodel/shared/clean.js';
 import { can, type Auth } from '../auth/context.js';
 import type { Deps } from '../deps.js';
 import { AppError, conflict, notFound } from '../errors.js';
@@ -11,6 +13,8 @@ import { newId } from '../util/ids.js';
 import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 
 export const MAX_BACKUPS = 10;
+/** Size limit of version-1 (block tree) documents, kept from before the GrapesJS builder. */
+const LEGACY_MAX_BYTES = 1_500_000;
 
 export const SaveInput = z.object({ doc: z.unknown(), version: z.number().int().optional(), backup: z.boolean().optional() });
 
@@ -33,7 +37,7 @@ interface BuildInput {
   hrefFor?: (s: StepRow) => string;
 }
 
-export function renderContext(deps: Deps, i: BuildInput): RenderContext {
+export function renderContext(deps: Deps, i: BuildInput): PageRenderContext {
   const join = (a: string | null, b: string | null) => [a, b].filter(Boolean).join('\n');
   return {
     funnelId: i.funnel.id,
@@ -53,7 +57,7 @@ export function renderContext(deps: Deps, i: BuildInput): RenderContext {
 }
 
 export function renderStep(deps: Deps, i: BuildInput): { html: string; checksum: string } {
-  const html = renderPage(JSON.parse(i.docJson), renderContext(deps, i));
+  const html = renderProject(loadDoc(i.docJson).project, renderContext(deps, i)).html;
   return { html, checksum: checksumOf(html) };
 }
 
@@ -79,7 +83,7 @@ export async function regenerateWorkspace(deps: Deps, ws: string): Promise<void>
 
 /** Creates the page row for a brand-new step (no backup: there is no previous version). */
 export async function insertPage(deps: Deps, ws: string, funnel: FunnelRow, step: StepRow, doc: unknown, scriptsOk: boolean): Promise<void> {
-  const docJson = JSON.stringify(doc);
+  const docJson = JSON.stringify(validateDoc(doc, { scriptsOk: true }));
   const steps = await listSteps(deps.db, ws, funnel.id);
   const { html, checksum } = renderStep(deps, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(deps, ws), mode: 'live' });
   await deps.db.run(
@@ -100,13 +104,26 @@ export async function getPage(deps: Deps, ws: string, funnelId: string, stepId: 
   await requireFunnel(deps.db, ws, funnelId);
   const step = await requireStep(deps.db, ws, funnelId, stepId);
   const page = await getPageRow(deps, ws, stepId);
-  return { stepId, version: step.version, checksum: page.checksum, updatedAt: page.updated_at, doc: JSON.parse(page.doc_json) as PageDocument };
+  // Pages not converted yet (startup migration has not reached them) are converted on first open and the conversion is persisted.
+  const doc = loadDoc(page.doc_json);
+  if (!isStoredAsProject(page.doc_json)) {
+    await deps.db.run('UPDATE step_pages SET doc_json = ?, legacy_doc_json = COALESCE(legacy_doc_json, ?) WHERE step_id = ? AND doc_json = ?', JSON.stringify(doc), page.doc_json, stepId, page.doc_json);
+  }
+  return { stepId, version: step.version, checksum: page.checksum, updatedAt: page.updated_at, format: 'grapesjs' as const, scriptsAllowed: page.scripts_ok === 1, doc };
 }
 
-export function validateDoc(raw: unknown): PageDocument {
-  const r = parseDocument(raw);
+/** Validates and cleans a document from a client (version 2) or from older data and tools (version 1). Throws 400/413 with the reasons. */
+export function validateDoc(raw: unknown, opts: { scriptsOk?: boolean; previous?: ProjectDoc | null } = {}): ProjectDoc {
+  let size = 0;
+  try {
+    size = JSON.stringify(raw)?.length ?? 0;
+  } catch {
+    throw new AppError(400, 'INVALID_DOCUMENT', 'The page document is not valid', [{ path: 'doc', message: 'Not JSON data' }]);
+  }
+  const legacy = typeof raw === 'object' && raw !== null && (raw as { version?: unknown }).version !== 2;
+  if (size > (legacy ? LEGACY_MAX_BYTES : PROJECT_LIMITS.maxBytes)) throw new AppError(413, 'DOCUMENT_TOO_LARGE', 'The page document is too large');
+  const r = normalizeDoc(raw, opts);
   if (!r.ok) throw new AppError(400, 'INVALID_DOCUMENT', 'The page document is not valid', r.issues);
-  if (JSON.stringify(r.doc).length > LIMITS.maxDocBytes) throw new AppError(413, 'DOCUMENT_TOO_LARGE', 'The page document is too large');
   return r.doc;
 }
 
@@ -133,7 +150,7 @@ export interface SaveOptions {
  */
 export async function savePage(deps: Deps, auth: Auth, funnelId: string, stepId: string, rawDoc: unknown, opts: SaveOptions = {}) {
   const ws = auth.workspaceId;
-  const doc = validateDoc(rawDoc);
+  if (JSON.stringify(rawDoc ?? null).length > PROJECT_LIMITS.maxBytes) throw new AppError(413, 'DOCUMENT_TOO_LARGE', 'The page document is too large');
   return inTx(deps, async (d) => {
     const funnel = await lockFunnel(d.db, ws, funnelId);
     const step = await requireStep(d.db, ws, funnelId, stepId, true);
@@ -141,6 +158,9 @@ export async function savePage(deps: Deps, auth: Auth, funnelId: string, stepId:
       throw conflict('VERSION_CONFLICT', 'This page was changed elsewhere. Reload before saving.', { currentVersion: step.version });
     }
     const previous = await getPageRow(d, ws, stepId);
+    const scriptsOk = await scriptsAllowedFor(d, auth);
+    // Server-side authority: the document is rebuilt from an allow-list here; forms and products are derived from it, never taken from the request.
+    const doc = validateDoc(rawDoc, { scriptsOk, previous: loadDoc(previous.doc_json) });
     const at = iso(d);
     if (opts.backup !== false) {
       await d.db.run(
@@ -150,7 +170,6 @@ export async function savePage(deps: Deps, auth: Auth, funnelId: string, stepId:
       );
     }
     const docJson = JSON.stringify(doc);
-    const scriptsOk = await scriptsAllowedFor(d, auth);
     const steps = await listSteps(d.db, ws, funnelId);
     const { html, checksum } = renderStep(d, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(d, ws), mode: 'live' });
     await d.db.run('UPDATE step_pages SET doc_json = ?, html = ?, checksum = ?, scripts_ok = ?, updated_at = ? WHERE step_id = ?', docJson, html, checksum, scriptsOk ? 1 : 0, at, stepId);
@@ -183,7 +202,7 @@ export async function getBackup(deps: Deps, ws: string, funnelId: string, stepId
   await requireFunnel(deps.db, ws, funnelId);
   await requireStep(deps.db, ws, funnelId, stepId);
   const b = await requireBackup(deps, ws, stepId, backupId);
-  return { id: b.id, version: b.version, label: b.label, createdAt: b.created_at, doc: JSON.parse(b.doc_json) as PageDocument };
+  return { id: b.id, version: b.version, label: b.label, createdAt: b.created_at, doc: loadDoc(b.doc_json) };
 }
 
 /** Restoring is a normal save of the old document, so the version being replaced is itself backed up. */
