@@ -22,7 +22,7 @@ import { Flights } from './util/flights.js';
 import { RefCache } from './util/refcache.js';
 import { Redis } from 'ioredis';
 import { createLimiter } from './ratelimit/index.js';
-import { createEventBus, createSecondaryStore } from './queue/runtime.js';
+import { createAnalyticsReader, createEventBus, createSecondaryStore } from './queue/runtime.js';
 
 /** A dedicated, fail-fast connection: coalescing must never queue requests behind an unavailable Redis. */
 function flightRedis(url: string): Redis {
@@ -81,6 +81,7 @@ export async function createDeps(config: Config, overrides: Partial<Deps> = {}):
     eventRefs,
     eventBus,
     secondaryStore,
+    analyticsReader: 'analyticsReader' in overrides ? overrides.analyticsReader : createAnalyticsReader(config),
     events: new EventBuffer(db, log, { flushMs: config.EVENT_BUFFER_MS, maxQueue: config.EVENT_BUFFER_MAX, queue: config.INGEST_QUEUE ? { bus: eventBus, maxLag: config.INGEST_MAX_LAG } : undefined, mirror: !!secondaryStore }),
     purger: createPurger(config),
     domainProvider: createDomainProvider(config),

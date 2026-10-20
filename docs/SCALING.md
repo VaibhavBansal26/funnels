@@ -133,6 +133,10 @@ Read it this way: in both runs every request of the nine normal tenants was acce
 
 Not checked: no `pgbouncer` binary is installed on this machine and none was downloaded. What the code assumes is documented (transaction pooling needs `DATABASE_PREPARED_STATEMENTS=false`; the advisory locks used for migrations, the outbox relay and maintenance are transaction-scoped, which is the property transaction pooling requires; no session-level `SET`, `LISTEN` or temporary tables are used). Verify on the real pooler with the procedure in [CLOUD-LOADTEST.md](CLOUD-LOADTEST.md) before relying on it.
 
+### ClickHouse read path (feature flag, unverified)
+
+`ANALYTICS_READ_STORE=clickhouse` moves analytics reads (summary, per-step metrics, daily series, distinct visitors) to ClickHouse behind the `AnalyticsReader` interface; the default stays the primary database. It needs the mirror (`EVENTSTORE_MIRROR=clickhouse`) to have data. It falls back to the primary on error and while the mirror is more than `ANALYTICS_CLICKHOUSE_MAX_LAG_S` behind; `funnels_analytics_reads_total{source=postgres|clickhouse|fallback|stale}` shows which happened. **What was tested:** 8 tests against a fake HTTP server that answers from the primary database (the two paths return identical numbers; parameterisation and workspace scoping; fallback; staleness; off by default; HLL mode). **What was not:** any execution of the SQL on a real ClickHouse, any latency or accuracy figure. Do not switch the flag on before the validation in [CLOUD-LOADTEST.md](CLOUD-LOADTEST.md) step 5 passes.
+
 ## Capacity model
 
 Let *E* be sustained events/s, *c<sub>req</sub>* the server CPU per accepted event, *w* the database cost per event, *s* bytes per event.
@@ -188,7 +192,7 @@ Defined and implemented: per-IP and per-funnel limits at the edge and origin (42
 * The ingest queue makes events visible after consumer lag; analytics endpoints do not wait for the queue (the in-process buffer's `flush()` guarantee does not exist in queue mode).
 * `unique` opt-in dedupe through `externalId` is decided at write time in queue mode: the response says `recorded: true` optimistically; a duplicate is dropped later.
 * Redis failover with asynchronous replication can lose up to about a second of acknowledged events (not measured).
-* The ClickHouse path is implemented to the HTTP and SQL level described in ADR 0016 but was never run against a ClickHouse server; the analytics API does not read from it.
+* The ClickHouse path (mirror and the optional read path) is implemented to the HTTP and SQL level described in ADR 0016 but was never run against a ClickHouse server.
 * Kafka and NATS adapters are stubs that fail loudly.
 * Single region. Multi-region design hooks are in the Conversations app (home region routing); for Funnels the edge is global and the origin is one region.
 * no 100M-event measurement; the soak ran at a low rate (about 600 req/s).
@@ -207,7 +211,7 @@ Defined and implemented: per-IP and per-funnel limits at the edge and origin (42
 | 100M events, 1B events, analytics at that size | **Extrapolated** (linear in rows for exact scans; rollup and sketch cost is independent of event count) | |
 | 20,000 events/s sustained, 100,000/s peak | **Extrapolated** | |
 | 50,000 page req/s at the edge, 99% hit ratio | **Not measured** (needs Cloudflare); origin page throughput measured earlier on one SQLite node only | PERFORMANCE.md |
-| ClickHouse insert rate, dedupe under replay, rollup views | **Not measured**, never run | ADR 0016 |
+| ClickHouse insert rate, dedupe under replay, rollup views, the read-path SQL | **Not measured**, never run (read path tested against a fake HTTP server only) | ADR 0016 |
 | Redis memory per queued event (500 B) | **Extrapolated** | |
 | Cost estimate | **Rough, from remembered list prices** | CLOUD-LOADTEST.md |
 | Noisy neighbour: others fully accepted, flood held to quota, nothing lost (2 runs, 2 nodes) | **Measured** | `noisy-run*.json` |

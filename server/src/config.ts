@@ -71,6 +71,9 @@ export const EnvSchema = z.object({
   DOMAIN_VERIFY_TIMEOUT_HOURS: int(72, 1),
   ANALYTICS_DISTINCT_MODE: z.enum(['auto', 'exact', 'sketch']).default('auto'),
   ANALYTICS_EXACT_DISTINCT_MAX: int(200_000, 0),
+  ANALYTICS_READ_STORE: z.enum(['postgres', 'clickhouse']).default('postgres'),
+  ANALYTICS_CLICKHOUSE_MAX_LAG_S: int(60, 0),
+  ANALYTICS_CLICKHOUSE_FALLBACK: bool(true),
   EVENT_DEDUPE_DAYS: int(30, 1, 3650),
   PARTITION_MONTHS_AHEAD: int(3, 1, 24),
   MAINTENANCE_INTERVAL_HOURS: int(6, 1, 168),
@@ -115,6 +118,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     throw new Error('Invalid environment: JWT_SECRET is required in production');
   }
   if (rest.EVENT_BUS === 'redis' && !rest.REDIS_URL) throw new Error('Invalid environment: EVENT_BUS=redis needs REDIS_URL');
+  if (rest.ANALYTICS_READ_STORE === 'clickhouse' && !rest.CLICKHOUSE_URL) throw new Error('Invalid environment: ANALYTICS_READ_STORE=clickhouse needs CLICKHOUSE_URL');
   if (rest.EVENTSTORE_MIRROR === 'clickhouse' && !rest.CLICKHOUSE_URL) throw new Error('Invalid environment: EVENTSTORE_MIRROR=clickhouse needs CLICKHOUSE_URL');
   if (rest.INGEST_QUEUE && rest.NODE_ENV === 'production' && rest.EVENT_BUS !== 'redis' && !rest.REDIS_URL) throw new Error('Invalid environment: INGEST_QUEUE in production needs a durable bus (set REDIS_URL)');
   return {

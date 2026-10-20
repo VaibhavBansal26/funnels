@@ -1,6 +1,7 @@
 import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from 'prom-client';
 import type { Deps } from './deps.js';
 import { outboxLag } from './queue/outbox.js';
+import { analyticsReadStats } from './services/analytics.js';
 
 /** Prometheus metrics. Labels are bounded: route patterns (not raw paths), status classes, fixed job states. */
 export function createMetrics(deps: Deps) {
@@ -20,6 +21,10 @@ export function createMetrics(deps: Deps) {
   new Gauge({
     name: 'funnels_outbox_oldest_age_seconds', help: 'Age of the oldest unpublished outbox row (alert when this keeps growing)', registers: [registry],
     async collect() { this.set((await outboxLag(deps.db, deps.now())).oldestAgeMs / 1000); },
+  });
+  new Gauge({
+    name: 'funnels_analytics_reads_total', help: 'Analytics reads by the store that answered (clickhouse, postgres), reads that fell back from ClickHouse after an error, and ClickHouse reads skipped because the mirror was stale', labelNames: ['source'], registers: [registry],
+    collect() { for (const k of ['postgres', 'clickhouse', 'fallback', 'stale'] as const) this.set({ source: k }, analyticsReadStats[k]); },
   });
   new Gauge({ name: 'funnels_page_cache_entries', help: 'Rendered pages cached', registers: [registry], collect() { this.set(deps.pageCache.size); } });
   new Gauge({

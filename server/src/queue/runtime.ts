@@ -4,6 +4,8 @@ import type { Deps } from '../deps.js';
 import { EventBuffer, INGEST_GROUP } from '../services/eventbuffer.js';
 import type { EventInsert } from '../services/rollups.js';
 import { ClickHouseEventStore } from '../store/clickhouse.js';
+import { ClickHouseReader } from '../store/clickhousereader.js';
+import type { AnalyticsReader } from '../services/analytics.js';
 import type { EventStore } from '../store/eventstore.js';
 import { type EventBus, MemoryBus, RedisStreamsBus } from './eventbus.js';
 import { startRelay, TOPIC_EVENTS_STORED, TOPIC_INGEST } from './outbox.js';
@@ -19,6 +21,12 @@ export function createEventBus(config: Config): EventBus {
 export function createSecondaryStore(config: Config): EventStore | undefined {
   if (config.EVENTSTORE_MIRROR !== 'clickhouse') return undefined;
   return new ClickHouseEventStore({ url: config.CLICKHOUSE_URL!, database: config.CLICKHOUSE_DATABASE, user: config.CLICKHOUSE_USER, password: config.CLICKHOUSE_PASSWORD });
+}
+
+/** The ClickHouse analytics reader, when reads are switched to it. */
+export function createAnalyticsReader(config: Config): AnalyticsReader | undefined {
+  if (config.ANALYTICS_READ_STORE !== 'clickhouse') return undefined;
+  return new ClickHouseReader(new ClickHouseEventStore({ url: config.CLICKHOUSE_URL!, database: config.CLICKHOUSE_DATABASE, user: config.CLICKHOUSE_USER, password: config.CLICKHOUSE_PASSWORD, timeoutMs: 5000 }), { exactMax: config.ANALYTICS_EXACT_DISTINCT_MAX, mode: config.ANALYTICS_DISTINCT_MODE });
 }
 
 export const MIRROR_GROUP = 'clickhouse';

@@ -86,6 +86,8 @@ Extra signals when the scale features are on: `funnels_ingest_queue_lag` (alert:
 
 **Partition exhaustion.** Inserts into a month without a partition land in `events_default` and a later `CREATE` for that month fails. Check the maintenance job ran (`jobs` table, type `maintenance.run`); run `SELECT` from the list above; create the month by hand with `CREATE TABLE events_YYYY_MM PARTITION OF events FOR VALUES FROM ('YYYY-MM-01T00:00:00.000Z') TO ('YYYY-MM+1-01T00:00:00.000Z')`. If rows are already in `events_default` for that month, move them first (`WITH moved AS (DELETE FROM events_default WHERE created_at >= ... RETURNING *) INSERT INTO events SELECT * FROM moved` after creating the partition detached, then attach).
 
+**Analytics from ClickHouse look stale or wrong (only with `ANALYTICS_READ_STORE=clickhouse`).** Set `ANALYTICS_READ_STORE=postgres` and restart: the primary is authoritative and always correct. `funnels_analytics_reads_total{source="stale"}` rising means the outbox is behind (see below); `source="fallback"` rising means ClickHouse is failing and the primary is answering (check ClickHouse logs, memory limits). Compare a funnel and range between the two before switching back.
+
 **ClickHouse mirror behind.** The `clickhouse` consumer group retries with backoff and dead-letters after 8 attempts per batch; the primary is unaffected. Fix ClickHouse, then replay the dead letters or run `scripts/backfill-clickhouse.ts --from <day>` (idempotent).
 
 **Reconnect storms.** Not applicable to Funnels (no long-lived connections other than the SSE stream, which clients retry with backoff).

@@ -74,9 +74,13 @@ export class ClickHouseEventStore implements EventStore {
     return rows;
   }
 
-  /** Runs a read query and returns the JSON rows (used by the backfill verification and by tests). */
-  async query<T = Record<string, unknown>>(sql: string): Promise<T[]> {
-    const params = new URLSearchParams({ database: this.o.database, default_format: 'JSON' });
+  /**
+   * Runs a read query and returns the JSON rows. Values go through ClickHouse query parameters (`{name:Type}` in the SQL, sent as `param_name`), never through
+   * string concatenation, so ids and dates from a request cannot change the statement. 64-bit integers are returned as numbers (counts here are far below 2^53).
+   */
+  async query<T = Record<string, unknown>>(sql: string, values: Record<string, string> = {}): Promise<T[]> {
+    const params = new URLSearchParams({ database: this.o.database, default_format: 'JSON', output_format_json_quote_64bit_integers: '0', readonly: '1' });
+    for (const [k, v] of Object.entries(values)) params.set(`param_${k}`, v);
     const res = await this.f(`${this.o.url.replace(/\/$/, '')}/?${params}`, { method: 'POST', headers: this.headers(), body: sql, signal: AbortSignal.timeout(this.o.timeoutMs ?? 15_000) });
     if (!res.ok) throw new Error(`clickhouse query failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
     return ((await res.json()) as { data: T[] }).data;

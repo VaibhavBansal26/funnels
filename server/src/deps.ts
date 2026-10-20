@@ -13,6 +13,7 @@ import type { Flights } from './util/flights.js';
 import type { RefCache } from './util/refcache.js';
 import type { EventBuffer } from './services/eventbuffer.js';
 import type { EventBus as DurableEventBus } from './queue/eventbus.js';
+import type { AnalyticsReader } from './services/analytics.js';
 import type { EventStore } from './store/eventstore.js';
 import type { CloudflarePurger } from './edge/purger.js';
 import type { DomainProvider } from './edge/domainProvider.js';
@@ -40,6 +41,8 @@ export interface Deps {
   eventBus: DurableEventBus;
   /** Secondary analytics store (ClickHouse) when EVENTSTORE_MIRROR is on. */
   secondaryStore?: EventStore;
+  /** Analytics reads from ClickHouse (ANALYTICS_READ_STORE=clickhouse); the primary database answers when absent, stale or failing. */
+  analyticsReader?: AnalyticsReader;
   purger: CloudflarePurger;
   domainProvider: DomainProvider;
   /** Set only on transaction-scoped deps (see db/scope.ts): queues an effect to run after COMMIT. */
