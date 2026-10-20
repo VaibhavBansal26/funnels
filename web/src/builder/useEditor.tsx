@@ -53,4 +53,4 @@ export function useEditorEvents(editor: Editor | null, events: string): void {
 }
 
 export const SELECTION_EVENTS = 'component:selected component:deselected component:update component:styleUpdate style:target style:property:update selector component:toggled';
-export const TREE_EVENTS = 'component:add component:remove component:update:name layer component:mount component:selected component:deselected undo redo component:toggled';
+export const TREE_EVENTS = 'component:add component:remove component:update:name component:update:locked layer component:mount component:selected component:deselected undo redo component:toggled';

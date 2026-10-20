@@ -36,8 +36,9 @@ describe('step list: keyboard reordering', () => {
     first.focus();
     fireEvent.keyDown(first, { key: 'ArrowDown', altKey: true });
     await waitFor(() => expect(rows()).toEqual(['Step 2', 'Step 1', 'Step 3']));
-    await waitFor(() => expect(f).toHaveBeenCalled());
-    const [url, init] = f.mock.calls[0]!;
+    // (the step thumbnails fetch each page's html too; the call that matters here is the order)
+    await waitFor(() => expect(f.mock.calls.some(([u]) => u === '/api/funnels/f/steps/order')).toBe(true));
+    const [url, init] = f.mock.calls.find(([u]) => u === '/api/funnels/f/steps/order')!;
     expect(url).toBe('/api/funnels/f/steps/order');
     expect(init.method).toBe('PUT');
     expect(JSON.parse(init.body)).toEqual({ orders: [{ stepId: 's2', order: 1 }, { stepId: 's1', order: 2 }, { stepId: 's3', order: 3 }] });
