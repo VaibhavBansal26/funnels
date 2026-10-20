@@ -11,6 +11,7 @@ import { newId } from '../util/ids.js';
 import { addDays, isDay, startOfDayUtc } from '../util/time.js';
 import { upsertLead } from './leads.js';
 import { notify } from './notifications.js';
+import { domainEvent } from '../queue/outbox.js';
 import { insertEvents } from './rollups.js';
 import { EMAIL_RE, resolvePublicBlock, sanitizeUtms } from './publicblocks.js';
 import { fireWebhookEvent } from './webhooks.js';
@@ -163,6 +164,7 @@ function persistOrders(
         id: newId('evt'), workspace_id: ws, funnel_id: funnel.id, step_id: step.id, type: 'order', visitor_id: p.visitorId ?? null, unique_visit: 0, lead_id: lead.id, order_id: o.id,
         external_id: `order:${o.id}`, amount_cents: o.amount_cents, currency: o.currency, utm_json: JSON.stringify(sanitizeUtms(p.utms)), url: null, created_at: o.created_at,
       }]);
+      await domainEvent(d, 'order.created', funnel.id, { workspaceId: ws, stepId: step.id, orderId: o.id, leadId: lead.id, amountCents: o.amount_cents, currency: o.currency });
       await notify(d, ws, { type: 'new_sale', title: 'New sale', body: `${o.email} bought ${o.product_name}`, data: { orderId: o.id, funnelId: funnel.id, amountCents: o.amount_cents, currency: o.currency } });
       await fireWebhookEvent(d, ws, 'funnel.purchase', {
         funnel: { id: funnel.id, name: funnel.name },

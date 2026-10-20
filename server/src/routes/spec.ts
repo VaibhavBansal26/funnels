@@ -68,6 +68,7 @@ export const OPERATIONS: Operation[] = [
   { method: 'GET', path: '/metrics', auth: 'infra', tag: 'ops', summary: 'Prometheus metrics (Bearer METRICS_TOKEN when set)', limits: [], exempt: 'Scraper; protected by METRICS_TOKEN' },
   { method: 'GET', path: '/beacon.js', auth: 'public', tag: 'public', summary: 'Tracking beacon script (cacheable)', limits: ['ip.global'] },
   { method: 'GET', path: '/internal/edge/resolve', auth: 'edge', tag: 'edge', summary: 'Signed resolve call from the Cloudflare worker', limits: ['edge.resolve'], notes: 'HMAC over timestamp, nonce, method and path; fails closed without EDGE_SHARED_SECRET.' },
+  { method: 'POST', path: '/internal/edge/events', auth: 'edge', tag: 'edge', summary: 'Batch of beacon events forwarded by the edge queue consumer (up to 500)', limits: ['edge.resolve'], status: 200, notes: 'Signed like /internal/edge/resolve. Body `{events:[{id,at,ua,body}]}`; each `body` is validated as a public event. Replays of the same `id`/`at` are dropped. 503 INGEST_BACKPRESSURE tells the queue to retry later.' },
   { method: 'GET', path: '/preview/:funnelId', auth: 'public', tag: 'public', summary: 'Signed preview of a funnel (first step)', limits: ['ip.global', 'public.preview'], notes: 'Authorised by a short-lived token in ?token=.' },
   { method: 'GET', path: '/preview/:funnelId/*', auth: 'public', tag: 'public', summary: 'Signed preview of a funnel step', limits: ['ip.global', 'public.preview'] },
   // public ingestion

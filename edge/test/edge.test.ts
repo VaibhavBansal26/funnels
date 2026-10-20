@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NonceCache, verifyEdge } from '../../server/src/edge/signing.js';
-import { handle, hmacHex, type CacheLike, type Ctx, type Env, type Runtime } from '../src/index.js';
+import { consumeEvents, handle, hmacHex, type CacheLike, type Ctx, type Env, type Runtime } from '../src/index.js';
 
 const SECRET = 'edge-secret-edge-secret-edge-secret-1';
 
@@ -282,5 +282,74 @@ describe('edge rate limiting', () => {
     for (const [tat, t, cost] of [[undefined, 100, 1], [5000, 100, 2], [100, 5000, 1], [10_000, 4000, 3]] as const) {
       expect(gcra(tat, t, 1000, 5, cost)).toMatchObject({ allowed: originGcra(tat, t, 1000, 5, cost).allowed, retryAfterMs: originGcra(tat, t, 1000, 5, cost).retryAfterMs });
     }
+  });
+});
+
+describe('event queue at the edge', () => {
+  const postEvent = (w: ReturnType<typeof world>, body: string) =>
+    handle(new Request('https://shop.example.com/api/public/events', { method: 'POST', body, headers: { 'user-agent': 'Mozilla/5.0 Chrome', 'cf-connecting-ip': '198.51.100.9' } }), w.env, w.ctx, w.rt);
+
+  it('answers 202 at the edge and queues the beacon with a stable id and time; the origin is not called', async () => {
+    const sent: unknown[] = [];
+    const w = world({ EVENTS_QUEUE: { send: async (m) => void sent.push(m) } });
+    const res = await postEvent(w, JSON.stringify({ funnelId: 'fn_1', stepId: 'st_1', type: 'page_view', visitorId: 'v1' }));
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({ ok: true, recorded: true, queued: true });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ at: w.clock.t, ua: 'Mozilla/5.0 Chrome', body: { funnelId: 'fn_1', visitorId: 'v1' } });
+    expect((sent[0] as { id: string }).id).toMatch(/^[0-9a-f]+$/);
+    expect(w.origin.proxied).toHaveLength(0);
+  });
+
+  it('falls back to the origin when the queue is down, forwarding the body it already read', async () => {
+    const w = world({ EVENTS_QUEUE: { send: async () => Promise.reject(new Error('queue unavailable')) } });
+    const body = JSON.stringify({ funnelId: 'fn_1', stepId: 'st_1', type: 'page_view', visitorId: 'v1' });
+    const res = await postEvent(w, body);
+    expect(res.status).toBe(202);
+    expect(w.origin.proxied).toHaveLength(1);
+    expect(await w.origin.proxied[0]!.text()).toBe(body);
+  });
+
+  it('sends oversized or non-JSON bodies to the origin, which answers them properly', async () => {
+    const sent: unknown[] = [];
+    const w = world({ EVENTS_QUEUE: { send: async (m) => void sent.push(m) } });
+    await postEvent(w, 'not json');
+    await postEvent(w, JSON.stringify({ pad: 'x'.repeat(9000) }));
+    expect(sent).toHaveLength(0);
+    expect(w.origin.proxied).toHaveLength(2);
+  });
+
+  it('consumer: signs the batch for the origin and retries it on 503, 5xx and network errors, but not on success', async () => {
+    const w = world();
+    const batch = (n: number) => {
+      const retried: { delaySeconds?: number }[] = [];
+      return { retried, b: { messages: Array.from({ length: n }, (_, i) => ({ id: `m${i}`, body: { id: `abc12345${i}`, at: w.clock.t, ua: 'Mozilla', body: { funnelId: 'f' } } })), retryAll: (o?: { delaySeconds?: number }) => void retried.push(o ?? {}) } };
+    };
+    const verify = vi.fn();
+    const rt = (status: number | Error): Runtime => ({
+      ...w.rt,
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        verify(verifyEdge({ secret: SECRET, skewSeconds: 120, nonces: new NonceCache(240_000), now: w.clock.t }, { method: 'POST', pathAndQuery: url.pathname + url.search, headers: new Headers(init?.headers) }), JSON.parse(String(init?.body)).events.length);
+        if (status instanceof Error) throw status;
+        return new Response('{}', { status });
+      }) as unknown as typeof fetch,
+    });
+    const ok = batch(3);
+    await consumeEvents(ok.b, w.env, rt(200));
+    expect(ok.retried).toHaveLength(0);
+    expect(verify).toHaveBeenCalledWith({ ok: true }, 3);
+    const shed = batch(2);
+    await consumeEvents(shed.b, w.env, rt(503));
+    expect(shed.retried).toEqual([{ delaySeconds: 30 }]);
+    const err = batch(2);
+    await consumeEvents(err.b, w.env, rt(502));
+    expect(err.retried).toEqual([{ delaySeconds: 10 }]);
+    const net = batch(2);
+    await consumeEvents(net.b, w.env, rt(new TypeError('connection refused')));
+    expect(net.retried).toEqual([{ delaySeconds: 10 }]);
+    const bad = batch(2);
+    await consumeEvents(bad.b, w.env, rt(400)); // can never succeed: dropped, not retried forever
+    expect(bad.retried).toHaveLength(0);
   });
 });

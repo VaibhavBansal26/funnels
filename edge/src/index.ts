@@ -18,8 +18,23 @@ import { edgeLimit, RateLimiterDO, type RateEnv } from './ratelimit.js';
 
 export { RateLimiterDO };
 
+/** Cloudflare Queues producer binding. */
+export interface QueueLike {
+  send(message: unknown): Promise<void>;
+}
+
+/** One beacon accepted at the edge, waiting in the queue. `id` and `at` are fixed at the edge so a redelivery is the same event at the origin. */
+export interface QueuedEvent {
+  id: string;
+  at: number;
+  ua: string | null;
+  body: unknown;
+}
+
 export interface Env extends RateEnv {
   ORIGIN_URL: string;
+  /** When bound, POST /api/public/events is answered 202 at the edge and queued; the origin database is never touched by the request. */
+  EVENTS_QUEUE?: QueueLike;
   EDGE_SHARED_SECRET?: string;
   CF_ORIGIN_SECRET?: string;
   CACHE_TTL_SECONDS?: string;
@@ -131,7 +146,7 @@ async function revalidate(env: Env, request: Request, cached: Response, rt: Runt
   } else if (r.kind === 'page') await storeCached(request, r, rt);
 }
 
-async function proxyToOrigin(env: Env, request: Request, rt: Runtime): Promise<Response> {
+async function proxyToOrigin(env: Env, request: Request, rt: Runtime, bodyOverride?: string): Promise<Response> {
   const u = new URL(request.url);
   const headers = new Headers(request.headers);
   headers.set('x-forwarded-host', u.host);
@@ -144,7 +159,7 @@ async function proxyToOrigin(env: Env, request: Request, rt: Runtime): Promise<R
     headers.delete('x-cf-origin-secret');
   }
   headers.delete('host');
-  return rt.fetch(new URL(u.pathname + u.search, env.ORIGIN_URL).toString(), { method: request.method, headers, body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body, redirect: 'manual' });
+  return rt.fetch(new URL(u.pathname + u.search, env.ORIGIN_URL).toString(), { method: request.method, headers, body: ['GET', 'HEAD'].includes(request.method) ? undefined : (bodyOverride ?? request.body), redirect: 'manual' });
 }
 
 export async function handle(request: Request, env: Env, ctx: Ctx, rt: Runtime): Promise<Response> {
@@ -153,8 +168,24 @@ export async function handle(request: Request, env: Env, ctx: Ctx, rt: Runtime):
   if (PROXIED.test(url.pathname)) {
     const limited = await edgeLimit(env, request, request.headers.get('cf-connecting-ip') ?? 'unknown');
     if (limited) return limited;
+    let bodyText: string | undefined;
+    if (env.EVENTS_QUEUE && request.method === 'POST' && url.pathname === '/api/public/events') {
+      // Queue the beacon at the edge. Anything unusual (large, not JSON, queue unavailable) falls through to the origin, which validates and answers properly.
+      bodyText = await request.text();
+      if (bodyText.length <= 8 * 1024) {
+        try {
+          const body = JSON.parse(bodyText) as unknown;
+          if (body && typeof body === 'object') {
+            await env.EVENTS_QUEUE.send({ id: rt.randomHex(12), at: rt.now(), ua: request.headers.get('user-agent'), body } satisfies QueuedEvent);
+            return new Response(JSON.stringify({ ok: true, recorded: true, queued: true }), { status: 202, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' } });
+          }
+        } catch {
+          /* not JSON, or the queue refused: let the origin handle it */
+        }
+      }
+    }
     try {
-      return await proxyToOrigin(env, request, rt);
+      return await proxyToOrigin(env, request, rt, bodyText);
     } catch {
       return url.pathname.startsWith('/api/') ? new Response(JSON.stringify({ error: { code: 'UPSTREAM_UNAVAILABLE', message: 'Try again shortly' } }), { status: 503, headers: { 'content-type': 'application/json' } }) : errorPage(503, 'Service unavailable', 'Please try again in a moment.');
     }
@@ -206,7 +237,36 @@ export async function handle(request: Request, env: Env, ctx: Ctx, rt: Runtime):
   }
 }
 
+export interface QueueBatch {
+  messages: { id: string; body: QueuedEvent }[];
+  retryAll(opts?: { delaySeconds?: number }): void;
+}
+
+/**
+ * Queue consumer: forwards a batch to the origin's signed `/internal/edge/events`. Success acknowledges the batch. 429/503 (the origin is shedding load, see INGEST_MAX_LAG)
+ * and 5xx or network errors retry the whole batch after a delay; the origin dedupes by (id, at), so a retry never double counts. Other 4xx drops the batch (it will never succeed).
+ */
+export async function consumeEvents(batch: QueueBatch, env: Env, rt: Runtime): Promise<void> {
+  if (!env.EDGE_SHARED_SECRET) return batch.retryAll({ delaySeconds: 60 });
+  const path = '/internal/edge/events';
+  try {
+    const res = await rt.fetch(new URL(path, env.ORIGIN_URL).toString(), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(await signedHeaders(env.EDGE_SHARED_SECRET, 'POST', path, rt)) },
+      body: JSON.stringify({ events: batch.messages.map((m) => m.body) }),
+    });
+    if (res.ok) return;
+    if (res.status === 429 || res.status === 503 || res.status >= 500) return batch.retryAll({ delaySeconds: res.status >= 500 && res.status !== 503 ? 10 : 30 });
+    console.error(`dropping an events batch the origin rejected with ${res.status}`);
+  } catch {
+    batch.retryAll({ delaySeconds: 10 });
+  }
+}
+
 export default {
+  async queue(batch: QueueBatch, env: Env): Promise<void> {
+    await consumeEvents(batch, env, { cache: (caches as unknown as { default: CacheLike }).default, fetch, now: () => Date.now(), randomHex: (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, '0')).join('') });
+  },
   async fetch(request: Request, env: Env, ctx: Ctx): Promise<Response> {
     const cache = (caches as unknown as { default: CacheLike }).default;
     return handle(request, env, ctx, {

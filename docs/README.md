@@ -58,3 +58,6 @@ Start with the [README](../README.md) for what this is and how to run it.
 | [0011](adr/0011-ids.md) | App-generated, time-sortable text ids | Accepted |
 | [0012](adr/0012-docs-from-code.md) | Generate the documentation that can drift | Accepted |
 | [0013](adr/0013-partitioned-events.md) | Partitioned events with a dedupe table and visitor_steps | Accepted |
+| [0014](adr/0014-hll-sketches.md) | HyperLogLog sketches for distinct visitors over long ranges | Accepted |
+| [0015](adr/0015-event-bus-outbox-ingest-queue.md) | Durable event bus, transactional outbox and the ingest queue | Accepted |
+| [0016](adr/0016-clickhouse-secondary-store.md) | ClickHouse as a secondary analytics store behind the EventStore interface | Accepted |

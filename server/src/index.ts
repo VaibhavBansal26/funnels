@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { createDeps, createWorker } from './bootstrap.js';
 import { loadConfig } from './config.js';
+import { startQueues } from './queue/runtime.js';
 
 const config = loadConfig();
 const deps = await createDeps(config);
@@ -10,6 +11,7 @@ if (!config.ANTHROPIC_API_KEY) deps.log.info('ANTHROPIC_API_KEY is not set: AI f
 
 const worker = createWorker(deps);
 if (config.ENABLE_WORKER) worker.start(config.JOB_POLL_MS);
+const queues = config.ENABLE_WORKER ? await startQueues(deps) : undefined;
 
 const server = serve({ fetch: createApp(deps).fetch, port: config.PORT, hostname: config.HOST }, (info) => {
   deps.log.info('funnels listening', { port: info.port, env: config.NODE_ENV, db: config.DATABASE_URL ? 'postgres' : config.DATABASE_PATH });
@@ -20,7 +22,9 @@ function shutdown(signal: string) {
   worker.stop();
   // Flush buffered analytics events before the pool closes; in-flight requests finish first.
   server.close(() => {
-    deps.events.close().finally(() => deps.db.close().finally(() => process.exit(0)));
+    Promise.resolve(queues?.stop())
+      .then(() => deps.events.close())
+      .finally(() => deps.eventBus.close().finally(() => deps.db.close().finally(() => process.exit(0))));
   });
   setTimeout(() => process.exit(1), 10_000).unref();
 }

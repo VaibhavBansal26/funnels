@@ -1,5 +1,6 @@
 import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from 'prom-client';
 import type { Deps } from './deps.js';
+import { outboxLag } from './queue/outbox.js';
 
 /** Prometheus metrics. Labels are bounded: route patterns (not raw paths), status classes, fixed job states. */
 export function createMetrics(deps: Deps) {
@@ -9,6 +10,17 @@ export function createMetrics(deps: Deps) {
   const duration = new Histogram({ name: 'funnels_http_request_duration_seconds', help: 'HTTP latency', labelNames: ['route'], buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5], registers: [registry] });
   new Gauge({ name: 'funnels_event_buffer_depth', help: 'Queued analytics events', registers: [registry], collect() { this.set(deps.events.depth); } });
   new Gauge({ name: 'funnels_events_dropped_total', help: 'Events dropped at flush', registers: [registry], collect() { this.set(deps.events.dropped); } });
+  new Gauge({ name: 'funnels_ingest_queue_lag', help: 'Events accepted into the ingest queue and not yet written (0 when INGEST_QUEUE is off)', registers: [registry], collect() { this.set(deps.events.queueLag); } });
+  new Gauge({ name: 'funnels_ingest_published_total', help: 'Events published to the ingest queue by this process', registers: [registry], collect() { this.set(deps.events.published); } });
+  new Gauge({ name: 'funnels_ingest_shed_total', help: 'Events refused with 503 INGEST_BACKPRESSURE by this process', registers: [registry], collect() { this.set(deps.events.shed); } });
+  new Gauge({
+    name: 'funnels_outbox_unpublished', help: 'Outbox rows not yet published to the bus', registers: [registry],
+    async collect() { this.set((await outboxLag(deps.db, deps.now())).unpublished); },
+  });
+  new Gauge({
+    name: 'funnels_outbox_oldest_age_seconds', help: 'Age of the oldest unpublished outbox row (alert when this keeps growing)', registers: [registry],
+    async collect() { this.set((await outboxLag(deps.db, deps.now())).oldestAgeMs / 1000); },
+  });
   new Gauge({ name: 'funnels_page_cache_entries', help: 'Rendered pages cached', registers: [registry], collect() { this.set(deps.pageCache.size); } });
   new Gauge({
     name: 'funnels_jobs', help: 'Jobs by status', labelNames: ['status'], registers: [registry],

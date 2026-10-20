@@ -5,6 +5,12 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 ## [Unreleased]
 
 ### Added
+- Durable `EventBus` (Redis Streams with partition leases, consumer groups, retry with jitter, dead letters, batch handlers, lag; in-memory implementation; Kafka and NATS stubs) with one contract suite, including a SIGKILL test.
+- Ingest queue (`INGEST_QUEUE=true`): the events endpoint publishes and a consumer group writes batches idempotently; `503 INGEST_BACKPRESSURE` above `INGEST_MAX_LAG`.
+- Transactional outbox (`outbox_events`, migration 008) with a relay that is safe on every replica, `once()` consumer markers, optional `lead.created`/`order.created` domain events (`OUTBOX_DOMAIN_EVENTS`).
+- `EventStore` interface and a ClickHouse secondary store (`EVENTSTORE_MIRROR=clickhouse`, `deploy/clickhouse/schema.sql`, `scripts/backfill-clickhouse.ts`). Not yet validated against a live ClickHouse.
+- Edge event queue: the Worker can answer beacons with 202 and queue them (Cloudflare Queues); `POST /internal/edge/events` accepts the signed batches and dedupes redeliveries.
+- Metrics `funnels_ingest_queue_lag`, `funnels_ingest_published_total`, `funnels_ingest_shed_total`, `funnels_outbox_unpublished`, `funnels_outbox_oldest_age_seconds`.
 - Distinct visitors by HyperLogLog: per funnel-day sketches (`visitor_sketches`, migration 007, 1.6% standard error) maintained in the event-batch transaction; ranges above `ANALYTICS_EXACT_DISTINCT_MAX` page views use them (`ANALYTICS_DISTINCT_MODE=auto|exact|sketch`), smaller ranges stay exact. The analytics response reports `distinct.method` and `distinct.standardErrorPct`.
 - PostgreSQL support: `DATABASE_URL=postgres://...` runs the same code on a `pg` pool; SQLite stays the zero-config default. Per-dialect migrations with a shared runner (advisory lock), schema equivalence test, whole test suite on SQLite, PGlite and real PostgreSQL.
 - Layered distributed rate limiter (GCRA, sliding window, concurrency leases, penalty box, manual block/allow lists) on Redis Lua scripts or in memory, local lease tier, circuit breaker, fail-open/closed per policy, plan tiers, IETF `RateLimit` headers, `429`/`503` body contract, Prometheus metrics. See docs/RATE-LIMITING.md.
@@ -16,6 +22,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - Benchmarks: `bench/ingest.mjs`, `ingest-db.mjs`, `ingest-engines.mjs`, `ratelimit.mjs`.
 
 ### Changed
+- Fixed: the same event id twice in one batch was counted twice in the rollups (the row was inserted once); it is now counted once.
 - PostgreSQL: `events` is partitioned by month; opt-in/order idempotency keys moved to `event_dedupe` (30-day window) and first views to `visitor_steps`; a maintenance job creates partitions ahead and prunes keys (migration 006). First-view uniqueness is now exact across replicas.
 - The data layer is asynchronous (`Db` interface, `inTx` transactions with post-commit side effects); ids are time-sortable; keyset cursors use `(created_at, id)` instead of `rowid`.
 - Analytics rollups are written by the application, once per event batch, instead of by a SQLite trigger per row (3.3x cheaper writes). Funnel-level distinct visitors scan raw events again.

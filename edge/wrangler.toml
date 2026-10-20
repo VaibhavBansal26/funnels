@@ -38,4 +38,18 @@ STALE_SECONDS = "86400"       # serve stale (and revalidate in the background) u
 # new_classes = ["RateLimiterDO"]
 # EDGE_FORMS_PER_MINUTE = "30" and EDGE_FORMS_BURST = "10" go under [vars].
 
+# --- Event queue (docs/SCALING.md, docs/CLOUD-LOADTEST.md) ---
+# The Worker answers POST /api/public/events with 202 and queues the beacon; the consumer forwards batches to the origin (/internal/edge/events),
+# which publishes them to its own ingest queue. A traffic spike is absorbed here and never touches the database synchronously.
+# wrangler queues create funnels-events ; wrangler queues create funnels-events-dlq
+# [[queues.producers]]
+# binding = "EVENTS_QUEUE"
+# queue = "funnels-events"
+# [[queues.consumers]]
+# queue = "funnels-events"
+# max_batch_size = 100
+# max_batch_timeout = 2
+# max_retries = 10
+# dead_letter_queue = "funnels-events-dlq"
+
 # Secrets (never in this file):  wrangler secret put EDGE_SHARED_SECRET ; wrangler secret put CF_ORIGIN_SECRET

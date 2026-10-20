@@ -7,6 +7,7 @@ import { csvStream } from '../util/csv.js';
 import { newId } from '../util/ids.js';
 import { addDays, isDay, startOfDayUtc } from '../util/time.js';
 import { inTx } from '../db/scope.js';
+import { domainEvent } from '../queue/outbox.js';
 import { insertEvents } from './rollups.js';
 import { notify } from './notifications.js';
 import { EMAIL_RE, resolvePublicBlock, sanitizeUtms } from './publicblocks.js';
@@ -141,6 +142,7 @@ export async function submitForm(deps: Deps, p: { funnelId: string; stepId: stri
         lead: { id: lead.id, email, name: nameField ? (values[nameField.id] ?? null) : null, phone: phoneField ? (values[phoneField.id] ?? null) : null },
         fields: values,
       });
+      await domainEvent(d, 'lead.created', funnel.id, { workspaceId: ws, stepId: step.id, leadId: lead.id });
       deps.db.noteWrite(ws);
       return { ok: true, recorded: true, leadId: lead.id };
     });

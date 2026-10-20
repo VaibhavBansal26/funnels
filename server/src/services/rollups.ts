@@ -68,9 +68,9 @@ const keyOf = (r: Pick<EventInsert, 'funnel_id' | 'step_id' | 'visitor_id'>) => 
  *     `unique_visit = 1` (so two replicas cannot both count a first view, which the old in-memory check could not promise);
  *  3. the rows are inserted and the inserted ones are added to `event_rollups`, one upsert per bucket.
  * Keys are claimed in sorted order so concurrent batches cannot deadlock on each other's uncommitted keys. Must run on a transaction handle.
- * Returns the ids that were inserted.
+ * Returns the ids that were inserted; `opts.collect` receives the rows that were stored (with their final `unique_visit`).
  */
-export async function insertEvents(tx: Db, rows: EventInsert[], opts: { decideUnique?: boolean } = {}): Promise<Set<string>> {
+export async function insertEvents(tx: Db, rows: EventInsert[], opts: { decideUnique?: boolean; collect?: EventInsert[] } = {}): Promise<Set<string>> {
   let work = rows;
 
   const withExternal = work.filter((r) => r.external_id);
@@ -122,7 +122,10 @@ export async function insertEvents(tx: Db, rows: EventInsert[], opts: { decideUn
     );
     for (const g of got) inserted.add(g.id);
   }
-  const stored = work.filter((r) => inserted.has(r.id));
+  // The same id twice in one batch (a redelivered queue message next to its original) inserts once; count it once too.
+  const counted = new Set<string>();
+  const stored = work.filter((r) => inserted.has(r.id) && !counted.has(r.id) && counted.add(r.id));
+  opts.collect?.push(...stored);
   await updateSketches(tx, stored);
   const deltas = aggregate(stored);
   for (let i = 0; i < deltas.length; i += CHUNK) {

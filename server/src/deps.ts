@@ -11,6 +11,8 @@ import type { EventBus } from './util/bus.js';
 import type { PageCache } from './util/pagecache.js';
 import type { Flights } from './util/flights.js';
 import type { EventBuffer } from './services/eventbuffer.js';
+import type { EventBus as DurableEventBus } from './queue/eventbus.js';
+import type { EventStore } from './store/eventstore.js';
 import type { CloudflarePurger } from './edge/purger.js';
 import type { DomainProvider } from './edge/domainProvider.js';
 
@@ -31,6 +33,10 @@ export interface Deps {
   pageCache: PageCache;
   flights: Flights;
   events: EventBuffer;
+  /** Durable bus (Redis Streams, or in-process memory): ingest queue, outbox relay, secondary store feed. `bus` above is the in-process SSE bus. */
+  eventBus: DurableEventBus;
+  /** Secondary analytics store (ClickHouse) when EVENTSTORE_MIRROR is on. */
+  secondaryStore?: EventStore;
   purger: CloudflarePurger;
   domainProvider: DomainProvider;
   /** Set only on transaction-scoped deps (see db/scope.ts): queues an effect to run after COMMIT. */

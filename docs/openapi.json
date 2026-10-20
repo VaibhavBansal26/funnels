@@ -125,6 +125,32 @@
         ]
       }
     },
+    "/internal/edge/events": {
+      "post": {
+        "tags": [
+          "edge"
+        ],
+        "summary": "Batch of beacon events forwarded by the edge queue consumer (up to 500)",
+        "description": "Signed like /internal/edge/resolve. Body `{events:[{id,at,ua,body}]}`; each `body` is validated as a public event. Replays of the same `id`/`at` are dropped. 503 INGEST_BACKPRESSURE tells the queue to retry later.",
+        "operationId": "post_internal_edge_events",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "edge",
+        "x-rate-limit-policies": [
+          "edge.resolve"
+        ]
+      }
+    },
     "/preview/{funnelId}": {
       "get": {
         "tags": [

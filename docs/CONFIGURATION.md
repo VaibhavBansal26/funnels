@@ -53,6 +53,17 @@ Generated from the zod schema in `server/src/config.ts` and the descriptions in 
 | `MAINTENANCE_INTERVAL_HOURS` | `6` | no | `6` | Interval of the maintenance job (partition creation, idempotency key pruning). |
 | `EVENT_BUFFER_MS` | `250` | no | `250` | Write-behind flush interval for analytics events (0 = write-through). A hard kill can lose this window. |
 | `EVENT_BUFFER_MAX` | `5000` | no | `5000` | Rows that force an early flush (backpressure for the caller). |
+| `EVENT_BUS` | `auto` | no | `auto` | Durable event bus for the ingest queue and the outbox relay: `redis` (Redis Streams, needs REDIS_URL), `memory` (one process, not durable) or `auto` (redis when REDIS_URL is set, else memory). |
+| `EVENT_BUS_PARTITIONS` | `16` | no | `16` | Partition streams per topic. Events with the same key (funnel id) go to the same partition and are consumed in order; consumers of a group split the partitions. Changing it reshuffles keys: drain the topics first. |
+| `INGEST_QUEUE` | `false` | no | `false` | Accept analytics events by publishing them to the event bus (`ingest.events`) and write them to the database from a consumer group in batches, instead of through the in-process buffer. Requires a durable bus in production (EVENT_BUS=redis). |
+| `INGEST_MAX_LAG` | `2000000` | no | `2000000` | Backlog of the ingest consumer group above which the public events endpoint answers 503 `INGEST_BACKPRESSURE` (the beacon retries) instead of queueing more. |
+| `OUTBOX_POLL_MS` | `200` | no | `200` | How often the outbox relay looks for unpublished rows. Every replica runs a relay; a PostgreSQL advisory lock lets one publish at a time. |
+| `OUTBOX_DOMAIN_EVENTS` | `false` | no | `false` | Write `lead.created` and `order.created` to the transactional outbox (topic `funnels.domain`) in the same transaction as the lead or order. Off by default: nothing in this repository consumes the topic, it is the integration point for your own consumers (warehouse, CRM sync). |
+| `EVENTSTORE_MIRROR` | `off` | no | `off` | Secondary event store: `clickhouse` copies every stored analytics event to ClickHouse through the outbox (idempotent by event id). PostgreSQL stays authoritative. |
+| `CLICKHOUSE_URL` | (unset) | no | `http://clickhouse:8123` | ClickHouse HTTP interface, required when EVENTSTORE_MIRROR=clickhouse. |
+| `CLICKHOUSE_DATABASE` | `funnels` | no | `funnels` | ClickHouse database holding the tables from deploy/clickhouse/schema.sql. |
+| `CLICKHOUSE_USER` | (unset) | no | `funnels_writer` | ClickHouse user (sent as `X-ClickHouse-User`). |
+| `CLICKHOUSE_PASSWORD` | (unset) | no |  | ClickHouse password. **Security:** Secret. Give the user INSERT on the events table only. |
 | `REQUEST_TIMEOUT_MS` | `30000` | no | `30000` | A handler running longer gets a 504 (the client is released; synchronous work cannot be interrupted). |
 | `EDGE_SHARED_SECRET` | (unset) | no | `(32+ random characters)` | Shared with the Cloudflare Worker to sign /internal/edge/resolve (32+ characters). Unset = the endpoint refuses everything (fail closed). **Security:** Secret. Rotate on both sides together. |
 | `EDGE_SKEW_SECONDS` | `120` | no | `120` | Accepted clock skew of edge signatures; also the replay window. |

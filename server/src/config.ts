@@ -75,6 +75,17 @@ export const EnvSchema = z.object({
   MAINTENANCE_INTERVAL_HOURS: int(6, 1, 168),
   EVENT_BUFFER_MS: int(250, 0),
   EVENT_BUFFER_MAX: int(5000, 1),
+  EVENT_BUS: z.enum(['auto', 'memory', 'redis']).default('auto'),
+  EVENT_BUS_PARTITIONS: int(16, 1, 256),
+  INGEST_QUEUE: bool(false),
+  INGEST_MAX_LAG: int(2_000_000, 1),
+  OUTBOX_POLL_MS: int(200, 10),
+  OUTBOX_DOMAIN_EVENTS: bool(false),
+  EVENTSTORE_MIRROR: z.enum(['off', 'clickhouse']).default('off'),
+  CLICKHOUSE_URL: z.string().regex(/^https?:\/\//, 'CLICKHOUSE_URL must start with http:// or https://').optional(),
+  CLICKHOUSE_DATABASE: z.string().regex(/^[A-Za-z0-9_]+$/).default('funnels'),
+  CLICKHOUSE_USER: z.string().optional(),
+  CLICKHOUSE_PASSWORD: z.string().optional(),
   REQUEST_TIMEOUT_MS: int(30_000, 100),
   EDGE_SHARED_SECRET: z.string().min(32, 'EDGE_SHARED_SECRET must be at least 32 characters').optional(),
   EDGE_SKEW_SECONDS: int(120, 5),
@@ -101,6 +112,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   if (!JWT_SECRET && rest.NODE_ENV === 'production') {
     throw new Error('Invalid environment: JWT_SECRET is required in production');
   }
+  if (rest.EVENT_BUS === 'redis' && !rest.REDIS_URL) throw new Error('Invalid environment: EVENT_BUS=redis needs REDIS_URL');
+  if (rest.EVENTSTORE_MIRROR === 'clickhouse' && !rest.CLICKHOUSE_URL) throw new Error('Invalid environment: EVENTSTORE_MIRROR=clickhouse needs CLICKHOUSE_URL');
+  if (rest.INGEST_QUEUE && rest.NODE_ENV === 'production' && rest.EVENT_BUS !== 'redis' && !rest.REDIS_URL) throw new Error('Invalid environment: INGEST_QUEUE in production needs a durable bus (set REDIS_URL)');
   return {
     ...rest,
     JWT_SECRET: JWT_SECRET ?? randomBytes(48).toString('base64url'),
