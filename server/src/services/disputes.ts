@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { currencyExponent, fromMinor } from '../util/money.js';
 import type { Deps } from '../deps.js';
 import { inTx } from '../db/scope.js';
 import { newId } from '../util/ids.js';
@@ -121,15 +122,15 @@ async function applyLoss(deps: Deps, d: DisputeRow): Promise<number> {
 }
 
 const serializeForHook = (d: DisputeRow) => ({
-  id: d.stripe_dispute_id, status: d.status, outcome: d.outcome, reason: d.reason, amount: d.amount_cents / 100, currency: d.currency, evidenceDueBy: d.evidence_due_by,
-  lostAmount: d.lost_cents / 100, fundsWithdrawn: !!d.funds_withdrawn_at && !d.funds_reinstated_at,
+  id: d.stripe_dispute_id, status: d.status, outcome: d.outcome, reason: d.reason, amount: fromMinor(d.amount_cents, d.currency), currency: d.currency, evidenceDueBy: d.evidence_due_by,
+  lostAmount: fromMinor(d.lost_cents, d.currency), fundsWithdrawn: !!d.funds_withdrawn_at && !d.funds_reinstated_at,
 });
 
 /** Notification, webhook and audit row for a change, once the dispute belongs to a workspace. */
 async function announce(deps: Deps, d: DisputeRow, kind: 'opened' | 'updated' | 'won' | 'lost' | 'funds_withdrawn' | 'funds_reinstated' | 'reconciled', orders: OrderRow[]) {
   if (!d.workspace_id) return;
   const main = orders[0];
-  const money = `${(d.amount_cents / 100).toFixed(2)} ${d.currency}`;
+  const money = `${fromMinor(d.amount_cents, d.currency).toFixed(currencyExponent(d.currency))} ${d.currency}`;
   await audit(deps, { workspaceId: d.workspace_id, actorId: 'stripe', action: `dispute.${kind}`, target: d.order_id ?? d.stripe_dispute_id, detail: { dispute: d.stripe_dispute_id, status: d.status, amountCents: d.amount_cents, currency: d.currency, reason: d.reason, lostCents: d.lost_cents, orphan: !main } });
   if (kind === 'opened' || kind === 'won' || kind === 'lost') {
     const title = kind === 'opened' ? 'Payment disputed' : kind === 'won' ? 'Dispute won' : 'Dispute lost';
@@ -141,7 +142,7 @@ async function announce(deps: Deps, d: DisputeRow, kind: 'opened' | 'updated' | 
     await fireWebhookEvent(deps, d.workspace_id, 'funnel.dispute', {
       event: kind,
       dispute: serializeForHook(d),
-      order: main ? { id: main.id, productName: main.product_name, amount: main.amount_cents / 100, currency: main.currency, email: main.email } : null,
+      order: main ? { id: main.id, productName: main.product_name, amount: fromMinor(main.amount_cents, main.currency), currency: main.currency, email: main.email } : null,
     });
   }
 }
@@ -267,7 +268,7 @@ export const DisputeQuery = z.object({
 
 export const serializeDispute = (d: DisputeRow) => ({
   id: d.id, stripeDisputeId: d.stripe_dispute_id, orderId: d.order_id, orphan: !d.order_id, chargeId: d.charge_id, paymentIntent: d.payment_intent,
-  amountCents: d.amount_cents, amount: d.amount_cents / 100, currency: d.currency, reason: d.reason, status: d.status, outcome: d.outcome, evidenceDueBy: d.evidence_due_by,
+  amountCents: d.amount_cents, amount: fromMinor(d.amount_cents, d.currency), currency: d.currency, reason: d.reason, status: d.status, outcome: d.outcome, evidenceDueBy: d.evidence_due_by,
   fundsWithdrawnAt: d.funds_withdrawn_at, fundsReinstatedAt: d.funds_reinstated_at, lostCents: d.lost_cents, dashboardUrl: dashboardUrl(d), createdAt: d.created_at, updatedAt: d.updated_at, closedAt: d.closed_at,
 });
 

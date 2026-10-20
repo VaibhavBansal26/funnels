@@ -19,6 +19,8 @@ import { ApiKeyInput, ApiKeyPatch } from '../services/apikeys.js';
 import { ApiListQuery, ApiRangeQuery, ExportQuery, PepperInput, TimeseriesQuery } from '../services/analyticsapi.js';
 import { SubscribeInput } from '../services/billing.js';
 import { RefundInput } from '../services/stripepay.js';
+import { PriceInput, PricePatch, ProductInput, ProductPatch, ProductQuery } from '../services/catalog.js';
+import { PaymentSettingsPatch } from '../services/paymentsettings.js';
 import { DisputeQuery } from '../services/disputes.js';
 import { AuditQuery } from '../services/audit.js';
 import { AcceptInput, InvitationInput, LookupQuery } from '../services/invitations.js';
@@ -284,6 +286,21 @@ export const OPERATIONS: Operation[] = [
   A('GET', '/api/billing/connect', 'billing:read', 'billing', 'Connected Stripe account state (refreshed from Stripe)'),
   A('POST', '/api/billing/connect/start', 'billing:manage', 'billing', 'Start or resume Stripe Connect onboarding: returns the onboarding URL'),
   A('POST', '/api/billing/connect/disconnect', 'billing:manage', 'billing', 'Stop taking payments through the connected account', { status: 204 }),
+  // product catalog and payments setup (docs/PRODUCTS.md, docs/STRIPE.md)
+  A('GET', '/api/products', 'products:read', 'products', 'The product catalog: products with their prices, Stripe sync state and order counts (status, search, pages)', { query: ProductQuery }),
+  A('POST', '/api/products', 'products:write', 'products', 'Create a product, optionally with its first price (amount in minor units or major units, currency exponent applied); synced to Stripe when connected', { body: ProductInput, status: 201, cost: 2 }),
+  A('POST', '/api/products/sync', 'products:write', 'products', 'Push every product that is not in sync to the connected Stripe account', { cost: 5, limits: [...WRITE, 'payments.sync'] }),
+  A('GET', '/api/products/:id', 'products:read', 'products', 'One product with its prices'),
+  A('PATCH', '/api/products/:id', 'products:write', 'products', 'Edit a product (name, description, images, tax code, metadata, default price)', { body: ProductPatch }),
+  A('POST', '/api/products/:id/archive', 'products:write', 'products', 'Archive a product: pickers hide it, checkouts naming it refuse with a friendly message, pages keep rendering, orders keep their link (products are never deleted)'),
+  A('POST', '/api/products/:id/restore', 'products:write', 'products', 'Restore an archived product'),
+  A('POST', '/api/products/:id/sync', 'products:write', 'products', 'Push one product and its prices to the connected Stripe account', { cost: 3, limits: [...WRITE, 'payments.sync'] }),
+  A('POST', '/api/products/:id/prices', 'products:write', 'products', 'Add a price (prices are immutable: change an amount with .../replace)', { body: PriceInput, status: 201 }),
+  A('POST', '/api/products/:id/prices/:priceId/replace', 'products:write', 'products', 'Change a price: creates the new price, archives the old one and points it at the new one (pages and checkouts naming the old price use the new one; past orders keep theirs)', { body: PriceInput }),
+  A('PATCH', '/api/products/:id/prices/:priceId', 'products:write', 'products', 'Rename a price (nickname)', { body: PricePatch }),
+  A('POST', '/api/products/:id/prices/:priceId/archive', 'products:write', 'products', 'Archive a price (a product keeps at least one active price)'),
+  A('GET', '/api/payments/status', 'products:read', 'payments', 'Payments overview: test or live mode, connection state, charges and payouts, payment methods, currency, statement descriptor, Stripe Tax availability, checkout settings and the Stripe test cards'),
+  A('PATCH', '/api/payments/settings', 'billing:manage', 'payments', 'Checkout settings: statement descriptor suffix, receipt emails, Stripe Tax', { body: PaymentSettingsPatch }),
   A('POST', '/api/orders/:id/refund', 'orders:refund', 'orders', 'Refund an order, in full or in part (the refundable amount is reserved atomically)', { body: RefundInput, notes: 'Body is optional: no amount refunds what is left.' }),
   A('GET', '/api/disputes', 'orders:read', 'orders', 'Stripe disputes (chargebacks) of the workspace: status, outcome, evidence due date, amount lost, Stripe dashboard link; orphans (payment not known yet) included', { query: DisputeQuery }),
   // AI

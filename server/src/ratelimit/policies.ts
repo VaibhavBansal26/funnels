@@ -37,6 +37,7 @@ export function buildPolicies(cfg: Pick<Config, 'IP_GUARD_PER_MINUTE' | 'PUBLIC_
     { id: 'edge.resolve', description: 'Signed requests from the Cloudflare worker (all traffic arrives from few IPs, so the limit is high).', layer: 'class', keyBy: 'ip', algo: 'gcra', limit: cfg.EDGE_RESOLVE_PER_MINUTE, windowMs: MIN, burst: Math.ceil(cfg.EDGE_RESOLVE_PER_MINUTE / 10), cost: 1, onFail: 'open', lease: true },
     { id: 'admin.platform', description: 'Platform admin routes, per user. Generous on purpose: one admin screen issues several reads, and the caller is an authenticated, two-factor administrator.', layer: 'principal', keyBy: 'user', algo: 'gcra', limit: 600, windowMs: MIN, burst: 120, cost: 1, onFail: 'closed' },
     { id: 'webhook.inbound', description: 'Reserved for inbound provider webhooks (Stripe, later). High limit, fails open so a limiter outage never drops payment events.', layer: 'class', keyBy: 'ip', algo: 'gcra', limit: 6000, windowMs: MIN, burst: 1000, cost: 1, onFail: 'open', lease: true },
+    { id: 'payments.sync', description: 'Pushes of the product catalog to Stripe, per workspace: each call makes several Stripe requests, so the rate is low and scaled by plan tier.', layer: 'workspace', keyBy: 'workspace', algo: 'gcra', limit: 12, windowMs: MIN, burst: 4, cost: 1, onFail: 'open', tiers },
   ];
 }
 

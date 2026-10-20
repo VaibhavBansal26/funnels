@@ -6,6 +6,7 @@ import { applyAccount, applySubscription } from './billing.js';
 import { notify } from './notifications.js';
 import { applyDisputeEvent, DISPUTE_EVENTS } from './disputes.js';
 import { finalizeSession, syncChargeRefunds } from './stripepay.js';
+import { reconcileStripePrice, reconcileStripeProduct, reconcileStripeProductDeleted } from './catalogsync.js';
 
 /**
  * Stripe webhooks (docs/STRIPE.md). Two endpoints with two signing secrets: the platform's own events (subscriptions, invoices) and the Connect events of the
@@ -68,6 +69,20 @@ async function connectEvent(deps: Deps, ev: StripeEvent): Promise<boolean> {
     case 'charge.dispute.funds_withdrawn':
     case 'charge.dispute.funds_reinstated':
       await applyDisputeEvent(deps, ev as StripeEvent & { created?: number; livemode?: boolean });
+      return true;
+    case 'product.created':
+    case 'product.updated':
+      await reconcileStripeProduct(deps, ev.account, o as never);
+      return true;
+    case 'product.deleted':
+      await reconcileStripeProductDeleted(deps, ev.account, o as never);
+      return true;
+    case 'price.created':
+    case 'price.updated':
+      await reconcileStripePrice(deps, ev.account, o as never);
+      return true;
+    case 'price.deleted':
+      await reconcileStripePrice(deps, ev.account, { ...(o as { id: string }), active: false });
       return true;
     case 'account.updated':
       await applyAccount(deps, String(o.id), o);

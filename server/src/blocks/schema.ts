@@ -142,6 +142,9 @@ export const CheckoutCatalogFields = {
   quantity: z.object({ enabled: z.boolean(), min: z.number().int().min(1).max(99).default(1), max: z.number().int().min(1).max(99).default(10), default: z.number().int().min(1).max(99).default(1) }).optional(),
   /** Show Stripe's promotion code field on the hosted checkout. */
   allowPromotionCodes: z.boolean().optional(),
+  /** Display snapshot of the catalog price's billing (refreshed on save): the offer shows "$29.00 / month" and the trial. */
+  interval: z.enum(['day', 'week', 'month', 'year']).optional(),
+  trialDays: z.number().int().min(0).max(730).optional(),
 };
 export const CheckoutSchema = z.object({
   id: blockId,

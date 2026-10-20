@@ -11,6 +11,8 @@ import { lockFunnel, requireFunnel, requireStep, listSteps } from '../repos/funn
 import type { BackupRow, FunnelRow, PageRow, StepRow } from '../repos/types.js';
 import { newId } from '../util/ids.js';
 import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
+import { linkCatalog } from './catalogcheckout.js';
+import { adTagsFor, adTagsForStep, loadPixelLevels } from './adtags.js';
 
 export const MAX_BACKUPS = 10;
 /** Size limit of version-1 (block tree) documents, kept from before the GrapesJS builder. */
@@ -83,7 +85,7 @@ export async function regenerateWorkspace(deps: Deps, ws: string): Promise<void>
 
 /** Creates the page row for a brand-new step (no backup: there is no previous version). */
 export async function insertPage(deps: Deps, ws: string, funnel: FunnelRow, step: StepRow, doc: unknown, scriptsOk: boolean): Promise<void> {
-  const docJson = JSON.stringify(validateDoc(doc, { scriptsOk: true }));
+  const docJson = JSON.stringify(await linkCatalog(deps, ws, validateDoc(doc, { scriptsOk: true }), 'system'));
   const steps = await listSteps(deps.db, ws, funnel.id);
   const { html, checksum } = renderStep(deps, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(deps, ws), mode: 'live' });
   await deps.db.run(
@@ -160,7 +162,7 @@ export async function savePage(deps: Deps, auth: Auth, funnelId: string, stepId:
     const previous = await getPageRow(d, ws, stepId);
     const scriptsOk = await scriptsAllowedFor(d, auth);
     // Server-side authority: the document is rebuilt from an allow-list here; forms and products are derived from it, never taken from the request.
-    const doc = validateDoc(rawDoc, { scriptsOk, previous: loadDoc(previous.doc_json) });
+    const doc = await linkCatalog(d, ws, validateDoc(rawDoc, { scriptsOk, previous: loadDoc(previous.doc_json) }), auth.userId);
     const at = iso(d);
     if (opts.backup !== false) {
       await d.db.run(

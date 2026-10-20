@@ -11,6 +11,8 @@ export const PERMISSIONS = {
   'funnels:tracking': 'Edit custom header/footer tracking code on funnels and steps',
   'tags:manage': 'Create, rename and delete tags',
   'blocks:manage': 'Save and delete custom blocks',
+  'products:read': 'View the product catalog, its prices and Stripe sync state',
+  'products:write': 'Create, edit and archive products and prices, sync them to Stripe, and set up payments for a funnel',
   'leads:read': 'View leads',
   'leads:export': 'Export leads as CSV',
   'orders:read': 'View orders',
@@ -57,9 +59,9 @@ export const SYSTEM_ROLES: Record<SystemRoleId, RoleDef> = {
   },
   member: {
     id: 'member', name: 'Member', description: 'Builds and edits funnels, reads leads, orders and analytics, uses AI. Cannot delete funnels, manage domains, webhooks or people.', system: true,
-    permissions: ['funnels:read', 'funnels:write', 'tags:manage', 'blocks:manage', 'leads:read', 'leads:export', 'orders:read', 'orders:export', 'analytics:read', 'ai:use', 'domains:read', 'members:read'],
+    permissions: ['funnels:read', 'funnels:write', 'tags:manage', 'blocks:manage', 'products:read', 'products:write', 'leads:read', 'leads:export', 'orders:read', 'orders:export', 'analytics:read', 'ads:read', 'ai:use', 'domains:read', 'members:read'],
   },
-  viewer: { id: 'viewer', name: 'Viewer', description: 'Read-only access to funnels, leads, orders, analytics and domains.', system: true, permissions: ['funnels:read', 'leads:read', 'orders:read', 'analytics:read', 'domains:read', 'members:read'] },
+  viewer: { id: 'viewer', name: 'Viewer', description: 'Read-only access to funnels, leads, orders, analytics and domains.', system: true, permissions: ['funnels:read', 'products:read', 'leads:read', 'orders:read', 'analytics:read', 'ads:read', 'domains:read', 'members:read'] },
 };
 
 export const isSystemRoleId = (id: string): id is SystemRoleId => Object.prototype.hasOwnProperty.call(SYSTEM_ROLES, id);

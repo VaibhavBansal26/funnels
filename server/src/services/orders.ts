@@ -28,6 +28,8 @@ export const CheckoutInput = z.object({
   utms: z.unknown().optional(),
   preview: z.boolean().optional(),
 });
+  /** Units of the main offer when its block offers a quantity picker (checked against the block's own range). */
+  quantity: z.number().int().min(1).max(99).optional(),
 
 export interface OrderRow {
   id: string;
@@ -56,8 +58,12 @@ export interface OrderRow {
   provider_account?: string | null;
 }
 
-const cents = (price: number) => Math.round(price * 100);
 export const serializeLine = (o: OrderRow) => ({ id: o.id, productName: o.product_name, amountCents: o.amount_cents, currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1, status: o.status ?? 'paid', refundedCents: o.refunded_cents ?? 0, disputedLostCents: o.disputed_lost_cents ?? 0 });
+  product_id?: string | null;
+  price_id?: string | null;
+  quantity?: number;
+  discount_cents?: number;
+  role?: string | null;
 
 export interface CheckoutResult {
   ok: true;
@@ -107,8 +113,16 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
   if (input.preview) return { ok: true, recorded: false, orders: [], declined: [] };
 
   if (deps.config.PAYMENTS_PROVIDER === 'stripe' && !block.oneClickUpsell) {
-    return startHostedCheckout(deps, { ws, funnel, step, block, bumps, email, name, visitorId: input.visitorId, utms: input.utms });
+    return startHostedCheckout(deps, { ws, funnel, step, block, offers, email, name, visitorId: input.visitorId, utms: input.utms, allowPromotionCodes: block.allowPromotionCodes === true });
   }
+
+  // The server prices the basket: from the catalog price the blocks name (never from the request), with the quantity checked against the block.
+  const offers: Offer[] = [await resolveOffer(deps, ws, block, checkQuantity(block, input.quantity))];
+  for (const b of bumps) offers.push(await resolveOffer(deps, ws, b, 1));
+  if (new Set(offers.map((o) => o.currency)).size > 1) throw badRequest('MIXED_CURRENCY', 'The offer and its bumps must use the same currency');
+  if (offers.some((o) => o.recurring) && block.oneClickUpsell) throw badRequest('SUBSCRIPTION_UPSELL_UNSUPPORTED', 'A one-click offer cannot start a subscription');
+  const recurring = offers.filter((o) => o.recurring);
+  if (new Set(recurring.map((o) => `${o.recurring!.interval}/${o.recurring!.count}`)).size > 1) throw badRequest('MIXED_INTERVAL', 'Subscriptions in one order must bill on the same interval');
 
   const idemBase = input.submissionId ? `${block.id}:${input.submissionId}` : null;
   if (idemBase) {
@@ -119,35 +133,35 @@ export async function checkout(deps: Deps, p: { funnelId: string; stepId: string
     }
   }
 
-  const items = [{ block, bump: false }, ...bumps.map((b) => ({ block: b, bump: true }))];
   const created: OrderRow[] = [];
   const declined: string[] = [];
-  for (const item of items) {
-    const b = item.block;
-    const idem = idemBase ? `${idemBase}:${b.id}` : null;
+  for (const o of offers) {
+    const bump = o.role === 'bump';
+    const idem = idemBase ? `${idemBase}:${o.blockId}` : null;
+    const amount = o.unitAmount * o.quantity;
     const charge = {
-      amountCents: cents(b.price),
-      currency: b.currency,
-      description: `${b.productName} (${funnel.name})`,
+      amountCents: amount,
+      currency: o.currency,
+      description: `${o.name} (${funnel.name})`,
       customer: { email, name: name ?? undefined },
       idempotencyKey: idem ?? newId('idem'),
       paymentMethodRef,
     };
     const result = deps.config.PAYMENTS_PROVIDER === 'stripe' ? await stripeUpsellCharge(deps, ws, prevOrder!, charge) : await deps.payments.charge(charge);
     if (result.status === 'failed') {
-      if (!item.bump) throw new AppError(402, 'PAYMENT_FAILED', 'The payment was declined', { reason: result.reason });
-      declined.push(b.id);
+      if (!bump) throw new AppError(402, 'PAYMENT_FAILED', 'The payment was declined', { reason: result.reason });
+      declined.push(o.blockId);
       continue;
     }
     paymentMethodRef = result.paymentMethodRef;
     const row: OrderRow = {
-      id: newId('ord'), workspace_id: ws, funnel_id: funnel.id, step_id: step.id, block_id: b.id, lead_id: null, email: email.toLowerCase(), name,
-      product_name: b.productName, amount_cents: cents(b.price), currency: b.currency, is_bump: item.bump ? 1 : 0, is_upsell: block.oneClickUpsell && !item.bump ? 1 : 0,
+      id: newId('ord'), workspace_id: ws, funnel_id: funnel.id, step_id: step.id, block_id: o.blockId, lead_id: null, email: email.toLowerCase(), name,
+      product_name: o.name, amount_cents: amount, currency: o.currency, is_bump: bump ? 1 : 0, is_upsell: block.oneClickUpsell && !bump ? 1 : 0,
       parent_order_id: parentOrderId, provider: result.provider ?? deps.payments.name, provider_ref: result.providerRef, payment_method_ref: result.paymentMethodRef, idem_key: idem, created_at: deps.now().toISOString(),
-      provider_customer: result.customerRef ?? null, provider_account: result.account ?? null,
+      provider_customer: result.customerRef ?? null, provider_account: result.account ?? null, product_id: o.productId, price_id: o.priceId, quantity: o.quantity, discount_cents: 0, role: o.role,
     };
     created.push(row);
-    if (!item.bump && !parentOrderId) parentOrderId = row.id;
+    if (!bump && !parentOrderId) parentOrderId = row.id;
   }
 
   try {
@@ -179,13 +193,14 @@ function persistTx(deps: Deps, p: PersistInput): Promise<void> {
     for (const o of created) {
       o.lead_id = lead.id;
       await d.db.run(
-        `INSERT INTO orders (id, workspace_id, funnel_id, step_id, block_id, lead_id, email, name, product_name, amount_cents, currency, is_bump, is_upsell, parent_order_id, provider, provider_ref, payment_method_ref, idem_key, created_at, provider_customer, provider_account)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO orders (id, workspace_id, funnel_id, step_id, block_id, lead_id, email, name, product_name, amount_cents, currency, is_bump, is_upsell, parent_order_id, provider, provider_ref, payment_method_ref, idem_key, created_at, provider_customer, provider_account, product_id, price_id, quantity, discount_cents, role)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         o.id, o.workspace_id, o.funnel_id, o.step_id, o.block_id, o.lead_id, o.email, o.name, o.product_name, o.amount_cents, o.currency, o.is_bump, o.is_upsell, o.parent_order_id, o.provider, o.provider_ref, o.payment_method_ref, o.idem_key, o.created_at, o.provider_customer ?? null, o.provider_account ?? null,
       );
       await insertEvents(d.db, [{
         id: newId('evt'), workspace_id: ws, funnel_id: funnel.id, step_id: step.id, type: 'order', visitor_id: p.visitorId ?? null, unique_visit: 0, lead_id: lead.id, order_id: o.id,
         external_id: `order:${o.id}`, amount_cents: o.amount_cents, currency: o.currency, utm_json: JSON.stringify(sanitizeUtms(p.utms)), url: null, created_at: o.created_at,
+        o.product_id ?? null, o.price_id ?? null, o.quantity ?? 1, o.discount_cents ?? 0, o.role ?? null,
       }]);
       await domainEvent(d, 'order.created', funnel.id, { workspaceId: ws, stepId: step.id, orderId: o.id, leadId: lead.id, amountCents: o.amount_cents, currency: o.currency });
       await notify(d, ws, { type: 'new_sale', title: 'New sale', body: `${o.email} bought ${o.product_name}`, data: { orderId: o.id, funnelId: funnel.id, amountCents: o.amount_cents, currency: o.currency } });
@@ -239,7 +254,7 @@ export async function listOrders(base: Deps, ws: string, q: z.infer<typeof Order
   const rows = await deps.db.all<Joined>(`${SELECT} WHERE ${clause} ORDER BY o.created_at DESC, o.id DESC LIMIT ? OFFSET ?`, ...params, q.limit, (q.page - 1) * q.limit);
   const disputes = await disputesByPayment(deps, ws, rows.filter((o) => o.provider === 'stripe').map((o) => o.provider_ref));
   return {
-    data: rows.map((o) => ({ ...serializeLine(o), funnelId: o.funnel_id, funnelName: o.funnel_name, stepName: o.step_name, email: o.email, name: o.name, amount: o.amount_cents / 100, provider: o.provider, providerRef: o.provider_ref, createdAt: o.created_at, dispute: (o.provider === 'stripe' ? disputes.get(o.provider_ref) : undefined) ?? null })),
+    data: rows.map((o) => ({ ...serializeLine(o), funnelId: o.funnel_id, funnelName: o.funnel_name, stepName: o.step_name, email: o.email, name: o.name, amount: fromMinor(o.amount_cents, o.currency), productId: o.product_id ?? null, priceId: o.price_id ?? null, quantity: o.quantity ?? 1, discountCents: o.discount_cents ?? 0, provider: o.provider, providerRef: o.provider_ref, createdAt: o.created_at, dispute: (o.provider === 'stripe' ? disputes.get(o.provider_ref) : undefined) ?? null })),
     pagination: { page: q.page, limit: q.limit, total, totalPages: Math.max(1, Math.ceil(total / q.limit)) },
   };
 }
@@ -255,7 +270,7 @@ export function ordersCsvStream(base: Deps, ws: string, q: z.infer<typeof OrderQ
     );
     const last = rows[rows.length - 1];
     return {
-      rows: rows.map((o) => [o.id, o.created_at, o.funnel_name, o.step_name, o.product_name, (o.amount_cents / 100).toFixed(2), o.currency, o.is_bump ? 'yes' : 'no', o.is_upsell ? 'yes' : 'no', o.email, o.name, o.provider_ref]),
+      rows: rows.map((o) => [o.id, o.created_at, o.funnel_name, o.step_name, o.product_name, fromMinor(o.amount_cents, o.currency).toFixed(currencyExponent(o.currency)), o.currency, o.is_bump ? 'yes' : 'no', o.is_upsell ? 'yes' : 'no', o.email, o.name, o.provider_ref]),
       cursor: rows.length === 1000 && last ? { at: last.created_at, id: last.id } : null,
     };
   });

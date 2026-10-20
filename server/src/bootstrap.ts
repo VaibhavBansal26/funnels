@@ -19,6 +19,7 @@ import { verificationJob } from './services/domains.js';
 import { seedTemplates } from './templates/seed.js';
 import { migrateLegacyPages } from './services/pagemigration.js';
 import { EventBus } from './util/bus.js';
+import { backfillCatalog } from './services/catalogcheckout.js';
 import { PageCache } from './util/pagecache.js';
 import { Flights } from './util/flights.js';
 import { RefCache } from './util/refcache.js';
@@ -96,6 +97,7 @@ export async function createDeps(config: Config, overrides: Partial<Deps> = {}):
   // First run is one interval away: boot never waits for it, and exactly one pending job exists however many replicas start.
   if (config.ENABLE_WORKER) await scheduleMaintenance(deps, config.MAINTENANCE_INTERVAL_HOURS * 3_600_000);
   return deps;
+  await backfillCatalog(deps);
 }
 
 export function createWorker(deps: Deps): JobWorker {

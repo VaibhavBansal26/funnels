@@ -4,7 +4,11 @@ import { COMPONENT_MIGRATIONS, COMPONENT_VERSION, PROJECT_LIMITS, cleanProject, 
 import { contrastRatio, createPageBuilder } from '../src/pagemodel/shared/build.js';
 import { BASE_CSS } from '../src/pagemodel/shared/css.js';
 import { convertDocument } from '../src/pagemodel/convert.js';
-import { SEED_TEMPLATES } from '../src/templates/seed.js';
+import { SEED_TEMPLATES as ALL_TEMPLATES } from '../src/templates/seed.js';
+
+// The seven original starter templates follow the strict rule below (no text colour of their own). The rest of the library sets colours on purpose and is audited
+// per pairing by templates.library.test.ts (templates/contrast.ts).
+const SEED_TEMPLATES = ALL_TEMPLATES.filter((t) => ['lead-magnet', 'webinar-registration', 'product-launch', 'sales-page-bump-upsell', 'thank-you-page', 'book-a-call', 'newsletter-signup'].includes(t.slug));
 import { walk, wrapperOf } from '../src/pagemodel/shared/clean.js';
 
 const wrap = (components: unknown[], styles: unknown[] = []) => ({ styles, pages: [{ frames: [{ component: { type: 'wrapper', components } }] }] });
