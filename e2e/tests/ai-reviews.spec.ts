@@ -23,7 +23,7 @@ test('AI funnel builder: describe a business, watch the stages, get a test-statu
   await expect(page.getByTestId('build-result')).toBeVisible();
   // rewrite one page, then open the funnel
   await page.getByTestId('build-result').getByRole('button', { name: 'Rewrite Landing page' }).click();
-  await expect(page.getByText(/rewritten/)).toBeVisible();
+  await expect(page.getByText(/rewritten/).first()).toBeVisible();
   await page.getByTestId('build-result').getByRole('button', { name: 'Open the funnel' }).click();
   await expect(page.getByRole('list', { name: 'Funnel steps' })).toBeVisible();
   await expect(page.getByText('test', { exact: false }).first()).toBeVisible();
