@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryKey 
 import { api } from './client';
 import type {
   Analytics, AppNotification, Backup, CustomBlock, Delivery, Domain, DomainRoute, FunnelDetail, FunnelFilters, FunnelSummary, Lead, Member, Order, Paged, PageData,
-  TemplateCategory, TemplateDetail, TemplateSummary, Tag, Webhook,
+  PaymentsStatus, Product, ProductList, ProductReport, TemplateCategory, TemplateDetail, TemplateList, Tag, Webhook,
 } from './types';
 
 type Q = Record<string, string | number | boolean | undefined | null>;
@@ -31,9 +31,14 @@ export const useDeliveries = (id: string | null) => useQuery({ queryKey: [...key
 export const useMembers = () => useQuery({ queryKey: keys.members, queryFn: () => api.get<{ data: Member[] }>('/api/members') });
 export const useNotifications = () => useQuery({ queryKey: keys.notifications, queryFn: () => api.get<{ data: AppNotification[]; unread: number }>('/api/notifications') });
 export const useCustomBlocks = () => useQuery({ queryKey: keys.blocks, queryFn: () => api.get<{ data: CustomBlock[] }>('/api/blocks') });
-export const useTemplates = (q: Q) => useQuery({ queryKey: ['templates', q], queryFn: () => api.get<{ data: TemplateSummary[] }>('/api/templates', q) });
+export const useTemplates = (q: Q) => useQuery({ queryKey: ['templates', q], queryFn: () => api.get<TemplateList>('/api/templates', q), placeholderData: keepPreviousData });
 export const useTemplateCategories = () => useQuery({ queryKey: ['templates', 'categories'], queryFn: () => api.get<{ data: TemplateCategory[] }>('/api/templates/categories') });
 export const useTemplate = (id: string | null) => useQuery({ queryKey: ['templates', id], enabled: !!id, queryFn: () => api.get<TemplateDetail>(`/api/templates/${id}`) });
+export const useProducts = (q: Q) => useQuery({ queryKey: ['products', 'list', q], queryFn: () => api.get<ProductList>('/api/products', q), placeholderData: keepPreviousData });
+export const useProduct = (id: string | null) => useQuery({ queryKey: ['products', id], enabled: !!id, queryFn: () => api.get<Product>(`/api/products/${id}`) });
+export const usePaymentsStatus = () => useQuery({ queryKey: ['payments', 'status'], queryFn: () => api.get<PaymentsStatus>('/api/payments/status'), staleTime: 10_000 });
+export const useProductAnalytics = (q: Q, funnelId?: string) =>
+  useQuery({ queryKey: ['product-analytics', funnelId ?? 'all', q], queryFn: () => api.get<ProductReport>(funnelId ? `/api/funnels/${funnelId}/analytics/products` : '/api/analytics/products', q), placeholderData: keepPreviousData });
 export const useLeads = (q: Q) => useQuery({ queryKey: ['leads', q], queryFn: () => api.get<Paged<Lead>>('/api/leads', q), placeholderData: keepPreviousData });
 export const useOrders = (q: Q) => useQuery({ queryKey: ['orders', q], queryFn: () => api.get<Paged<Order>>('/api/orders', q), placeholderData: keepPreviousData });
 export const useAnalytics = (id: string, q: Q) => useQuery({ queryKey: ['analytics', id, q], queryFn: () => api.get<Analytics>(`/api/funnels/${id}/analytics`, q) });

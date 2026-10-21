@@ -9,6 +9,7 @@ import { api, ApiError, errorMessage } from '../api/client';
 import { keys } from '../api/hooks';
 import type { FunnelDetail, PageData, Step } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+import { PaymentsWizard } from '../components/PaymentsWizard';
 import { ConfirmDialog } from '../components/ui';
 import { Button, cn, Dialog, TooltipProvider, useToast } from '../ui';
 import './builder.css';
@@ -51,7 +52,7 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
   });
   const setLeftTab = (t: LeftTab) => { setLeftTabState(t); try { sessionStorage.setItem('funnels.builder.tab', t); } catch { /* private mode: the choice just is not remembered */ } };
   const [drawer, setDrawer] = useState<null | 'left' | 'right'>(null);
-  const [dialog, setDialog] = useState<null | 'shortcuts' | 'settings' | 'history' | 'publish' | 'saveBlock'>(null);
+  const [dialog, setDialog] = useState<null | 'shortcuts' | 'settings' | 'history' | 'publish' | 'saveBlock' | 'payments'>(null);
   const [picker, setPicker] = useState<null | { pick: (url: string) => void }>(null);
   const [aiTarget, setAiTarget] = useState<Component | null>(null);
   const [link, setLink] = useState<null | { href: string; apply: (href: string | null) => void }>(null);
@@ -229,7 +230,7 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
               funnelName={funnel.name} stepId={step.id} steps={funnel.steps} onStep={(id) => ui.goToStep(id)}
               device={device} onDevice={setDeviceTo} previewing={previewing} onPreviewToggle={togglePreview}
               state={save} dirty={dirty} onSave={() => void doSave(true)} onPublish={() => setDialog('publish')}
-              onHistory={() => setDialog('history')} onSettings={() => setDialog('settings')} onShortcuts={() => setDialog('shortcuts')} onOpenPreview={() => void openPreview()}
+              onHistory={() => setDialog('history')} onSettings={() => setDialog('settings')} onShortcuts={() => setDialog('shortcuts')} onOpenPreview={() => void openPreview()} onPayments={can('products:write') && can('funnels:write') ? () => void doSave(true).then(() => setDialog('payments')) : undefined}
               toggles={{ left: layout === 'small', right: !wide }} onTogglePanels={(w) => setDrawer(drawer === w ? null : w)}
             />
             {save.kind === 'error' && save.message?.includes('Reload') ? <div className="alert error m-2" role="alert">{save.message} <Button size="sm" onClick={reload}>Reload page</Button></div> : null}
@@ -270,6 +271,7 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
             <HistoryDialog open={dialog === 'history'} onClose={() => setDialog(null)} dirty={dirty} onRestored={() => { setDialog(null); toast.push('Version restored', 'ok'); reload(); }} />
             {editor ? <SaveBlockDialog open={dialog === 'saveBlock'} onClose={() => setDialog(null)} editor={editor} /> : null}
             <AssetPickerDialog open={!!picker} onClose={() => setPicker(null)} onPick={(url) => picker?.pick(url)} />
+            {dialog === 'payments' ? <PaymentsWizard funnel={funnel} defaultStepId={step.id} onClose={() => setDialog(null)} onDone={(r) => { setDialog(null); window.location.assign(`/funnels/${funnel.id}/builder/${r.checkoutStepId}`); }} /> : null}
             <AiRewriteDialog target={aiTarget} onClose={() => setAiTarget(null)} />
             <LinkDialog state={link} onClose={() => setLink(null)} />
             <PublishDialog open={dialog === 'publish'} onClose={() => setDialog(null)} funnel={funnel} dirty={dirty} save={doSave} saveState={save} onPreview={() => void openPreview()} />

@@ -1,6 +1,6 @@
 // Adapted from the legacy builder (see docs/PROVENANCE.md): the legacy top bar (back, active page dropdown, desktop / mobile switch, undo, redo, popup, X-ray (outline) toggle,
 // preview, save), reorganised with the step switcher, a tablet size, history, page settings and publish.
-import { ArrowLeft, Eye, History, Keyboard, Monitor, MoreHorizontal, Pencil, Redo2, Rocket, Save, Settings2, Smartphone, Tablet, Undo2, ExternalLink, LayoutPanelLeft, SlidersHorizontal, LoaderCircle, CircleAlert, Check } from 'lucide-react';
+import { ArrowLeft, Eye, History, Keyboard, Monitor, MoreHorizontal, Pencil, Redo2, Rocket, Save, Settings2, Smartphone, CreditCard, Tablet, Undo2, ExternalLink, LayoutPanelLeft, SlidersHorizontal, LoaderCircle, CircleAlert, Check } from 'lucide-react';
 import { Link } from 'react-router';
 import { Badge, Button, buttonVariants, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Select, Tooltip } from '../../ui';
 import { DEVICES, type DeviceId } from '../editor/createEditor';
@@ -21,10 +21,10 @@ export function SaveStatus({ state, dirty }: { state: SaveState; dirty: boolean 
   return <span role="status" aria-live="polite" className={cn('hidden items-center gap-1.5 text-[0.8rem] font-medium md:inline-flex', tone)}>{icon}<span className="max-w-48 truncate">{text}</span></span>;
 }
 
-export function TopBar({ funnelName, stepId, steps, onStep, device, onDevice, previewing, onPreviewToggle, state, dirty, onSave, onPublish, onHistory, onSettings, onShortcuts, onOpenPreview, toggles, onTogglePanels }: {
+export function TopBar({ funnelName, stepId, steps, onStep, device, onDevice, previewing, onPreviewToggle, state, dirty, onSave, onPublish, onHistory, onSettings, onShortcuts, onOpenPreview, onPayments, toggles, onTogglePanels }: {
   funnelName: string; stepId: string; steps: { id: string; name: string; position: number }[]; onStep: (id: string) => void;
   device: DeviceId; onDevice: (d: DeviceId) => void; previewing: boolean; onPreviewToggle: () => void;
-  state: SaveState; dirty: boolean; onSave: () => void; onPublish: () => void; onHistory: () => void; onSettings: () => void; onShortcuts: () => void; onOpenPreview: () => void;
+  state: SaveState; dirty: boolean; onSave: () => void; onPublish: () => void; onHistory: () => void; onSettings: () => void; onShortcuts: () => void; onOpenPreview: () => void; onPayments?: () => void;
   toggles: { left: boolean; right: boolean }; onTogglePanels: (which: 'left' | 'right') => void;
 }) {
   const { editor, env } = useBuilder();
@@ -62,6 +62,7 @@ export function TopBar({ funnelName, stepId, steps, onStep, device, onDevice, pr
       <SaveStatus state={state} dirty={dirty} />
       <Tooltip label="Version history"><Button variant="ghost" size="icon" className="hidden sm:inline-flex" aria-label="Version history" onClick={onHistory}><History /></Button></Tooltip>
       <Tooltip label="Page settings"><Button variant="ghost" size="icon" className="hidden sm:inline-flex" aria-label="Page settings" onClick={onSettings}><Settings2 /></Button></Tooltip>
+      {onPayments ? <Tooltip label="Add payments: product, checkout, bump, upsell and thank-you steps"><Button variant="ghost" size="icon" className="hidden sm:inline-flex" aria-label="Add payments" onClick={onPayments}><CreditCard /></Button></Tooltip> : null}
       <Tooltip label="Keyboard shortcuts" shortcut="?"><Button variant="ghost" size="icon" className="hidden lg:inline-flex" aria-label="Keyboard shortcuts" onClick={onShortcuts}><Keyboard /></Button></Tooltip>
       <Tooltip label="Open the saved page in a new tab"><Button size="sm" className="hidden sm:inline-flex" onClick={onOpenPreview}><ExternalLink /><span className="hidden xl:inline">View</span></Button></Tooltip>
       <Button size="sm" aria-label="Save" disabled={state.kind === 'saving' || (!dirty && state.kind !== 'error')} onClick={onSave}><Save /><span className="hidden xl:inline">Save</span></Button>
@@ -74,6 +75,7 @@ export function TopBar({ funnelName, stepId, steps, onStep, device, onDevice, pr
           <DropdownMenuItem onSelect={onPreviewToggle}>{previewing ? <Pencil /> : <Eye />} {previewing ? 'Back to editing' : 'Preview'}</DropdownMenuItem>
           <DropdownMenuItem onSelect={onHistory}><History /> Version history</DropdownMenuItem>
           <DropdownMenuItem onSelect={onSettings}><Settings2 /> Page settings</DropdownMenuItem>
+          {onPayments ? <DropdownMenuItem onSelect={onPayments}><CreditCard /> Add payments</DropdownMenuItem> : null}
           <DropdownMenuItem onSelect={onOpenPreview}><ExternalLink /> View saved page</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

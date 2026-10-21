@@ -10,6 +10,7 @@ import { Button, Input, Select, Slider, Switch, Textarea } from '../../ui';
 import { randomId } from '../editor/types';
 import { useBuilder } from '../useEditor';
 import { inputCls, Row } from './kit';
+import { ProductPickerDialog, StepSelect, type Role } from './ProductPicker';
 
 export interface TraitProps {
   editor: Editor;
@@ -232,24 +233,61 @@ export function FormTrait({ trait }: TraitProps) {
 /* ---------- checkout (legacy: Checkout settings, order bump, one-click upsell) ---------- */
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'SEK', 'NZD', 'INR'].map((c) => ({ value: c, label: c }));
 export function ProductTrait({ trait }: TraitProps) {
+  const { env } = useBuilder();
   const p = val<ProductProps>(trait, { productName: '', price: 0, currency: 'USD', buttonLabel: 'Buy now', orderBump: false, oneClickUpsell: false, success: { type: 'next_step' } });
   const set = (n: Partial<ProductProps>) => trait.setValue({ ...live(trait, p), ...n });
-  const role = p.orderBump ? 'bump' : p.oneClickUpsell ? 'upsell' : 'main';
+  const [picking, setPicking] = useState(false);
+  const role: Role = p.orderBump ? 'bump' : p.oneClickUpsell ? (p.downsell ? 'downsell' : 'upsell') : 'main';
   const parsed = ProductPropsSchema.safeParse(p);
   const issues = parsed.success ? [] : parsed.error.issues.map((i) => i.message);
+  const linked = !!p.priceId;
+  const setRole = (v: Role) => set({ orderBump: v === 'bump', oneClickUpsell: v === 'upsell' || v === 'downsell', downsell: v === 'downsell' ? true : undefined, ...(v === 'upsell' || v === 'downsell' || v === 'bump' ? { quantity: undefined, allowPromotionCodes: undefined } : { acceptStepId: undefined, declineStepId: undefined }) });
+  const q = p.quantity ?? { enabled: false, min: 1, max: 10, default: 1 };
   return (
     <div className="flex flex-col gap-2.5">
-      <Row label="Role"><Select size="sm" aria-label="Role of this offer" value={role} options={[{ value: 'main', label: 'Main offer' }, { value: 'bump', label: 'Order bump (added to the main offer)' }, { value: 'upsell', label: 'One-click upsell' }]} onValueChange={(v) => set({ orderBump: v === 'bump', oneClickUpsell: v === 'upsell' })} /></Row>
-      <Row label="Product"><input aria-label="Product name" className={inputCls} value={p.productName} onChange={(e) => set({ productName: e.target.value })} /></Row>
+      <Row label="Role"><Select size="sm" aria-label="Role of this offer" value={role} options={[{ value: 'main', label: 'Main offer' }, { value: 'bump', label: 'Order bump (added to the main offer)' }, { value: 'upsell', label: 'One-click upsell' }, { value: 'downsell', label: 'One-click downsell (after a declined upsell)' }]} onValueChange={(v) => setRole(v as Role)} /></Row>
+      {linked ? (
+        <div className="rounded-lg border border-border bg-surface-2/50 p-2.5" data-testid="linked-product">
+          <div className="text-[0.82rem] font-semibold">{p.productName}</div>
+          <div className="text-[0.82rem] text-muted">{new Intl.NumberFormat(undefined, { style: 'currency', currency: p.currency }).format(p.price)}{p.interval ? ` / ${p.interval}` : ''}{p.trialDays ? `, ${p.trialDays}-day trial` : ''}</div>
+          <div className="mt-2 flex flex-wrap gap-1.5"><Button size="sm" onClick={() => setPicking(true)}>Change product</Button><a className="inline-flex min-h-7 items-center text-[0.8rem] text-primary underline" href="/products" target="_blank" rel="noreferrer">Edit prices in Products</a></div>
+          <p className="m-0 mt-1.5 text-[0.72rem] text-muted">The price comes from your catalog and is applied by the server at checkout, never from the page.</p>
+        </div>
+      ) : (
+        <>
+          <Button size="sm" variant="primary" onClick={() => setPicking(true)}>Choose from your products</Button>
+          <Row label="Product"><input aria-label="Product name" className={inputCls} value={p.productName} onChange={(e) => set({ productName: e.target.value })} /></Row>
+          <div className="grid grid-cols-[1fr_5.5rem] gap-2">
+            <Row label="Price"><input type="number" min={0} step="0.01" aria-label="Price" className={inputCls} value={p.price} onChange={(e) => set({ price: Math.max(0, Number(e.target.value) || 0) })} /></Row>
+            <Select size="sm" aria-label="Currency" value={p.currency} options={CURRENCIES} onValueChange={(currency) => set({ currency })} />
+          </div>
+          <p className="m-0 rounded-md bg-surface-2 p-2 text-[0.72rem] text-muted">Not linked to a product yet: saving the page adds it to your catalog automatically (or pick an existing product above).</p>
+        </>
+      )}
       <Row label="Description"><input aria-label="Product description" className={inputCls} value={p.description ?? ''} onChange={(e) => set({ description: e.target.value || undefined })} /></Row>
-      <div className="grid grid-cols-[1fr_5.5rem] gap-2">
-        <Row label="Price"><input type="number" min={0} step="0.01" aria-label="Price" className={inputCls} value={p.price} onChange={(e) => set({ price: Math.max(0, Number(e.target.value) || 0) })} /></Row>
-        <Select size="sm" aria-label="Currency" value={p.currency} options={CURRENCIES} onValueChange={(currency) => set({ currency })} />
-      </div>
       {role !== 'bump' ? <Row label="Button text"><input aria-label="Buy button text" className={inputCls} value={p.buttonLabel} onChange={(e) => set({ buttonLabel: e.target.value })} /></Row> : null}
-      {role !== 'bump' ? <SuccessEditor value={p.success as never} onChange={(success) => set({ success: success as ProductProps['success'] })} /> : null}
+      {role === 'main' ? (
+        <>
+          <Check id="qty" label="Let buyers choose a quantity" checked={!!q.enabled} onChange={(enabled) => set({ quantity: { ...q, enabled } })} />
+          {q.enabled ? (
+            <div className="grid grid-cols-3 gap-2">
+              {(['min', 'max', 'default'] as const).map((k) => <Row key={k} label={k === 'default' ? 'Start at' : k === 'min' ? 'Least' : 'Most'}><input type="number" min={1} max={99} aria-label={`Quantity ${k}`} className={inputCls} value={q[k]} onChange={(e) => set({ quantity: { ...q, [k]: Math.min(99, Math.max(1, Number(e.target.value) || 1)) } })} /></Row>)}
+            </div>
+          ) : null}
+          <Check id="promo" label="Allow promotion codes" checked={!!p.allowPromotionCodes} onChange={(allowPromotionCodes) => set({ allowPromotionCodes: allowPromotionCodes || undefined })} />
+          {p.allowPromotionCodes ? <p className="m-0 text-[0.72rem] text-muted">Stripe Checkout shows a code field. Create the codes in your Stripe dashboard (Products &gt; Coupons); a code lowers what the buyer pays and the order records the discount.</p> : null}
+        </>
+      ) : null}
+      {role === 'main' ? <SuccessEditor value={p.success as never} onChange={(success) => set({ success: success as ProductProps['success'] })} /> : null}
+      {role === 'upsell' || role === 'downsell' ? (
+        <>
+          <Row label="If they accept"><StepSelect label="After accepting" value={p.acceptStepId} steps={env.steps} exclude={env.stepId} onChange={(acceptStepId) => set({ acceptStepId })} /></Row>
+          <Row label="If they decline"><StepSelect label="After declining" value={p.declineStepId} steps={env.steps} exclude={env.stepId} onChange={(declineStepId) => set({ declineStepId })} /></Row>
+        </>
+      ) : null}
       <p className="rounded-md bg-surface-2 p-2 text-[0.72rem] text-muted">{CheckoutSchemaHint}</p>
       <Issues issues={issues} />
+      {picking ? <ProductPickerDialog open role={role} onClose={() => setPicking(false)} onPick={(fields) => set(fields)} /> : null}
     </div>
   );
 }

@@ -64,8 +64,15 @@ export interface InvitationResult { invitation: Invitation; delivered: boolean; 
 export interface SessionInfo { id: string; createdAt: string; lastUsedAt: string; expiresAt: string; userAgent: string | null; ip: string | null; current: boolean }
 export interface AuditRow { id: string; actorId: string; action: string; target: string | null; detail: Record<string, unknown>; ip: string | null; createdAt: string; supportAccess?: boolean; label?: string }
 
-export interface TemplateSummary { id: string; slug: string; name: string; description: string; categoryId: string | null; categoryName: string | null; stepCount: number; heading: string | null }
-export interface TemplateDetail extends TemplateSummary { steps: { id: string; name: string; path: string; position: number; doc: unknown }[] }
+export interface TemplateProductSlot { key: string; role: 'main' | 'bump' | 'upsell' | 'downsell'; name: string; description: string; type: 'one_time' | 'subscription'; amount: number; currency: string; interval?: string; trialDays?: number }
+export interface TemplateSummary {
+  id: string; slug: string; name: string; description: string; categoryId: string | null; categoryName: string | null; categorySlug: string | null; industry: string; goal: string; tags: string[];
+  version: number; source: string; accent: string; stepCount: number; heading: string | null; hasCheckout: boolean; products: TemplateProductSlot[];
+  thumbnail: { step: number; url: string; accent: string; heading: string | null }; createdAt: string; updatedAt: string;
+}
+export interface Facet { value: string; count: number }
+export interface TemplateList { data: TemplateSummary[]; pagination: Pagination; facets: { industries: Facet[]; goals: Facet[]; tags: Facet[] } }
+export interface TemplateDetail extends TemplateSummary { steps: { id: string; name: string; path: string; position: number; kind: string }[]; preview: { step: number; name: string; html: string } | null }
 export interface TemplateCategory { id: string; name: string; slug: string; templateCount: number }
 export interface CustomBlock { id: string; name: string; block: unknown; createdAt: string }
 
@@ -89,3 +96,38 @@ export interface PageData { stepId: string; version: number; checksum: string; u
 export interface PathConflict { path: string; resolved_path: string; conflictsWith?: { funnelName: string; stepName: string } }
 
 export interface ApiKeyInfo { id: string; name: string; mode: 'live' | 'test'; prefix: string; scopes: ('analytics:read' | 'analytics:export')[]; ipAllowlist: string[]; createdAt: string; expiresAt: string | null; lastUsedAt: string | null; revokedAt: string | null }
+
+// ---- product catalog, payments and product analytics ----
+export interface Price {
+  id: string; productId: string; currency: string; unitAmount: number; exponent: number; amount: number; formatted: string; interval: 'day' | 'week' | 'month' | 'year' | null; intervalCount: number;
+  trialDays: number; nickname: string | null; active: boolean; replacedBy: string | null; stripe: { priceId: string | null; status: string }; createdAt: string; archivedAt: string | null;
+}
+export type SyncState = 'not_connected' | 'local' | 'pending' | 'synced' | 'error';
+export interface Product {
+  id: string; name: string; description: string; images: string[]; status: 'active' | 'archived'; type: 'one_time' | 'subscription'; taxCode: string | null; metadata: Record<string, string>;
+  defaultPriceId: string | null; prices: Price[]; stripe: { productId: string | null; syncState: SyncState; error: string | null; syncedAt: string | null }; orderCount: number;
+  createdAt: string; updatedAt: string; archivedAt: string | null;
+}
+export interface ProductList { data: Product[]; pagination: Pagination; stripe: { connected: boolean; chargesEnabled: boolean } }
+export interface PaymentsStatus {
+  provider: string; mode: 'test' | 'live' | null; state: 'unavailable' | 'not_connected' | 'onboarding_incomplete' | 'restricted' | 'connected'; stale: boolean;
+  settings: { statementDescriptor: string | null; receiptEmails: boolean; taxEnabled: boolean };
+  testCards: { number: string; outcome: string; note: string }[]; webhooks: { platform: boolean; connect: boolean };
+  connect: { accountId: string; chargesEnabled: boolean; payoutsEnabled: boolean; detailsSubmitted: boolean; requirementsDue: string[]; disabledReason: string | null } | null;
+  account: { country: string | null; currency: string | null; paymentMethods: string[]; statementDescriptor: string | null; displayName: string | null; taxAvailable: boolean } | null;
+}
+export interface SeriesPoint { t: string; orders: number; units: number; gross: number; refunded: number; disputedLost: number; net: number }
+export interface TakeRate { offered: number; taken: number; rate: number }
+export interface ProductRow {
+  productId: string | null; name: string; currency: string; exponent: number; orders: number; units: number; gross: number; refunded: number; disputedLost: number; net: number; discount: number; aov: number;
+  refundRate: number; refundedOrders: number; roles: Record<'main' | 'bump' | 'upsell' | 'downsell', number>; customers: { total: number; new: number; repeat: number };
+  checkout: { visitors: number; orders: number; conversion: number }; takeRates: { bump: TakeRate; upsell: TakeRate; downsell: TakeRate }; series: SeriesPoint[];
+  topFunnels: { funnelId: string; name: string; orders: number; gross: number; refunded: number; net: number }[];
+  topSteps: { stepId: string; name: string; funnelId: string; funnelName: string; orders: number; gross: number; refunded: number; net: number }[];
+}
+export interface ProductReport {
+  range: { from: string; to: string; tz: string; interval: string };
+  totals: { currency: string; exponent: number; orders: number; units: number; gross: number; refunded: number; disputedLost: number; net: number; discount: number; aov: number; refundRate: number; customers: { total: number; new: number; repeat: number }; series: SeriesPoint[] }[];
+  products: ProductRow[];
+}
+export interface PeriodSummary { narrative: string; actions: { priority: number; title: string; detail: string }[]; source: 'model' | 'heuristic' | 'fallback' }

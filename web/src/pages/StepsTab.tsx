@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { PaymentsWizard } from '../components/PaymentsWizard';
+import { useAuth } from '../auth/AuthContext';
 import { PageThumb } from '../components/FunnelThumb';
 import { Link } from 'react-router';
 import { api, errorMessage } from '../api/client';
@@ -61,6 +63,8 @@ export function StepsTab({ funnel }: { funnel: FunnelDetail }) {
   const [dragging, setDragging] = useState<number | null>(null);
   const [over, setOver] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  const [payments, setPayments] = useState(false);
+  const { can } = useAuth();
   const [deleting, setDeleting] = useState<Step | null>(null);
   useEffect(() => setOrder(funnel.steps), [funnel.steps]);
 
@@ -81,7 +85,10 @@ export function StepsTab({ funnel }: { funnel: FunnelDetail }) {
     <div className="stack">
       <div className="row between">
         <p className="muted" style={{ margin: 0 }}>Drag steps to reorder, or focus a step and press Alt+↑ / Alt+↓. Buttons on each step do the same.</p>
-        <button type="button" className="btn primary" onClick={() => setAdding(true)}>Add step</button>
+        <span className="row">
+          {can('funnels:write') && can('products:write') ? <button type="button" className="btn" onClick={() => setPayments(true)}>Add payments</button> : null}
+          <button type="button" className="btn primary" onClick={() => setAdding(true)}>Add step</button>
+        </span>
       </div>
       <ErrorBanner error={reorder.error ?? dup.error ?? del.error ?? defaults.error} />
       <ol className="m-0 list-none p-0" aria-label="Funnel steps">
@@ -129,6 +136,7 @@ export function StepsTab({ funnel }: { funnel: FunnelDetail }) {
       </ol>
       {!funnel.domain ? <p className="muted small">Connect a domain in the Settings tab to choose the home and 404 pages served on it.</p> : null}
       {adding ? <AddStepDialog funnel={funnel} onClose={() => setAdding(false)} /> : null}
+      {payments ? <PaymentsWizard funnel={funnel} onClose={() => setPayments(false)} onDone={(r) => { setPayments(false); toast.push(r.added.length ? `Payments added: ${r.added.length} new step${r.added.length === 1 ? '' : 's'}` : 'Payments added to the page', 'ok'); }} /> : null}
       {deleting ? (
         <ConfirmDialog danger title="Delete step?" confirmLabel="Delete step" busy={del.isPending} message={<>"{deleting.name}" and its page content will be removed. Its backups go with it.</>} onCancel={() => setDeleting(null)}
           onConfirm={() => del.mutate(deleting.id, { onSuccess: () => { toast.push('Step deleted', 'ok'); setDeleting(null); }, onError: () => setDeleting(null) })} />

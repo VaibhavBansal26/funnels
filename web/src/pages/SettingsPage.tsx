@@ -9,6 +9,7 @@ import { SecurityCard } from './settings/SecurityCard';
 import { TeamSection } from './settings/TeamSection';
 import { ApiAccess } from './settings/ApiAccess';
 import { Billing } from './settings/Billing';
+import { Payments } from './settings/Payments';
 import { useToast } from '../components/Toasts';
 
 function WorkspaceCard() {
@@ -59,6 +60,7 @@ export function SettingsPage() {
       <SecurityCard />
       {can('members:read') ? <TeamSection /> : null}
       {can('billing:read') ? <Billing /> : null}
+      {can('products:read') ? <Payments /> : null}
       <ApiAccess />
       {can('ai:use') ? <AiUsage /> : null}
     </div>

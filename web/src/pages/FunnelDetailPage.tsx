@@ -3,12 +3,13 @@ import { Link, NavLink, Navigate, useNavigate, useParams } from 'react-router';
 import { useFunnel } from '../api/hooks';
 import { ApiError } from '../api/client';
 import { ErrorBanner, Loading, StatusBadge } from '../components/ui';
+import { ProductAnalytics } from '../components/ProductAnalytics';
 import { AnalyticsTab } from './AnalyticsTab';
 import { LeadsTab, OrdersTab } from './LeadsOrdersTabs';
 import { SettingsTab } from './SettingsTab';
 import { StepsTab } from './StepsTab';
 
-const TABS = ['steps', 'analytics', 'leads', 'orders', 'settings'] as const;
+const TABS = ['steps', 'analytics', 'products', 'leads', 'orders', 'settings'] as const;
 type Tab = (typeof TABS)[number];
 
 export function FunnelDetailPage() {
@@ -43,6 +44,7 @@ export function FunnelDetailPage() {
       </nav>
       {tab === 'steps' ? <StepsTab funnel={f} /> : null}
       {tab === 'analytics' ? <AnalyticsTab funnel={f} /> : null}
+      {tab === 'products' ? <ProductAnalytics funnelId={f.id} /> : null}
       {tab === 'leads' ? <LeadsTab funnelId={f.id} /> : null}
       {tab === 'orders' ? <OrdersTab funnelId={f.id} /> : null}
       {tab === 'settings' ? <SettingsTab funnel={f} /> : null}

@@ -69,7 +69,7 @@ export async function startConnect(deps: Deps, auth: Auth, ip?: string) {
       await audit(deps, { workspaceId: auth.workspaceId, actorId: auth.userId, action: 'stripe.connect_started', target: created.id, ip });
       acct = (await accountOf(deps, auth.workspaceId))!;
     }
-    const link = await stripe.call<{ url: string }>('POST', '/v1/account_links', { account: acct.stripe_account_id, refresh_url: appUrl(deps, '/billing?connect=refresh'), return_url: appUrl(deps, '/billing?connect=return'), type: 'account_onboarding' });
+    const link = await stripe.call<{ url: string }>('POST', '/v1/account_links', { account: acct.stripe_account_id, refresh_url: appUrl(deps, '/settings?connect=refresh'), return_url: appUrl(deps, '/settings?connect=return'), type: 'account_onboarding' });
     return { url: link.url };
   });
 }
@@ -120,7 +120,7 @@ export async function startSubscription(deps: Deps, auth: Auth, plan: 'pro' | 'b
     const customer = await customerOf(deps, auth, w);
     const s = await requireStripe(deps).call<{ url: string }>('POST', '/v1/checkout/sessions', {
       mode: 'subscription', customer, line_items: [{ price, quantity: 1 }], client_reference_id: w.id,
-      success_url: appUrl(deps, '/billing?checkout=success'), cancel_url: appUrl(deps, '/billing?checkout=cancelled'),
+      success_url: appUrl(deps, '/settings?checkout=success'), cancel_url: appUrl(deps, '/settings?checkout=cancelled'),
       metadata: { workspace_id: w.id, plan }, subscription_data: { metadata: { workspace_id: w.id, plan } },
     });
     await audit(deps, { workspaceId: w.id, actorId: auth.userId, action: 'billing.checkout_started', ip, detail: { plan } });
@@ -131,7 +131,7 @@ export async function startSubscription(deps: Deps, auth: Auth, plan: 'pro' | 'b
 export async function openPortal(deps: Deps, auth: Auth) {
   const w = await workspaceRow(deps, auth.workspaceId);
   if (!w.stripe_customer_id) throw conflict('NO_BILLING_ACCOUNT', 'There is no subscription to manage yet');
-  return wrap(async () => ({ url: (await requireStripe(deps).call<{ url: string }>('POST', '/v1/billing_portal/sessions', { customer: w.stripe_customer_id, return_url: appUrl(deps, '/billing') })).url }));
+  return wrap(async () => ({ url: (await requireStripe(deps).call<{ url: string }>('POST', '/v1/billing_portal/sessions', { customer: w.stripe_customer_id, return_url: appUrl(deps, '/settings') })).url }));
 }
 
 /** Maps a Stripe subscription (any status) to the workspace's plan. Past-due keeps the plan (grace while Stripe retries the payment); ended subscriptions fall back to free. */
