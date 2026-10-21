@@ -64,7 +64,7 @@ describe('PublishDialog', () => {
   it('test mode: explains test vs live once, preselects the built-in address with its real URL and goes live in one step', async () => {
     view();
     const dlg = await screen.findByRole('dialog', { name: 'Publish' });
-    expect(within(dlg).getByText(/In test mode only people with your preview link/)).toBeInTheDocument();
+    expect(await within(dlg).findByText(/In test mode only people with your preview link/)).toBeInTheDocument();
     expect(dlg).not.toHaveTextContent(/connect a domain/i);
     expect(await within(dlg).findByRole('radio', { name: /Built-in address \(free\)/ })).toBeChecked();
     expect(within(dlg).getByTestId('final-url')).toHaveTextContent('https://app.test/s/acme/promo/free-guide');

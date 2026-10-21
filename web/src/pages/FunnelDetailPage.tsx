@@ -1,5 +1,6 @@
-import { ArrowLeft, Pencil } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Pencil } from 'lucide-react';
 import { Link, NavLink, Navigate, useNavigate, useParams } from 'react-router';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui';
 import { useFunnel } from '../api/hooks';
 import { ApiError } from '../api/client';
 import { ErrorBanner, Loading, StatusBadge } from '../components/ui';
@@ -12,6 +13,9 @@ import { StepsTab } from './StepsTab';
 
 const TABS = ['steps', 'analytics', 'products', 'ads', 'leads', 'orders', 'settings'] as const;
 type Tab = (typeof TABS)[number];
+/** Rarely needed sections live behind "More" (the one that is open stays visible as a tab). */
+const SECONDARY: Tab[] = ['products', 'ads'];
+const label = (t: string) => t[0]!.toUpperCase() + t.slice(1);
 
 export function FunnelDetailPage() {
   const { id = '', tab } = useParams();
@@ -44,7 +48,15 @@ export function FunnelDetailPage() {
         </div>
       </div>
       <nav className="tabs" aria-label="Funnel sections">
-        {TABS.map((t) => <NavLink key={t} to={`/funnels/${id}/${t}`}>{t[0]!.toUpperCase() + t.slice(1)}</NavLink>)}
+        {TABS.filter((t) => !SECONDARY.includes(t) || t === tab).map((t) => <NavLink key={t} to={`/funnels/${id}/${t}`}>{label(t)}</NavLink>)}
+        {SECONDARY.some((t) => t !== tab) ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><button type="button" aria-label="More sections">More <ChevronDown className="inline size-3.5" aria-hidden="true" /></button></DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {SECONDARY.filter((t) => t !== tab).map((t) => <DropdownMenuItem key={t} onSelect={() => nav(`/funnels/${id}/${t}`)}>{label(t)}</DropdownMenuItem>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </nav>
       {tab === 'steps' ? <StepsTab funnel={f} /> : null}
       {tab === 'analytics' ? <AnalyticsTab funnel={f} /> : null}

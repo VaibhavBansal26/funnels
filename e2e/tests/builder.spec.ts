@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { addVerifiedDomain, canvas, createLeadMagnet, dragBlock, goLive, openBuilder, readEditor, register, settledBox } from './helpers.js';
+import { addVerifiedDomain, canvas, createLeadMagnet, dragBlock, goLive, moreAction, openBuilder, readEditor, register, settledBox } from './helpers.js';
 
 // The page builder is GrapesJS rendering the page into an iframe. Every action here is real mouse and keyboard input (drags are mouse down, move, up),
 // and the assertions read what the user sees (the canvas, the panels) or what the server stored and published.
@@ -196,7 +196,7 @@ test('builder: the context menu and the shortcuts dialog open; Escape closes the
   await expect(page.getByRole('menuitem', { name: /Duplicate/ })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Keyboard shortcuts' }).click();
+  await moreAction(page, /Keyboard shortcuts/);
   await expect(page.getByRole('dialog', { name: /Keyboard shortcuts/ })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -223,7 +223,7 @@ test('publish: unsafe input is refused or stays text, and the published page equ
   await expect(page.getByRole('status').filter({ hasText: /^Saved/ })).toBeVisible();
 
   const editorText = (await canvas(page).locator('h1').first().innerText()).replace(/\s+/g, ' ').trim();
-  const [preview] = await Promise.all([context.waitForEvent('page'), page.getByRole('button', { name: 'View', exact: true }).click()]);
+  const [preview] = await Promise.all([context.waitForEvent('page'), moreAction(page, 'View saved page')]);
   await preview.waitForLoadState();
   expect((await preview.locator('h1').first().innerText()).replace(/\s+/g, ' ').trim()).toBe(editorText);
   const html = await preview.content();
@@ -279,7 +279,7 @@ test('builder: Save keeps the replaced version; History lists it and Restore bri
   await page.getByLabel('Search blocks').click();
   await page.keyboard.press('ControlOrMeta+s'); // explicit save: autosave would not keep a history entry
   await expect(page.getByRole('status').filter({ hasText: /^Saved/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Version history' }).click();
+  await moreAction(page, 'Version history');
   const drawer = page.getByRole('dialog', { name: /history/i });
   await expect(drawer.getByRole('listitem')).toHaveCount(1);
   await drawer.getByRole('button', { name: /^Preview/ }).click();

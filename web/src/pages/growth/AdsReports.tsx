@@ -4,19 +4,12 @@ import { growthKeys, money, ratio, useAttribution, useMappings, usePerformance, 
 import { useFunnels, useMutate } from '../../api/hooks';
 import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toasts';
-import { Empty, ErrorBanner, fmtNum, Loading, Modal } from '../../components/ui';
+import { Empty, ErrorBanner, fmtNum, Loading, Modal, RangePicker } from '../../components/ui';
 import { Badge } from '../../ui';
 import { daysAgo, todayIso } from '../AnalyticsTab';
 
 export function Range({ range, setRange, tz }: { range: { from: string; to: string }; setRange: (r: { from: string; to: string }) => void; tz: string }) {
-  return (
-    <>
-      <div className="field"><label htmlFor="ads-from">From</label><input id="ads-from" type="date" className="input" value={range.from} max={range.to} onChange={(e) => setRange({ ...range, from: e.target.value })} /></div>
-      <div className="field"><label htmlFor="ads-to">To</label><input id="ads-to" type="date" className="input" value={range.to} min={range.from} max={todayIso()} onChange={(e) => setRange({ ...range, to: e.target.value })} /></div>
-      {[7, 30, 90].map((n) => <button key={n} type="button" className="btn sm" onClick={() => setRange({ from: daysAgo(n - 1), to: todayIso() })}>Last {n} days</button>)}
-      <span className="muted small">Revenue days are bucketed in {tz}</span>
-    </>
-  );
+  return <RangePicker range={range} setRange={setRange} tz={tz} note="Revenue days are bucketed in" />;
 }
 
 const tzOf = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';

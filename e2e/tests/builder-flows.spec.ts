@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { canvas, createLeadMagnet, dragBlock, openBuilder, readEditor, register } from './helpers.js';
+import { canvas, createLeadMagnet, dragBlock, moreAction, openBuilder, readEditor, register } from './helpers.js';
 
 // The secondary flows of the builder: pages, page settings, images, links, saved blocks, publishing. Real clicks and typing throughout.
 
@@ -36,7 +36,7 @@ test('pages: add, duplicate and delete a page from the Pages panel; the step swi
 
 test('page settings: name, accent colour and SEO title apply and are saved on the server', async ({ page }) => {
   await start(page);
-  await page.getByRole('button', { name: 'Page settings' }).click();
+  await moreAction(page, 'Page settings');
   const dlg = page.getByRole('dialog', { name: 'Page settings' });
   await dlg.getByLabel('Page title').fill('My great offer');
   await dlg.getByLabel('Accent colour').fill('#be123c');

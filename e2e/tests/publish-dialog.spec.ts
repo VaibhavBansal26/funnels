@@ -21,6 +21,8 @@ test('publish from the builder: go live on the built-in address, open it, change
   await setHeading(page, 'Publish me first');
   await publish(page);
   const dlg = page.getByRole('dialog', { name: 'Publish' });
+  await expect(dlg.getByText('Test mode is private to you; live is public.')).toBeVisible();
+  await dlg.getByText('Test vs live', { exact: true }).click(); // the long explanation is behind a disclosure
   await expect(dlg.getByText(/In test mode only people with your preview link/)).toBeVisible();
   await expect(dlg.getByText('Everything is saved.')).toBeVisible();
   await expect(dlg.getByRole('radio', { name: /Built-in address \(free\)/ })).toBeChecked();

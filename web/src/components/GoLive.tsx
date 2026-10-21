@@ -9,7 +9,7 @@ import type { FunnelDetail } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { Badge } from '../ui';
 import { useToast } from './Toasts';
-import { CopyButton, ErrorBanner, Loading, TextField } from './ui';
+import { CopyButton, ErrorBanner, LearnMore, Loading, TextField } from './ui';
 
 export const STATE: Record<PublishState, { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'info' }> = {
   draft: { label: 'Test mode', tone: 'neutral' },
@@ -70,14 +70,17 @@ export function AddressChoices({ data, choice, onChoice, disabled, settingsNewTa
               <br />
               {o.url ? <span className="mono small break-all">{o.url}</span> : <span className="muted small">{o.kind === 'pages' ? 'Created when you go live (name.pages.dev)' : o.kind === 'workers' ? 'Created when you go live (name.account.workers.dev)' : '—'}</span>}
             </span>
-            {o.kind === 'pages' && needsCloudflare(o) ? <><br /><span className="small"><strong>Connect Cloudflare first.</strong> Open <Link to="/settings" {...link}>Settings, Publishing card</Link> and enter your Cloudflare Account id and an API token with the <strong>Cloudflare Pages: Edit</strong> permission. It takes about two minutes and is free.</span></> : null}
+            {o.kind === 'pages' && needsCloudflare(o) ? <><br /><span className="small"><strong>Connect Cloudflare first.</strong> Open <Link to="/settings" {...link}>Settings, Publishing card</Link>.</span></> : null}
             {!o.available && o.reason && !(o.kind === 'pages' && needsCloudflare(o)) ? <><br /><span className="small text-warn">{o.reason}</span></> : null}
-            {o.kind === 'pages' && o.available ? <><br /><span className="muted small">Free. Served by Cloudflare; Cloudflare allows 100 Pages projects per account (one per funnel). The first publish takes about a minute.</span></> : null}
-            {o.kind === 'workers' && o.available ? <><br /><span className="muted small">Experimental: not yet checked against real Cloudflare. Needs a workers.dev subdomain on your Cloudflare account and the token permission Workers Scripts: Edit.</span></> : null}
-            {o.kind === 'custom' ? <><br /><span className="muted small">Your own domain.</span></> : null}
           </span>
         </label>
       ))}
+      <LearnMore label="About these addresses">
+        <p className="m-0"><strong className="font-medium text-fg">Built-in:</strong> free, no account and no DNS needed; a custom domain looks more professional.</p>
+        <p className="m-0"><strong className="font-medium text-fg">Cloudflare Pages:</strong> free, served by Cloudflare. Connect Cloudflare in Settings with your Account id and an API token with the Cloudflare Pages: Edit permission (about two minutes). Cloudflare allows 100 Pages projects per account (one per funnel) and the first publish takes about a minute.</p>
+        <p className="m-0"><strong className="font-medium text-fg">Cloudflare Workers (experimental):</strong> not yet checked against real Cloudflare. Needs a workers.dev subdomain on your account and the token permission Workers Scripts: Edit.</p>
+        <p className="m-0"><strong className="font-medium text-fg">Your own domain:</strong> add and verify it on the Domains page.</p>
+      </LearnMore>
       {noOptions ? <p className="small muted">No address is ready yet. <Link to="/settings" {...link}>Connect Cloudflare</Link> (free) or <Link to="/domains" {...link}>add a domain</Link>.</p> : null}
     </fieldset>
   );
@@ -105,12 +108,12 @@ export function BuiltinSettings({ data, tweak }: { data: AddressOptions; tweak: 
   if (!b) return null;
   return (
     <div className="stack" aria-label="Built-in address settings">
-      <TextField label="Address name" value={slug ?? b.funnelSlug} hint={`The last part of ${b.base.replace(b.funnelSlug, '<name>')}. Renaming the funnel does not change it; changing it moves the address (the old one stops working).`} error={slug !== null && !SLUG.test(slug) ? 'Use 1 to 40 lower-case letters, digits and single hyphens' : undefined} onChange={(v) => setSlug(v.toLowerCase())} />
+      <TextField label="Address name" value={slug ?? b.funnelSlug} hint={`The last part of ${b.base.replace(b.funnelSlug, '<name>')}. Changing it moves the address.`} error={slug !== null && !SLUG.test(slug) ? 'Use 1 to 40 lower-case letters, digits and single hyphens' : undefined} onChange={(v) => setSlug(v.toLowerCase())} />
       <div className="row">
         <button type="button" className="btn sm" disabled={slug === null || slug === b.funnelSlug || !SLUG.test(slug) || tweak.isPending} onClick={() => tweak.mutate({ public_slug: slug }, { onSuccess: () => { setSlug(null); toast.push('Address name changed', 'ok'); }, onError: () => undefined })}>Save name</button>
         <label className="check"><input type="checkbox" checked={b.allowIndexing} disabled={tweak.isPending} onChange={(e) => tweak.mutate({ allow_indexing: e.target.checked }, { onError: () => undefined })} />Let search engines index this address</label>
       </div>
-      <p className="muted small">Built-in addresses are hidden from search engines by default. They are free and need no DNS; a custom domain looks more professional.</p>
+      <LearnMore label="About search engines"><p className="m-0">Built-in addresses are hidden from search engines by default. They are free and need no DNS; a custom domain looks more professional. Renaming the funnel does not change the address name; changing it moves the address and the old one stops working.</p></LearnMore>
     </div>
   );
 }
@@ -139,7 +142,8 @@ export function GoLivePanel({ funnel, onDone }: { funnel: FunnelDetail; onDone?:
 
       {state === 'draft' ? (
         <div className="alert" role="note">
-          <strong>Test vs live.</strong> {TEST_VS_LIVE} You can take it offline again at any time.
+          <strong>Test vs live.</strong> Test mode is private to you; live is public.
+          <LearnMore className="mt-1"><p className="m-0">{TEST_VS_LIVE} You can take it offline again at any time.</p></LearnMore>
         </div>
       ) : null}
 

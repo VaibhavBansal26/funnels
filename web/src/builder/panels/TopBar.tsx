@@ -60,23 +60,19 @@ export function TopBar({ funnelName, stepId, steps, onStep, device, onDevice, pr
         <Button variant={previewing ? 'soft' : 'ghost'} size="sm" className="hidden sm:inline-flex" aria-pressed={previewing} onClick={onPreviewToggle}>{previewing ? <Pencil /> : <Eye />}<span className="hidden xl:inline">{previewing ? 'Edit' : 'Preview'}</span></Button>
       </Tooltip>
       <SaveStatus state={state} dirty={dirty} />
-      <Tooltip label="Version history"><Button variant="ghost" size="icon" className="hidden sm:inline-flex" aria-label="Version history" onClick={onHistory}><History /></Button></Tooltip>
-      <Tooltip label="Page settings"><Button variant="ghost" size="icon" className="hidden sm:inline-flex" aria-label="Page settings" onClick={onSettings}><Settings2 /></Button></Tooltip>
-      {onPayments ? <Tooltip label="Add payments: product, checkout, bump, upsell and thank-you steps"><Button variant="ghost" size="icon" className="hidden sm:inline-flex" aria-label="Add payments" onClick={onPayments}><CreditCard /></Button></Tooltip> : null}
-      <Tooltip label="Keyboard shortcuts" shortcut="?"><Button variant="ghost" size="icon" className="hidden lg:inline-flex" aria-label="Keyboard shortcuts" onClick={onShortcuts}><Keyboard /></Button></Tooltip>
-      <Tooltip label="Open the saved page in a new tab"><Button size="sm" className="hidden sm:inline-flex" onClick={onOpenPreview}><ExternalLink /><span className="hidden xl:inline">View</span></Button></Tooltip>
       <Button size="sm" aria-label="Save" disabled={state.kind === 'saving' || (!dirty && state.kind !== 'error')} onClick={onSave}><Save /><span className="hidden xl:inline">Save</span></Button>
       <Button size="sm" variant="primary" aria-label="Publish" onClick={onPublish}><Rocket /><span className="hidden sm:inline">Publish</span></Button>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="sm:hidden" aria-label="More actions"><MoreHorizontal /></Button></DropdownMenuTrigger>
+        <Tooltip label="More"><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="More actions"><MoreHorizontal /></Button></DropdownMenuTrigger></Tooltip>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem disabled={!um.hasUndo()} onSelect={() => editor.runCommand('core:undo')}><Undo2 /> Undo</DropdownMenuItem>
-          <DropdownMenuItem disabled={!um.hasRedo()} onSelect={() => editor.runCommand('core:redo')}><Redo2 /> Redo</DropdownMenuItem>
-          <DropdownMenuItem onSelect={onPreviewToggle}>{previewing ? <Pencil /> : <Eye />} {previewing ? 'Back to editing' : 'Preview'}</DropdownMenuItem>
+          <DropdownMenuItem className="sm:hidden" disabled={!um.hasUndo()} onSelect={() => editor.runCommand('core:undo')}><Undo2 /> Undo</DropdownMenuItem>
+          <DropdownMenuItem className="sm:hidden" disabled={!um.hasRedo()} onSelect={() => editor.runCommand('core:redo')}><Redo2 /> Redo</DropdownMenuItem>
+          <DropdownMenuItem className="sm:hidden" onSelect={onPreviewToggle}>{previewing ? <Pencil /> : <Eye />} {previewing ? 'Back to editing' : 'Preview'}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onOpenPreview}><ExternalLink /> View saved page</DropdownMenuItem>
           <DropdownMenuItem onSelect={onHistory}><History /> Version history</DropdownMenuItem>
           <DropdownMenuItem onSelect={onSettings}><Settings2 /> Page settings</DropdownMenuItem>
           {onPayments ? <DropdownMenuItem onSelect={onPayments}><CreditCard /> Add payments</DropdownMenuItem> : null}
-          <DropdownMenuItem onSelect={onOpenPreview}><ExternalLink /> View saved page</DropdownMenuItem>
+          <DropdownMenuItem className="hidden lg:flex" onSelect={onShortcuts}><Keyboard /> Keyboard shortcuts <kbd className="ml-auto font-mono text-xs text-muted">?</kbd></DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       {toggles.right ? <Tooltip label="Style and settings"><Button variant="ghost" size="icon" aria-label="Open style and settings" onClick={() => onTogglePanels('right')}><SlidersHorizontal /></Button></Tooltip> : null}

@@ -51,15 +51,19 @@ describe('step list: keyboard reordering', () => {
     const first = stepRows()[0]!;
     fireEvent.keyDown(first, { key: 'ArrowDown' });
     expect(rows()).toEqual(['Step 1', 'Step 2', 'Step 3']);
-    await userEvent.click(screen.getByRole('button', { name: 'Move Step 1 down' }));
+    await userEvent.click(screen.getByRole('button', { name: 'More actions for Step 1' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Move down/ }));
     await waitFor(() => expect(screen.getAllByRole('alert').length).toBeGreaterThan(0));
     await waitFor(() => expect(rows()).toEqual(['Step 1', 'Step 2', 'Step 3']));
   });
 
-  it('first step cannot move up and last cannot move down', () => {
+  it('first step cannot move up and last cannot move down', async () => {
     wrap(<StepsTab funnel={funnel} />);
-    expect(screen.getByRole('button', { name: 'Move Step 1 up' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move Step 3 down' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'More actions for Step 1' }));
+    expect(await screen.findByRole('menuitem', { name: /Move up/ })).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'More actions for Step 3' }));
+    expect(await screen.findByRole('menuitem', { name: /Move down/ })).toHaveAttribute('aria-disabled', 'true');
   });
 });
 

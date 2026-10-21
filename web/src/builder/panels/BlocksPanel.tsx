@@ -116,7 +116,7 @@ export function BlocksPanel() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         {groups.length === 0 ? <p className="p-6 text-center text-sm text-muted">No block matches “{query}”.</p> : null}
         {groups.map((g) => (
-          <Section key={`${g.c}${q ? ':search' : ''}`} title={g.c} defaultOpen={!!q || g.c === 'Sections' || g.c === 'Text' || g.c === 'Layout'} badge={<span className="rounded-full bg-surface-2 px-1.5 text-[0.7rem] font-semibold text-muted">{g.blocks.length}</span>}>
+          <Section key={`${g.c}${q ? ':search' : ''}`} title={g.c} defaultOpen={!!q || g.c === 'Sections'} badge={<span className="rounded-full bg-surface-2 px-1.5 text-[0.7rem] font-semibold text-muted">{g.blocks.length}</span>}>
             <div className={cn('grid grid-cols-2 gap-2.5')}>
               {g.blocks.map((b) => <Tile key={b.getId()} block={b} mine={g.c === MY} onDelete={() => del.mutate(b.getId().replace(/^my-/, ''))} />)}
             </div>

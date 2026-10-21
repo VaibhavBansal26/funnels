@@ -49,6 +49,11 @@ export async function layerLabels(page: Page): Promise<string[]> {
 export async function dragBlock(page: Page, blockId: string, to: { x: number; y: number }, search = '') {
   if (search) await page.getByLabel('Search blocks').fill(search);
   const tile = page.locator(`[data-block="${blockId}"]`);
+  // only the first category is expanded by default: open collapsed ones until the tile exists
+  for (const header of await page.locator('[role="region"][aria-label="Blocks"] button[aria-expanded="false"]').all()) {
+    if (await tile.count()) break;
+    await header.click();
+  }
   await tile.scrollIntoViewIfNeeded();
   const tb = (await tile.boundingBox())!;
   // The very first synthesised drag after the editor loads is ignored when the pointer has never been over the canvas (the second one always works);
@@ -110,4 +115,10 @@ export async function settledBox(locator: import('@playwright/test').Locator) {
     last = now;
   }
   return last;
+}
+
+/** Picks an action from the builder top bar's "More actions" menu (view saved page, version history, page settings, add payments, keyboard shortcuts). */
+export async function moreAction(page: Page, name: string | RegExp) {
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name }).click();
 }

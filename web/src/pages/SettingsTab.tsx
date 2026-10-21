@@ -95,7 +95,7 @@ export function SettingsTab({ funnel }: { funnel: FunnelDetail }) {
         <ErrorBanner error={save.error && !(save.error instanceof ApiError && save.error.code === 'PATH_CONFLICT') ? save.error : null} />
         <TextField label="Funnel name" value={f.name} error={errors.name} onChange={(name) => setF({ ...f, name })} />
         <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-          <Field label="Status" hint="Test funnels are only reachable through signed previews. Setting a funnel to test disconnects its domain.">
+          <Field label="Status" hint="Test is a private preview. Switching to test disconnects the domain.">
             {(p) => <select className="input" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value as Form['status'] })} {...p}><option value="test">Test</option><option value="live">Live</option></select>}
           </Field>
           <Field label="Domain" error={errors.domainId} hint={domains.data && active.length === 0 ? 'The built-in address needs nothing. To use your own domain, add and verify it on the Domains page.' : 'The built-in address, or a verified domain.'}>
@@ -124,6 +124,9 @@ export function SettingsTab({ funnel }: { funnel: FunnelDetail }) {
           </div>
         </fieldset>
 
+        <details className="group rounded-xl border border-border px-4 py-3" open={errors.favicon ? true : undefined}>
+          <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium [&::-webkit-details-marker]:hidden">Favicon and tracking code<span className="text-[0.8125rem] font-normal text-muted">Optional</span></summary>
+          <div className="mt-4 flex flex-col">
         <TextField label="Favicon URL" value={f.favicon} error={errors.favicon} hint="Shown in the browser tab of published pages." onChange={(favicon) => setF({ ...f, favicon })} />
         {can('funnels:tracking') ? (
           <>
@@ -131,6 +134,8 @@ export function SettingsTab({ funnel }: { funnel: FunnelDetail }) {
             <Field label="Footer tracking code" hint="Injected before </body>.">{(p) => <textarea className="input mono" rows={3} value={f.footer} onChange={(e) => setF({ ...f, footer: e.target.value })} {...p} />}</Field>
           </>
         ) : <p className="muted small">Tracking codes can be edited by admins.</p>}
+          </div>
+        </details>
         <div className="row">
           <button className="btn primary" type="submit" disabled={!dirty || save.isPending || Object.keys(errors).length > 0}>{save.isPending ? 'Saving…' : 'Save changes'}</button>
           <button type="button" className="btn" onClick={() => void preview()}>Open signed preview</button>

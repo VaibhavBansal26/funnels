@@ -1,4 +1,4 @@
-import { Check, Copy, Inbox } from 'lucide-react';
+import { Check, ChevronDown, Copy, Inbox } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { ApiError, errorMessage } from '../api/client';
 import type { Pagination } from '../api/types';
@@ -35,6 +35,47 @@ export function ErrorBanner({ error, onRetry }: { error: unknown; onRetry?: () =
           </Button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** One short line stays visible; the longer explanation sits behind a native disclosure (keyboard and screen-reader friendly, no JS). */
+export function LearnMore({ children, label = 'Learn more', className }: { children: ReactNode; label?: string; className?: string }) {
+  return (
+    <details className={`group text-[0.8125rem] text-muted ${className ?? ''}`}>
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded text-primary [&::-webkit-details-marker]:hidden">{label}<ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden="true" /></summary>
+      <div className="mt-2 flex flex-col gap-2 leading-relaxed">{children}</div>
+    </details>
+  );
+}
+
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+const dayOffset = (n: number) => isoDay(new Date(Date.now() - n * 86_400_000));
+
+/**
+ * Date range filter used by every report: three presets as one segmented control, and the two date pickers behind "Custom range"
+ * (opened automatically when the range is not a preset), so the filter bar is one quiet row instead of five controls.
+ */
+export function RangePicker({ range, setRange, tz, note = 'Days are bucketed in' }: { range: { from: string; to: string }; setRange: (r: { from: string; to: string }) => void; tz: string; note?: string }) {
+  const [custom, setCustom] = useState(false);
+  const today = isoDay(new Date());
+  const preset = [7, 30, 90].find((n) => range.to === today && range.from === dayOffset(n - 1));
+  const open = custom || preset === undefined;
+  return (
+    <div className="flex flex-wrap items-end gap-3" role="group" aria-label="Date range">
+      <div role="group" aria-label="Preset ranges" className="inline-flex gap-0.5 rounded-lg bg-surface-2 p-0.5">
+        {[7, 30, 90].map((n) => (
+          <button key={n} type="button" aria-pressed={preset === n} onClick={() => { setCustom(false); setRange({ from: dayOffset(n - 1), to: today }); }} className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors max-sm:min-h-11 ${preset === n ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg'}`}>Last {n} days</button>
+        ))}
+        <button type="button" aria-pressed={open} aria-expanded={open} onClick={() => setCustom(!open)} className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors max-sm:min-h-11 ${open ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg'}`}>Custom range</button>
+      </div>
+      {open ? (
+        <>
+          <div className="field !mb-0"><label htmlFor="range-from">From</label><input id="range-from" type="date" className="input" value={range.from} max={range.to} onChange={(e) => setRange({ ...range, from: e.target.value })} /></div>
+          <div className="field !mb-0"><label htmlFor="range-to">To</label><input id="range-to" type="date" className="input" value={range.to} min={range.from} max={today} onChange={(e) => setRange({ ...range, to: e.target.value })} /></div>
+          <span className="pb-2.5 text-[0.8125rem] text-muted">{note} {tz}</span>
+        </>
+      ) : null}
     </div>
   );
 }

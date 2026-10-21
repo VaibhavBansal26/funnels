@@ -7,7 +7,7 @@ import { Badge, Button, Select } from '../ui';
 import { LineChart } from './Charts';
 import { Sparkline } from './Sparkline';
 import { useToast } from './Toasts';
-import { Empty, ErrorBanner, fmtMoney, fmtNum, fmtPct, Loading, Modal } from './ui';
+import { Empty, ErrorBanner, fmtMoney, fmtNum, fmtPct, Loading, Modal, RangePicker } from './ui';
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const daysAgo = (n: number) => iso(new Date(Date.now() - n * 86_400_000));
@@ -94,11 +94,8 @@ export function ProductAnalytics({ funnelId }: { funnelId?: string }) {
   return (
     <div className="stack">
       <div className="filters" role="group" aria-label="Date range">
-        <div className="field"><label htmlFor="pa-from">From</label><input id="pa-from" type="date" className="input" value={range.from} max={range.to} onChange={(e) => setRange({ ...range, from: e.target.value })} /></div>
-        <div className="field"><label htmlFor="pa-to">To</label><input id="pa-to" type="date" className="input" value={range.to} min={range.from} max={iso(new Date())} onChange={(e) => setRange({ ...range, to: e.target.value })} /></div>
-        {[7, 30, 90].map((n) => <Button key={n} size="sm" onClick={() => setRange({ from: daysAgo(n - 1), to: iso(new Date()) })}>Last {n} days</Button>)}
+        <RangePicker range={range} setRange={setRange} tz={tz} />
         {currencies.length > 1 ? <div className="w-32"><Select aria-label="Currency" value={currency} onValueChange={setCurrency} options={[{ value: '', label: 'All currencies' }, ...currencies.map((c) => ({ value: c, label: c }))]} /></div> : null}
-        <span className="muted small">Days are bucketed in {tz}</span>
         <span className="flex-1" />
         <Button size="sm" disabled={!r || r.products.length === 0} onClick={() => void downloadFile('/api/analytics/products/export', exportName(range.from, range.to), { from: range.from, to: range.to, tz, funnelId, currency: currency || undefined }).catch(() => toast.push('The export failed', 'error'))}><Download /> Export CSV</Button>
       </div>

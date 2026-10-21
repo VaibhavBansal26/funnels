@@ -3,7 +3,7 @@ import { api } from '../api/client';
 import { useAnalytics, useMutate } from '../api/hooks';
 import type { FunnelDetail, Insights } from '../api/types';
 import { LineChart, type ChartLine } from '../components/Charts';
-import { ErrorBanner, fmtMoney, fmtNum, fmtPct, Loading } from '../components/ui';
+import { ErrorBanner, fmtMoney, fmtNum, fmtPct, Loading, RangePicker } from '../components/ui';
 
 const LINES: (ChartLine & { default: boolean })[] = [
   { key: 'pageViews', label: 'Page views', color: '#2563eb', default: true },
@@ -26,12 +26,7 @@ export function AnalyticsTab({ funnel }: { funnel: FunnelDetail }) {
 
   return (
     <div className="stack">
-      <div className="filters" role="group" aria-label="Date range">
-        <div className="field"><label htmlFor="a-from">From</label><input id="a-from" type="date" className="input" value={range.from} max={range.to} onChange={(e) => setRange({ ...range, from: e.target.value })} /></div>
-        <div className="field"><label htmlFor="a-to">To</label><input id="a-to" type="date" className="input" value={range.to} min={range.from} max={todayIso()} onChange={(e) => setRange({ ...range, to: e.target.value })} /></div>
-        {[7, 30, 90].map((n) => <button key={n} type="button" className="btn sm" onClick={() => setRange({ from: daysAgo(n - 1), to: todayIso() })}>Last {n} days</button>)}
-        <span className="muted small">Days are bucketed in {tz}</span>
-      </div>
+      <RangePicker range={range} setRange={setRange} tz={tz} />
       {!rangeOk ? <div className="alert warn" role="alert">The start date must not be after the end date.</div> : null}
       <ErrorBanner error={q.error} onRetry={() => void q.refetch()} />
       {q.isLoading ? <Loading rows={2} /> : null}

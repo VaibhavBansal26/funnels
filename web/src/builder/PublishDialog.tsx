@@ -7,7 +7,7 @@ import { usePublishSettings } from '../api/growth';
 import type { FunnelDetail } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { AddressChoices, FinalUrl, needsCloudflare, STATE, TEST_VS_LIVE, useGoLive } from '../components/GoLive';
-import { ErrorBanner, Loading } from '../components/ui';
+import { ErrorBanner, LearnMore, Loading } from '../components/ui';
 import { Badge, Button, Dialog, useToast } from '../ui';
 import type { SaveState } from './panels/TopBar';
 
@@ -97,7 +97,7 @@ export function PublishDialog({ onClose, funnel, dirty, save, saveState, onPrevi
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={title}
-      description={state === 'draft' ? TEST_VS_LIVE : state === 'live' ? 'Update the live page with your latest changes, or take the funnel offline.' : state === 'publishing' ? 'The funnel is being published. This updates by itself.' : state === 'failed' ? 'The funnel is set live, but nothing is online yet.' : 'The funnel is paused: its address shows a paused page.'}
+      description={state === 'draft' ? 'Test mode is private to you; live is public.' : state === 'live' ? 'Update the live page with your latest changes, or take the funnel offline.' : state === 'publishing' ? 'The funnel is being published. This updates by itself.' : state === 'failed' ? 'The funnel is set live, but nothing is online yet.' : 'The funnel is paused: its address shows a paused page.'}
       footer={<>
         <Button onClick={onClose}>Close</Button>
         {canPublish && state !== 'draft' ? <Button disabled={pending} onClick={takeOffline}>Take offline</Button> : null}
@@ -122,7 +122,8 @@ export function PublishDialog({ onClose, funnel, dirty, save, saveState, onPrevi
 
         {data && state === 'draft' ? (
           <>
-            <AddressChoices data={data} choice={g.choice} onChoice={g.setChoice} disabled={pending} settingsNewTab legend="Where should visitors find it?" />
+            {state === 'draft' ? <LearnMore label="Test vs live"><p className="m-0">{TEST_VS_LIVE}</p></LearnMore> : null}
+        <AddressChoices data={data} choice={g.choice} onChoice={g.setChoice} disabled={pending} settingsNewTab legend="Where should visitors find it?" />
             <p className="muted small">The address name, search engine setting and custom domains are in the funnel&apos;s Settings tab.</p>
           </>
         ) : null}

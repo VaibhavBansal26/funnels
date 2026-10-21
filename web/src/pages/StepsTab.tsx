@@ -121,16 +121,12 @@ export function StepsTab({ funnel }: { funnel: FunnelDetail }) {
               <div className="muted small mono">{s.path}</div>
             </div>
             <div className="flex flex-none items-center gap-1.5">
-              <span className="hidden items-center sm:flex">
-                <Button variant="ghost" size="icon-sm" aria-label={`Move ${s.name} up`} disabled={i === 0} onClick={() => move(i, i - 1)}><ArrowUp /></Button>
-                <Button variant="ghost" size="icon-sm" aria-label={`Move ${s.name} down`} disabled={i === order.length - 1} onClick={() => move(i, i + 1)}><ArrowDown /></Button>
-              </span>
               <Link className="btn sm primary" to={`/funnels/${funnel.id}/builder/${s.id}`}>Edit page</Link>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`More actions for ${s.name}`}><MoreHorizontal /></Button></DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem className="sm:hidden" disabled={i === 0} onSelect={() => move(i, i - 1)}><ArrowUp /> Move up</DropdownMenuItem>
-                  <DropdownMenuItem className="sm:hidden" disabled={i === order.length - 1} onSelect={() => move(i, i + 1)}><ArrowDown /> Move down</DropdownMenuItem>
+                  <DropdownMenuItem disabled={i === 0} onSelect={() => move(i, i - 1)}><ArrowUp /> Move up</DropdownMenuItem>
+                  <DropdownMenuItem disabled={i === order.length - 1} onSelect={() => move(i, i + 1)}><ArrowDown /> Move down</DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => dup.mutate(s.id, { onSuccess: () => toast.push('Step duplicated', 'ok') })}><Copy /> Duplicate</DropdownMenuItem>
                   {funnel.domain ? (
                     <>

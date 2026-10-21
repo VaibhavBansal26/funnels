@@ -1,4 +1,4 @@
-import { Copy, ExternalLink, LayoutGrid, MoreHorizontal, Pencil, Plus, Rows3, Search, Tag, Trash2 } from 'lucide-react';
+import { Copy, ExternalLink, LayoutGrid, MoreHorizontal, Plus, Rows3, Search, Tag, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { api, errorMessage } from '../api/client';
@@ -17,6 +17,15 @@ function useDebounced<T>(value: T, ms = 300): T {
     return () => clearTimeout(t);
   }, [value, ms]);
   return v;
+}
+
+/** One quiet line instead of a grid of numbers: only what is non-zero. */
+function statsLine(f: FunnelSummary) {
+  const { visits, optins, orders, sales } = f.stats;
+  const parts = [`${fmtNum(visits)} visit${visits === 1 ? '' : 's'}`];
+  if (optins) parts.push(`${fmtNum(optins)} opt-in${optins === 1 ? '' : 's'}`);
+  if (orders) parts.push(`${fmtNum(orders)} order${orders === 1 ? '' : 's'} · ${fmtMoney(sales)}`);
+  return visits || optins || orders ? parts.join(' · ') : 'No visits yet';
 }
 
 function BulkTagDialog({ ids, onClose }: { ids: string[]; onClose: () => void }) {
@@ -181,25 +190,16 @@ export function FunnelsPage() {
                   <span className="pointer-events-none absolute inset-0 bg-primary/0 transition-colors group-hover/card:bg-primary/5" />
                 </Link>
                 <label className={cn('absolute top-3 left-3 grid size-8 cursor-pointer place-items-center rounded-lg bg-surface/90 shadow-sm backdrop-blur transition-opacity max-sm:size-11 [@media(hover:hover)]:opacity-0 group-focus-within/card:opacity-100 group-hover/card:opacity-100', selected.includes(f.id) && '!opacity-100')}><input type="checkbox" className="size-[18px] accent-primary" checked={selected.includes(f.id)} onChange={() => toggle(f.id)} aria-label={`Select ${f.name}`} /></label>
+                <span className={cn('absolute top-3 right-3 rounded-lg bg-surface/90 shadow-sm backdrop-blur transition-opacity [@media(hover:hover)]:opacity-0 group-focus-within/card:opacity-100 group-hover/card:opacity-100')}>{actions(f)}</span>
                 </div>
-                <div className="flex flex-1 flex-col gap-3 p-5">
-                  <div className="flex items-start justify-between gap-2">
+                <div className="flex flex-1 flex-col gap-2 p-6">
+                  <div className="flex items-start justify-between gap-3">
                     <h3 className="!mb-0 min-w-0 text-[1rem] leading-snug"><Link to={`/funnels/${f.id}`} className="text-fg no-underline hover:text-primary">{f.name}</Link></h3>
                     <StatusBadge status={f.status} />
                   </div>
                   <p className="small muted !mb-0 truncate">{f.domain ? f.domain.hostname : 'No domain connected'} · updated {fmtDay(f.updatedAt)}</p>
-                  {f.tags.length ? <div className="flex flex-wrap gap-1">{f.tags.map((t) => <span key={t.id} className="tag-chip">{t.name}</span>)}</div> : null}
-                  <dl className="m-0 mt-auto flex flex-wrap justify-between gap-x-4 gap-y-2 pt-2 text-left">
-                    {[['Visits', fmtNum(f.stats.visits)], ['Opt-ins', fmtNum(f.stats.optins)], ['Orders', fmtNum(f.stats.orders)], ['Sales', fmtMoney(f.stats.sales)]].map(([l, v]) => (
-                      <div key={l}><dd className="m-0 text-sm font-semibold tabular-nums">{v}</dd><dt className="text-xs text-muted">{l}</dt></div>
-                    ))}
-                  </dl>
-                  <div className="flex items-center gap-1.5 border-t border-border pt-4">
-                    <span className="flex w-full items-center gap-1.5">
-                      <Button size="sm" onClick={() => nav(`/funnels/${f.id}`)}><Pencil /> Open</Button>
-                      <span className="ml-auto">{actions(f)}</span>
-                    </span>
-                  </div>
+                  <p className="small !mb-0 mt-2 tabular-nums text-muted">{statsLine(f)}</p>
+                  {f.tags.length ? <div className="mt-1 flex flex-wrap gap-1">{f.tags.map((t) => <span key={t.id} className="tag-chip">{t.name}</span>)}</div> : null}
                 </div>
               </Card>
             ))}
