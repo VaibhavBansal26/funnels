@@ -7,7 +7,9 @@ import { PublicEventInput, recordPublicEvent } from '../services/events.js';
 import { SubmitInput, submitForm } from '../services/leads.js';
 import { CheckoutInput, checkout } from '../services/orders.js';
 import { enforceInHandler } from '../ratelimit/http.js';
-import { trustedCountry } from '../ratelimit/ip.js';
+import { clientIp, trustedCountry } from '../ratelimit/ip.js';
+import { AttributionInput, recordAttribution } from '../services/attribution.js';
+import { corsOriginFor } from '../services/cors.js';
 
 const tooLarge = () => new AppError(413, 'PAYLOAD_TOO_LARGE', 'The request body is too large');
 const limitTo = (maxSize: number) =>
@@ -41,7 +43,9 @@ export function publicRoutes(deps: Deps): Hono {
   r.get('/beacon.js', (c) => c.body(BEACON_JS, 200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' }));
 
   r.use('/api/public/*', async (c, next) => {
-    c.header('Access-Control-Allow-Origin', '*');
+    const allow = await corsOriginFor(deps, c.req.header('origin'));
+    if (allow) c.header('Access-Control-Allow-Origin', allow);
+    if (allow && allow !== '*') c.header('Vary', 'Origin');
     c.header('Access-Control-Allow-Headers', 'content-type');
     if (c.req.method === 'OPTIONS') return c.body(null, 204);
     await next();
@@ -52,6 +56,13 @@ export function publicRoutes(deps: Deps): Hono {
     await enforceInHandler(deps, c, 'public.events', { scope: idOf(raw) });
     const input = parse(PublicEventInput, raw);
     return c.json(await recordPublicEvent(deps, input, c.req.header('user-agent'), { country: trustedCountry(c, deps.config) }), 202);
+  });
+
+  r.post('/api/public/attribution', limitTo(4 * 1024), async (c) => {
+    const raw = await readBody(c);
+    await enforceInHandler(deps, c, 'public.events', { scope: idOf(raw) });
+    const input = parse(AttributionInput, raw);
+    return c.json(await recordAttribution(deps, input, { ip: clientIp(c, deps.config), userAgent: c.req.header('user-agent') }), 202);
   });
 
   r.post('/api/public/forms/:funnelId/:stepId/:blockId', limitTo(64 * 1024), async (c) => {

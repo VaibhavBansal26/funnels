@@ -1,5 +1,7 @@
 # Serving funnels through Cloudflare
 
+This page covers serving from the **origin** behind a caching Worker. To serve a funnel from **Cloudflare Pages** instead (static deployment, survives an origin outage), see [CLOUDFLARE-PAGES.md](CLOUDFLARE-PAGES.md), which also compares the options.
+
 The origin can serve every published page itself (see ARCHITECTURE.md). Putting a Cloudflare Worker in front adds a global cache, stale-while-revalidate, and graceful behaviour when the origin is down. The worker lives in `edge/` (TypeScript, `wrangler.toml`).
 
 ```mermaid

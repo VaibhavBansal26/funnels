@@ -7,6 +7,7 @@ import { usageOf } from '../billing/limits.js';
 import type { Deps } from '../deps.js';
 import { inTx } from '../db/scope.js';
 import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
+import { onWorkspaceChanged } from './publishing.js';
 import { AppError, conflict, notFound } from '../errors.js';
 import { audit } from './audit.js';
 import { forgetSuspensions } from './suspension.js';
@@ -166,6 +167,7 @@ export async function suspendWorkspace(deps: Deps, auth: Auth, id: string, input
     await schedulePurge(d, urls);
     const steps = await d.db.all<{ id: string }>('SELECT id FROM steps WHERE workspace_id = ?', id);
     d.pageCache.invalidate(steps.map((s) => s.id));
+    await onWorkspaceChanged(d, id); // funnels published to Cloudflare Pages are replaced by the paused page
     await audit(d, { workspaceId: id, actorId: auth.userId, action: 'admin.workspace.suspended', detail: { reason: input.reason, sessionsEnded: changes, purgedUrls: urls.length }, ip });
   });
   deps.eventRefs.clear();
@@ -178,6 +180,7 @@ export async function unsuspendWorkspace(deps: Deps, auth: Auth, id: string, ip?
   if (!w.suspended_at) throw conflict('NOT_SUSPENDED', 'This workspace is not suspended');
   await inTx(deps, async (d) => {
     await d.db.run('UPDATE workspaces SET suspended_at = NULL, suspended_reason = NULL, suspended_by = NULL WHERE id = ?', id);
+    await onWorkspaceChanged(d, id);
     await audit(d, { workspaceId: id, actorId: auth.userId, action: 'admin.workspace.unsuspended', ip });
   });
   forgetSuspensions();

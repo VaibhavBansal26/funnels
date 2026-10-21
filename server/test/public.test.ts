@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkoutTarget, formTarget, makeFunnel, makeHarness, type Harness } from './helpers.js';
+import { activeDomain, checkoutTarget, formTarget, makeFunnel, makeHarness, type Harness } from './helpers.js';
 
 const UA = { 'user-agent': 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/120 Safari/537.36' };
 
@@ -133,13 +133,25 @@ describe('POST /api/public/events', () => {
     expect((await send(f, '198.51.100.1')).status).toBe(202); // tokens refill
   });
 
-  it('answers CORS preflight and sets permissive CORS only for the public API', async () => {
-    const { h } = await setup();
-    const pre = await h.app.request('/api/public/events', { method: 'OPTIONS', headers: { origin: 'https://customer.example' } });
+  it('answers CORS preflight; the origin of a registered domain is echoed, an unknown site gets no ACAO header, and only the public API is affected', async () => {
+    const { h, u } = await setup();
+    await activeDomain(h, u.token, 'customer.example.com');
+    const pre = await h.app.request('/api/public/events', { method: 'OPTIONS', headers: { origin: 'https://customer.example.com' } });
     expect(pre.status).toBe(204);
-    expect(pre.headers.get('access-control-allow-origin')).toBe('*');
+    expect(pre.headers.get('access-control-allow-origin')).toBe('https://customer.example.com');
+    expect(pre.headers.get('vary')).toContain('Origin');
+    const stranger = await h.app.request('/api/public/events', { method: 'OPTIONS', headers: { origin: 'https://customer.example' } });
+    expect(stranger.status).toBe(204);
+    expect(stranger.headers.get('access-control-allow-origin')).toBeNull();
+    expect((await h.app.request('/api/public/events', { method: 'OPTIONS', headers: { origin: 'null' } })).headers.get('access-control-allow-origin')).toBe('*'); // sandboxed previews
     const priv = await h.app.request('/api/funnels', { headers: { origin: 'https://evil.example' } });
     expect(priv.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('PUBLIC_API_CORS=open keeps the permissive behaviour', async () => {
+    const h = await makeHarness({ env: { PUBLIC_API_CORS: 'open' } });
+    const pre = await h.app.request('/api/public/events', { method: 'OPTIONS', headers: { origin: 'https://anything.example' } });
+    expect(pre.headers.get('access-control-allow-origin')).toBe('*');
   });
 });
 

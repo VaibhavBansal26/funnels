@@ -8,6 +8,7 @@ import { lockDomain } from '../repos/funnels.js';
 import type { DomainRow, StepRow } from '../repos/types.js';
 import { newId, newToken } from '../util/ids.js';
 import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
+import { onFunnelChanged, pagesHostsOf } from './publishing.js';
 
 const HOST_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})$/;
 export const CHALLENGE_PREFIX = '_funnels-challenge.';
@@ -111,6 +112,7 @@ export async function revertFunnelsOnDomain(deps: Deps, ws: string, domainId: st
   for (const id of ids) await schedulePurge(deps, await liveUrlsForFunnel(deps, id));
   await deps.db.run(`UPDATE funnels SET status = 'test', domain_id = NULL, updated_at = ? WHERE workspace_id = ? AND domain_id = ?`, at, ws, domainId);
   await deps.db.run('UPDATE domains SET default_home_step_id = NULL, default_404_step_id = NULL WHERE workspace_id = ? AND id = ?', ws, domainId);
+  for (const id of ids) await onFunnelChanged(deps, id); // a Pages site whose domain went away is replaced by the paused page
   return ids;
 }
 
@@ -146,7 +148,8 @@ export async function verifyDomain(deps: Deps, ws: string, id: string): Promise<
     await deps.db.run('UPDATE domains SET last_checked_at = ?, updated_at = ? WHERE id = ?', at.toISOString(), at.toISOString(), id);
     return { domain: await getDomain(deps, ws, id), checks: null, error: 'DNS lookup failed. This is usually temporary; try again shortly.' };
   }
-  const cnameOk = cname.includes(target);
+  // A funnel published to Cloudflare Pages points its domain at the Pages project (name.pages.dev), not at this app.
+  const cnameOk = cname.includes(target) || (await pagesHostsOf(deps, ws)).some((h) => cname.includes(h));
   const txtOk = txt.some((v) => v.trim() === expectedTxt);
   const ok = cnameOk && txtOk;
   const ageHours = (at.getTime() - Date.parse(d.created_at)) / 3_600_000;
@@ -222,6 +225,7 @@ export async function setDefaultPages(deps: Deps, ws: string, id: string, input:
     const home = input.homeStepId === undefined ? d.default_home_step_id : await check(input.homeStepId);
     const nf = input.notFoundStepId === undefined ? d.default_404_step_id : await check(input.notFoundStepId);
     await t.db.run('UPDATE domains SET default_home_step_id = ?, default_404_step_id = ?, updated_at = ? WHERE id = ?', home, nf, deps.now().toISOString(), id);
+    for (const f of await t.db.all<{ id: string }>('SELECT id FROM funnels WHERE workspace_id = ? AND domain_id = ? AND deleted_at IS NULL', ws, id)) await onFunnelChanged(t, f.id);
   });
   return getDomain(deps, ws, id);
 }

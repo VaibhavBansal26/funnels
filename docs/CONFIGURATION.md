@@ -105,6 +105,27 @@ Generated from the zod schema in `server/src/config.ts` and the descriptions in 
 | `CF_ZONE_ID` | (unset) | no |  | Cloudflare zone id used for purges and custom hostnames. |
 | `CF_API_BASE` | `https://api.cloudflare.com/client/v4` | no | `https://api.cloudflare.com/client/v4` | Cloudflare API base URL (tests point it at a fake). |
 | `DOMAIN_PROVIDER` | `manual` | no | `manual` | `manual` (DNS checks) or `cloudflare` (Cloudflare for SaaS custom hostnames). |
+| `API_PUBLIC_URL` | (unset) | no | `https://app.example.com` | Public origin of this app as seen from the internet, used as the absolute API address inside funnel pages published to Cloudflare Pages (forms, checkout and events call it) and as an allowed CORS origin. Defaults to APP_PUBLIC_URL. |
+| `CF_PAGES_ACCOUNT_ID` | (unset) | no | `0123456789abcdef0123456789abcdef` | Platform-level Cloudflare account id for hosted multi-tenant publishing: funnels of workspaces without their own Cloudflare connection get a Pages project `fn-<shortid>` in this account. **Security:** Together with CF_PAGES_API_TOKEN this lets the app create projects in your account: plan limits per workspace apply (docs/CLOUDFLARE-PAGES.md). |
+| `CF_PAGES_API_TOKEN` | (unset) | no |  | API token for the platform Cloudflare account. Needs only the account permission "Cloudflare Pages: Edit". **Security:** A secret. Never logged or returned by the API; treat it like DATABASE_URL. |
+| `CF_PAGES_API_BASE` | `https://api.cloudflare.com/client/v4` | no | `https://api.cloudflare.com/client/v4` | Cloudflare API base URL used for Pages calls (tests point it at a fake). |
+| `PAGES_PROJECT_PREFIX` | `fn` | no | `fn` | Prefix of Pages project names created by the platform account (`<prefix>-<shortid>`). |
+| `PAGES_DEBOUNCE_SECONDS` | `5` | no | `5` | A save or setting change queues a Pages deployment this many seconds ahead; changes inside the window share one deployment (the last wins). |
+| `PAGES_DEPLOY_TIMEOUT_SECONDS` | `300` | no | `300` | A Pages deployment that has not reached a final state after this long is marked failed (and retried by the job queue). |
+| `PAGES_POLL_INTERVAL_MS` | `2000` | no | `2000` | Delay between deployment status polls. |
+| `PAGES_MAX_FILES` | `20000` | no | `20000` | Refuse to build a bundle with more files than this (Cloudflare allows 20,000 on the free plan). |
+| `PAGES_MAX_FILE_BYTES` | `26214400` | no | `26214400` | Refuse a bundle containing a file larger than this (Cloudflare allows 25 MiB per file). |
+| `PAGES_KEEP_DEPLOYMENTS` | `20` | no | `20` | Deployment records kept per funnel in the history (older finished ones are deleted from the app; Cloudflare keeps its own). |
+| `META_GRAPH_BASE` | `https://graph.facebook.com` | no | `https://graph.facebook.com` | Meta Graph API base used for the Conversions API (tests point it at a fake). |
+| `META_GRAPH_VERSION` | `v23.0` | no | `v23.0` | Graph API version for Conversions API calls. |
+| `GA4_MP_BASE` | `https://www.google-analytics.com` | no | `https://www.google-analytics.com` | Google Analytics Measurement Protocol base. Use https://region1.google-analytics.com for EU data collection. |
+| `TIKTOK_EVENTS_BASE` | `https://business-api.tiktok.com` | no | `https://business-api.tiktok.com` | TikTok Events API base. |
+| `PUBLIC_API_CORS` | `allowlist` | no | `allowlist` | Which origins may read answers of the public API (/api/public/*: events, forms, checkout, attribution). `allowlist` (default): customer domains, Cloudflare Pages hosts of published funnels and this app; `open`: any origin (`*`), the behaviour before Cloudflare Pages publishing. **Security:** Not a substitute for rate limits and server-side validation: a request from any client can still reach the endpoints. |
+| `CONVERSIONS_MAX_ATTEMPTS` | `6` | no | `6` | Delivery attempts per server-side conversion (exponential backoff 30 s, 60 s, ... up to 1 h) before it is dead-lettered. |
+| `CONVERSIONS_TIMEOUT_MS` | `10000` | no | `10000` | Timeout of one call to an ad network. |
+| `ATTRIBUTION_RETENTION_DAYS` | `90` | no | `90` | How long the IP address and user agent captured for server-side conversions are kept on a visitor attribution record (they are removed after this many days without a visit). |
+| `ADS_IMPORT_MAX_ROWS` | `20000` | no | `20000` | Maximum rows in one ad spend CSV import. |
+| `ADS_IMPORT_MAX_BYTES` | `2000000` | no | `2000000` | Maximum size of an ad spend CSV import (at most 2,000,000: the API body limit). |
 | `METRICS_TOKEN` | (unset) | no |  | Bearer token required to scrape /metrics. Empty = open. **Security:** Leave /metrics unreachable from the internet when empty. |
 | `ENABLE_WORKER` | `true` | no | `true` | Run the in-process job worker (webhooks, domain checks, purges). With several replicas it is safe on all of them on PostgreSQL (`FOR UPDATE SKIP LOCKED`). |
 | `JOB_POLL_MS` | `1000` | no | `1000` | Job queue poll interval. |

@@ -196,7 +196,7 @@ describe('beacon.js', () => {
     expect(res.headers.get('content-type')).toContain('javascript');
     expect(res.headers.get('cache-control')).toContain('max-age');
     expect(await res.text()).toBe(BEACON_JS);
-    expect(BEACON_JS.length).toBeLessThan(6000);
+    expect(BEACON_JS.length).toBeLessThan(8000);
   });
 
   function runBeacon(attrs: Record<string, string>, cookie = '') {
@@ -219,7 +219,7 @@ describe('beacon.js', () => {
       addEventListener: (t: string, fn: (e: any) => void) => (listeners[`d:${t}`] ??= []).push(fn),
     };
     const ctx = {
-      document, location: { href: 'https://offers.example.com/promo?utm_source=x' },
+      document, location: { href: 'https://offers.example.com/promo?utm_source=x', search: '?utm_source=x&gclid=abc12345', pathname: '/promo', hostname: 'offers.example.com' }, setTimeout: () => 0,
       navigator: { sendBeacon: (url: string, blob: any) => (sent.push({ url, body: JSON.parse(blob.__text) }), true) },
       Blob: class { __text: string; constructor(p: string[]) { this.__text = p.join(''); } },
       window: { crypto: { getRandomValues: (a: Uint8Array) => a.fill(7) }, addEventListener: (t: string, fn: (e: any) => void) => (listeners[`w:${t}`] ??= []).push(fn) },
@@ -232,14 +232,15 @@ describe('beacon.js', () => {
   it('sends one page view with visitor id, unique hint and UTMs; second load is not unique', () => {
     const attrs = { 'data-funnel': 'fn_1', 'data-step': 'st_1', 'data-api': '' };
     const first = runBeacon(attrs, 'utm_source=news');
-    expect(first.sent).toHaveLength(1);
+    const events = (r: ReturnType<typeof runBeacon>) => r.sent.filter((x) => x.url.endsWith('/api/public/events'));
+    expect(events(first)).toHaveLength(1);
     expect(first.sent[0]!.url).toBe('/api/public/events');
     expect(first.sent[0]!.body).toMatchObject({ funnelId: 'fn_1', stepId: 'st_1', type: 'page_view', unique: true, utms: { source: 'news' } });
     expect(first.sent[0]!.body.visitorId).toMatch(/^[0-9a-f]{24}$/);
     const cookie = [...first.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
     const second = runBeacon(attrs, cookie);
-    expect(second.sent[0]!.body.unique).toBe(false);
-    expect(second.sent[0]!.body.visitorId).toBe(first.sent[0]!.body.visitorId);
+    expect(events(second)[0]!.body.unique).toBe(false);
+    expect(events(second)[0]!.body.visitorId).toBe(first.sent[0]!.body.visitorId);
   });
 
   it('sends nothing in preview mode and relays third-party opt-in messages otherwise', () => {
@@ -247,9 +248,48 @@ describe('beacon.js', () => {
     expect(prev.sent).toHaveLength(0);
     const live = runBeacon({ 'data-funnel': 'f', 'data-step': 's', 'data-api': 'https://app.example.com' });
     expect(live.sent[0]!.url).toBe('https://app.example.com/api/public/events');
+    const before = live.sent.length;
     live.listeners['w:message']![0]!({ data: { type: 'new_form_submission', response_id: 'r-1' } });
-    expect(live.sent[1]!.body).toMatchObject({ type: 'optin', externalId: 'r-1' });
+    expect(live.sent[before]!.body).toMatchObject({ type: 'optin', externalId: 'r-1' });
     live.listeners['w:message']![0]!({ data: { type: 'new_purchase', items: [{ amount: 1e9 }] } });
-    expect(live.sent).toHaveLength(2); // purchases are never reported by browsers
+    expect(live.sent).toHaveLength(before + 1); // purchases are never reported by browsers
+  });
+});
+
+describe('beacon.js attribution', () => {
+  it('reports the touch (UTMs, click ids, referrer host) and browser ids once, with ids only when consent allows', async () => {
+    const vmMod = await import('node:vm');
+    const sent: { url: string; body: any }[] = [];
+    const cookies = new Map<string, string>([['_fbp', 'fb.1.1700000000000.123456789'], ['_ga', 'GA1.1.1234567890.1700000000'], ['_ga_ABC123', 'GS1.1.1700000001.1.1.1700000002.0.0.0']]);
+    const run = (consent: string | null) => {
+      sent.length = 0;
+      const script = { getAttribute: (n: string) => ({ 'data-funnel': 'fn_1', 'data-step': 'st_1', 'data-api': '' } as Record<string, string>)[n] ?? null };
+      const document = {
+        currentScript: script, referrer: 'https://www.google.com/search?q=x',
+        get cookie() { return [...cookies].map(([k, v]) => `${k}=${v}`).join('; '); },
+        set cookie(v: string) { const [pair] = v.split(';'); const [k, ...rest] = pair!.split('='); cookies.set(k!, rest.join('=')); },
+        querySelector: () => script, querySelectorAll: () => [], addEventListener: () => undefined,
+      };
+      const ctx = {
+        document, location: { href: 'https://offers.example.com/promo?utm_source=Meta&utm_campaign=Spring&fbclid=IwAR0abcd', search: '?utm_source=Meta&utm_campaign=Spring&fbclid=IwAR0abcd', pathname: '/promo', hostname: 'offers.example.com' },
+        navigator: { sendBeacon: (url: string, blob: any) => (sent.push({ url, body: JSON.parse(blob.__text) }), true) }, Blob: class { __text: string; constructor(p: string[]) { this.__text = p.join(''); } },
+        window: { crypto: { getRandomValues: (a: Uint8Array) => a.fill(7) }, addEventListener: () => undefined, fnAds: consent ? { consent: () => consent } : undefined },
+        setTimeout: () => 0, fetch: () => Promise.resolve({}), Promise, Uint8Array, JSON, Math, RegExp, decodeURIComponent, encodeURIComponent, String, Array, URL, CustomEvent: class {},
+      };
+      vmMod.runInNewContext(BEACON_JS, ctx);
+      return sent.filter((x) => x.url.endsWith('/api/public/attribution'));
+    };
+    const granted = run('granted');
+    expect(granted).toHaveLength(1);
+    expect(granted[0]!.body).toMatchObject({
+      funnelId: 'fn_1', stepId: 'st_1', touch: { utm_source: 'Meta', utm_campaign: 'Spring', clickIds: { fbclid: 'IwAR0abcd' }, referrer: 'www.google.com', landing: '/promo' },
+      ids: { consent: 'granted', fbp: 'fb.1.1700000000000.123456789', gaClientId: '1234567890.1700000000', gaSessionId: '1700000001' },
+    });
+    // the visitor has not decided yet (or declined): the campaign is reported, the identifiers are not
+    cookies.delete('fn_a');
+    const unknown = run('unknown');
+    expect(unknown[0]!.body.ids).toEqual({ consent: 'unknown' });
+    expect(unknown[0]!.body.touch.clickIds).toBeUndefined(); // click ids are advertising identifiers too
+    expect(unknown[0]!.body.touch.utm_campaign).toBe('Spring');
   });
 });

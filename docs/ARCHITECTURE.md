@@ -189,6 +189,47 @@ flowchart LR
 * **Assets.** `/api/assets` stores uploaded images in the database (PNG, JPEG, GIF, WebP sniffed by magic bytes, SVG refused, 1.5 MB each, 200 per workspace) and `/uploads/:id/:name` serves them with `nosniff`, a restrictive CSP and long caching; customer domains reach them through the same edge passthrough as `/beacon.js`.
 * **Bundle.** The builder (about 380 KB gzip with GrapesJS) loads only on the builder route; the rest of the app is the entry chunk plus per-page chunks. Budgets are enforced by `npm run build` (`web/scripts/check-bundle-size.mjs`): entry 125 KB, shared UI vendor chunk 90 KB, builder chunk 450 KB, total 700 KB (gzip).
 
+## Publishing to Cloudflare Pages
+
+A funnel's **publish target** is `origin` (above) or `cloudflare-pages` ([ADR 0030](adr/0030-publish-targets-cloudflare-pages.md), [CLOUDFLARE-PAGES.md](CLOUDFLARE-PAGES.md)). Anything that changes what a live funnel serves (page save, step or settings change, status, domain, pixels, workspace suspension) calls `onFunnelChanged`, which queues one debounced deployment for funnels on Pages.
+
+```mermaid
+stateDiagram-v2
+  [*] --> queued: schedulePublish
+  queued --> building: publish.deploy takes the lease
+  building --> superseded: same version as the live one
+  building --> uploading: bundle built
+  building --> failed: build error (files, size, path, shared domain)
+  uploading --> deploying: files uploaded, Cloudflare deployment created
+  uploading --> queued: outage or rate limit (retry with backoff)
+  deploying --> succeeded: deploy stage success (publish.poll)
+  deploying --> failed: stage failure or timeout
+  succeeded --> rolled_back: another deployment made live by rollback
+```
+
+* **Bundle** (`publish/bundle.ts`): pure and deterministic; paths validated after percent-decoding; CSP per page from SHA-256 hashes of the platform's own inline scripts; `_headers`, `_redirects`; version id = hash of files + headers + redirects.
+* **Client** (`publish/cfclient.ts`): Direct Upload over an injectable `fetch` (`deps.outbound`, the SSRF-guarded fetch); `CloudflareApiError` classifies retryable, rate limited, permission and not found.
+* **State** lives in `funnel_publish` (target, owner, project, host, active deployment, custom domain, lease, hold) and `publish_deployments` (history and log); credentials in `publish_credentials` (encrypted). Jobs: `publish.deploy`, `publish.poll`, `publish.domain`, `publish.destroy`.
+* **Single flight, last wins:** one lease per funnel; one queued deployment per funnel that builds from the database when it runs.
+
+## Ads: pixels, conversions, attribution
+
+```mermaid
+flowchart LR
+  B[Browser: pixel runtime + consent] -->|"Lead / Purchase with event id"| N1[Meta / Google / TikTok pixels]
+  B2[beacon.js] -->|"POST /api/public/attribution (touch, ids, consent)"| A[visitor_attribution]
+  B2 -->|form, checkout| S[submitForm / persistOrders]
+  A --> S
+  S -->|"same transaction"| D[(conversion_deliveries)]
+  S -->|stamp first / last touch| LO[(leads, orders)]
+  D --> J[conversion.deliver job: retries, backoff, dead letters]
+  J -->|"hashed, no raw PII"| N2[Conversions API / Measurement Protocol / Events API]
+  LO --> R[Attribution and ads reports]
+  SP[(ad_spend, ad_campaign_map)] --> R
+```
+
+See [ADS.md](ADS.md) and [ADR 0031](adr/0031-ads-conversions-attribution.md). The pixel runtime (`ads/runtime.ts`) is one inline script generated from validated ids (`ads/snippets.ts`) and injected into the head by the renderer (`services/adtags.ts`), both for the origin and for Pages bundles. The page cache and the edge are invalidated when pixels change because they are part of the stored page HTML.
+
 ## Domain state machine
 
 ```mermaid

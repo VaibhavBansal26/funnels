@@ -49,6 +49,8 @@ export interface Deps {
   secondaryStore?: EventStore;
   /** Analytics reads from ClickHouse (ANALYTICS_READ_STORE=clickhouse); the primary database answers when absent, stale or failing. */
   analyticsReader?: AnalyticsReader;
+  /** `fetch` for third-party APIs (ad networks, Cloudflare Pages): public hosts only, no redirects, timeout. Tests inject a fake. */
+  outbound: typeof fetch;
   purger: CloudflarePurger;
   domainProvider: DomainProvider;
   /** Set only on transaction-scoped deps (see db/scope.ts): queues an effect to run after COMMIT. */

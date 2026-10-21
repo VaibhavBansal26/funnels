@@ -12,6 +12,8 @@ import { insertEvents } from './rollups.js';
 import { notify } from './notifications.js';
 import { EMAIL_RE, resolvePublicBlock, sanitizeUtms } from './publicblocks.js';
 import { fireWebhookEvent } from './webhooks.js';
+import { snapshotFor, stampLead } from './attribution.js';
+import { enqueueConversions, userFromLead } from './conversions.js';
 
 export const SubmitInput = z.object({
   fields: z.record(z.string(), z.union([z.string(), z.boolean(), z.number()])).default({}),
@@ -143,6 +145,12 @@ export async function submitForm(deps: Deps, p: { funnelId: string; stepId: stri
         fields: values,
       });
       await domainEvent(d, 'lead.created', funnel.id, { workspaceId: ws, stepId: step.id, leadId: lead.id });
+      // Ads: remember where the lead came from, and queue the server-side Lead conversion (same event id as the browser pixel's Lead, so networks deduplicate).
+      await stampLead(d, ws, lead.id, await snapshotFor(d, ws, p.input.visitorId));
+      await enqueueConversions(d, {
+        ws, funnelId: funnel.id, stepId: step.id, kind: 'Lead', eventId: `lead_${p.input.submissionId ?? newId('l')}`, visitorId: p.input.visitorId,
+        user: userFromLead({ email, name: nameField ? values[nameField.id] : null, phone: phoneField ? values[phoneField.id] : null, data_json: JSON.stringify(values) }),
+      });
       deps.db.noteWrite(ws);
       return { ok: true, recorded: true, leadId: lead.id };
     });

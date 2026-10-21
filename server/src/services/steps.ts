@@ -14,6 +14,7 @@ import { domainPathIndex, funnelPathKeys } from './pathconflicts.js';
 import { insertPage, regenerateFunnel, scriptsAllowedFor, validateDoc } from './pages.js';
 import { updateScoped } from '../repos/sql.js';
 import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
+import { onFunnelChanged } from './publishing.js';
 
 export function serializeStep(s: StepRow, extras: { isHome?: boolean; is404?: boolean } = {}) {
   return {
@@ -140,6 +141,7 @@ export async function updateStep(deps: Deps, auth: Auth, funnelId: string, stepI
     await d.db.run('UPDATE funnels SET updated_at = ? WHERE id = ?', iso(d), funnelId);
     await regenerateFunnel(d, ws, funnelId);
     await schedulePurge(d, urlsBefore);
+    await onFunnelChanged(d, funnelId);
     return requireStep(d.db, ws, funnelId, stepId);
   }).catch(pathTaken);
   return serializeStep(step);

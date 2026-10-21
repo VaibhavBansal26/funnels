@@ -12,15 +12,17 @@ export interface PlanDef {
   domains: number;
   members: number;
   apiKeys: number;
+  /** Cloudflare Pages projects the platform's own Cloudflare account hosts for the workspace (hosted installations only; a workspace's own account is not limited by the app). */
+  pagesProjects: number;
   /** Application fee in basis points of each checkout (100 = 1%). */
   feeBps: number;
   priceLabel: string;
 }
 
 export const PLAN_DEFS: Record<Plan, PlanDef> = {
-  free: { id: 'free', name: 'Free', funnels: 3, domains: 1, members: 2, apiKeys: 1, feeBps: 500, priceLabel: '$0' },
-  pro: { id: 'pro', name: 'Pro', funnels: 50, domains: 10, members: 10, apiKeys: 10, feeBps: 200, priceLabel: 'see Stripe price' },
-  business: { id: 'business', name: 'Business', funnels: 1000, domains: 100, members: 100, apiKeys: 50, feeBps: 0, priceLabel: 'see Stripe price' },
+  free: { id: 'free', name: 'Free', funnels: 3, domains: 1, members: 2, apiKeys: 1, pagesProjects: 1, feeBps: 500, priceLabel: '$0' },
+  pro: { id: 'pro', name: 'Pro', funnels: 50, domains: 10, members: 10, apiKeys: 10, pagesProjects: 10, feeBps: 200, priceLabel: 'see Stripe price' },
+  business: { id: 'business', name: 'Business', funnels: 1000, domains: 100, members: 100, apiKeys: 50, pagesProjects: 100, feeBps: 0, priceLabel: 'see Stripe price' },
 };
 
-export type Limited = 'funnels' | 'domains' | 'members' | 'apiKeys';
+export type Limited = 'funnels' | 'domains' | 'members' | 'apiKeys' | 'pagesProjects';

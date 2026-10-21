@@ -12,10 +12,11 @@ export async function usageOf(deps: Deps, ws: string): Promise<Record<Limited, n
     domains: await count(deps, 'SELECT COUNT(*) AS n FROM domains WHERE workspace_id = ?', ws),
     members: (await count(deps, 'SELECT COUNT(*) AS n FROM users WHERE workspace_id = ?', ws)) + (await count(deps, 'SELECT COUNT(*) AS n FROM invitations WHERE workspace_id = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?', ws, now)),
     apiKeys: await count(deps, 'SELECT COUNT(*) AS n FROM api_keys WHERE workspace_id = ? AND revoked_at IS NULL', ws),
+    pagesProjects: await count(deps, "SELECT COUNT(*) AS n FROM funnel_publish WHERE workspace_id = ? AND owner = 'platform' AND target = 'cloudflare-pages'", ws),
   };
 }
 
-const LABEL: Record<Limited, string> = { funnels: 'funnels', domains: 'domains', members: 'members (including pending invitations)', apiKeys: 'API keys' };
+const LABEL: Record<Limited, string> = { funnels: 'funnels', domains: 'domains', members: 'members (including pending invitations)', apiKeys: 'API keys', pagesProjects: 'hosted Pages projects' };
 
 /** Refuses (402 PLAN_LIMIT_REACHED) when creating `adding` more of `what` would exceed the workspace's plan. Does nothing unless BILLING_ENFORCE_LIMITS is on. */
 export async function assertWithinLimit(deps: Deps, ws: string, what: Limited, adding = 1): Promise<void> {

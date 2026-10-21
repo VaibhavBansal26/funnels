@@ -14,6 +14,8 @@ import { listSteps } from '../repos/funnels.js';
 import type { DomainRow, FunnelRow, PageRow, StepRow } from '../repos/types.js';
 import { pathKey } from '../services/paths.js';
 import { renderStep } from '../services/pages.js';
+import { adTagsForStep } from '../services/adtags.js';
+import { loadDoc } from '../pagemodel/doc.js';
 
 export function messagePage(status: number, title: string, message: string): Response {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title><style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;color:#1f2937;background:#f9fafb}main{text-align:center;padding:24px}h1{font-size:1.6rem;margin:0 0 8px}p{color:#6b7280;margin:0}</style></head><body><main><h1>${esc(title)}</h1><p>${esc(message)}</p></main></body></html>`;
@@ -153,6 +155,7 @@ export function previewRoutes(deps: Deps): Hono {
     const workspaceScripts = (await deps.db.get<{ v: number }>('SELECT allow_custom_scripts AS v FROM workspaces WHERE id = ?', funnel.workspace_id))?.v === 1;
     const { html } = renderStep(deps, {
       funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'preview',
+      adTags: await adTagsForStep(deps, funnel.workspace_id, funnel.id, step.id, loadDoc(page.doc_json), 'preview'),
       hrefFor: (s) => `${prefix}${s.base_path}?token=${encodeURIComponent(token)}`,
     });
     return c.html(html, 200, noStore);

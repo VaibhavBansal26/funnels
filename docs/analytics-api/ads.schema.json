@@ -1,0 +1,410 @@
+{
+  "$id": "https://funnels.example/analytics-api/v1/ads.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Stable key of the row: platform and campaign for group_by=campaign, else the platform, funnel id or day"
+          },
+          "source": {
+            "description": "Platform (spend source folded to meta, google, tiktok, bing, linkedin, ... or as entered)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "campaign": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "funnel_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "day": {
+            "description": "Calendar day YYYY-MM-DD (group_by=day)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spend": {
+            "type": "number",
+            "description": "Major currency units, in the report currency"
+          },
+          "impressions": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "clicks": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Visitors whose first (or last) touch fell in the range"
+          },
+          "leads": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "orders": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Checkouts; an order bump is not counted again"
+          },
+          "revenue": {
+            "type": "number",
+            "description": "Net of refunds and of amounts lost in Stripe disputes"
+          },
+          "cpl": {
+            "description": "spend / leads",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cpa": {
+            "description": "spend / orders",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cpc": {
+            "description": "spend / clicks",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ctr": {
+            "description": "clicks / impressions in percent",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "roas": {
+            "description": "revenue / spend",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "profit": {
+            "type": "number",
+            "description": "revenue - spend"
+          }
+        },
+        "required": [
+          "key",
+          "source",
+          "campaign",
+          "funnel_id",
+          "day",
+          "spend",
+          "impressions",
+          "clicks",
+          "visits",
+          "leads",
+          "orders",
+          "revenue",
+          "cpl",
+          "cpa",
+          "cpc",
+          "ctr",
+          "roas",
+          "profit"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "next_cursor": {
+      "type": "null"
+    },
+    "from": {
+      "type": "string"
+    },
+    "to": {
+      "type": "string"
+    },
+    "tz": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string",
+      "enum": [
+        "first",
+        "last"
+      ]
+    },
+    "group_by": {
+      "type": "string",
+      "enum": [
+        "campaign",
+        "source",
+        "funnel",
+        "day"
+      ]
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "Every amount in the report is in this currency; currencies never mix"
+    },
+    "currencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Currencies with spend or revenue in the range"
+    },
+    "totals": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "Stable key of the row: platform and campaign for group_by=campaign, else the platform, funnel id or day"
+        },
+        "source": {
+          "description": "Platform (spend source folded to meta, google, tiktok, bing, linkedin, ... or as entered)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "campaign": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "funnel_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "day": {
+          "description": "Calendar day YYYY-MM-DD (group_by=day)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "spend": {
+          "type": "number",
+          "description": "Major currency units, in the report currency"
+        },
+        "impressions": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "clicks": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visits": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Visitors whose first (or last) touch fell in the range"
+        },
+        "leads": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "orders": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Checkouts; an order bump is not counted again"
+        },
+        "revenue": {
+          "type": "number",
+          "description": "Net of refunds and of amounts lost in Stripe disputes"
+        },
+        "cpl": {
+          "description": "spend / leads",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cpa": {
+          "description": "spend / orders",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cpc": {
+          "description": "spend / clicks",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "ctr": {
+          "description": "clicks / impressions in percent",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "roas": {
+          "description": "revenue / spend",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "profit": {
+          "type": "number",
+          "description": "revenue - spend"
+        }
+      },
+      "required": [
+        "key",
+        "source",
+        "campaign",
+        "funnel_id",
+        "day",
+        "spend",
+        "impressions",
+        "clicks",
+        "visits",
+        "leads",
+        "orders",
+        "revenue",
+        "cpl",
+        "cpa",
+        "cpc",
+        "ctr",
+        "roas",
+        "profit"
+      ],
+      "additionalProperties": {}
+    },
+    "other": {
+      "type": "object",
+      "properties": {
+        "visits": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "leads": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "orders": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "revenue": {
+          "type": "number",
+          "description": "Major currency units, in the report currency"
+        }
+      },
+      "required": [
+        "visits",
+        "leads",
+        "orders",
+        "revenue"
+      ],
+      "additionalProperties": {},
+      "description": "Results of campaigns that have no spend recorded"
+    },
+    "unmatched_spend": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "campaign": {
+            "type": "string"
+          },
+          "spend": {
+            "type": "number",
+            "description": "Major currency units, in the report currency"
+          }
+        },
+        "required": [
+          "source",
+          "campaign",
+          "spend"
+        ],
+        "additionalProperties": {}
+      },
+      "description": "Spend whose campaign never appears in the traffic: map it to a utm_campaign"
+    }
+  },
+  "required": [
+    "data",
+    "next_cursor",
+    "from",
+    "to",
+    "tz",
+    "model",
+    "group_by",
+    "currency",
+    "currencies",
+    "totals",
+    "other",
+    "unmatched_spend"
+  ],
+  "additionalProperties": {}
+}

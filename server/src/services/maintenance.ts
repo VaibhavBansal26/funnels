@@ -2,6 +2,7 @@ import type { Db } from '../db/index.js';
 import type { Deps } from '../deps.js';
 import { inTx } from '../db/scope.js';
 import { fireWebhookEvent } from './webhooks.js';
+import { pruneAttributionPii } from './attribution.js';
 
 /** Arbitrary constant; serialises partition creation between replicas. */
 const PARTITION_LOCK = 724_309_118;
@@ -67,6 +68,9 @@ export async function runMaintenance(deps: Deps): Promise<{ partitions: string[]
   const partitions = await ensureEventPartitions(deps.db, now, deps.config.PARTITION_MONTHS_AHEAD);
   const dedupePruned = await pruneEventDedupe(deps.db, now, deps.config.EVENT_DEDUPE_DAYS);
   const rollupsAnnounced = await announceDailyRollups(deps);
+  // Ads: IP addresses and user agents kept for server-side conversions expire; the delivery log keeps 180 days.
+  await pruneAttributionPii(deps, deps.config.ATTRIBUTION_RETENTION_DAYS);
+  await deps.db.run('DELETE FROM conversion_deliveries WHERE created_at < ?', new Date(now.getTime() - 180 * 86_400_000).toISOString());
   if (partitions.length || dedupePruned || rollupsAnnounced) deps.log.info('maintenance', { partitions, dedupePruned, rollupsAnnounced });
   return { partitions, dedupePruned, rollupsAnnounced };
 }

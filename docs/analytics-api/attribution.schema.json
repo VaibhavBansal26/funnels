@@ -1,0 +1,153 @@
+{
+  "$id": "https://funnels.example/analytics-api/v1/attribution.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "medium": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "campaign": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "visits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "leads": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "orders": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "revenue": {
+            "type": "number",
+            "description": "Major currency units, in the report currency"
+          },
+          "conversion_rate": {
+            "description": "orders / visits in percent",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "source",
+          "medium",
+          "campaign",
+          "content",
+          "visits",
+          "leads",
+          "orders",
+          "revenue",
+          "conversion_rate"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "next_cursor": {
+      "type": "null"
+    },
+    "from": {
+      "type": "string"
+    },
+    "to": {
+      "type": "string"
+    },
+    "tz": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string",
+      "enum": [
+        "first",
+        "last"
+      ]
+    },
+    "dimension": {
+      "type": "string"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "currencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "totals": {
+      "type": "object",
+      "properties": {
+        "visits": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "leads": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "orders": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "revenue": {
+          "type": "number",
+          "description": "Major currency units, in the report currency"
+        }
+      },
+      "required": [
+        "visits",
+        "leads",
+        "orders",
+        "revenue"
+      ],
+      "additionalProperties": {}
+    }
+  },
+  "required": [
+    "data",
+    "next_cursor",
+    "from",
+    "to",
+    "tz",
+    "model",
+    "dimension",
+    "currency",
+    "currencies",
+    "totals"
+  ],
+  "additionalProperties": {}
+}

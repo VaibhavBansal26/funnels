@@ -35,6 +35,19 @@
 | Scoped deps | The `Deps` copy handed to code inside `inTx`, whose `db` is the transaction. |
 | Platform admin | An account listed in `PLATFORM_ADMIN_EMAILS`; not a workspace role. |
 
+## Publishing and ads
+
+| Term | Meaning |
+|---|---|
+| Publish target | Where a funnel is served from: this server (`origin`) or Cloudflare Pages |
+| Bundle, version id | The static site built from a funnel, and the 12-hex hash of its files, headers and redirects (shown like a commit id) |
+| Hold | After a rollback or an unpublish, automatic deployments wait until someone presses Redeploy |
+| Pixel | A network's browser tag (Meta Pixel, Google tag, TikTok Pixel, LinkedIn Insight, Microsoft UET), generated from its id |
+| Conversions API | A network's server-to-server event endpoint (Meta CAPI, GA4 Measurement Protocol, TikTok Events API) |
+| Event id | The id shared by a browser pixel event and its server-side twin so the network keeps one (`lead_<submission>`, `purchase_<order>`) |
+| First touch, last touch | The earliest and the latest (non-direct) marketing touch of a visitor, lead or order |
+| ROAS | Return on ad spend: revenue / spend, in one currency |
+
 ## Legacy to new
 
 | Legacy product | This app |

@@ -439,6 +439,12 @@ describe('rate limits and the identity pepper', () => {
     const f = await liveFunnel(h, owner.token);
     await seed(h, [{ workspace_id: owner.wsId, funnel_id: f.id, step_id: f.s1, visitor_id: 'stable-visitor', created_at: '2026-03-10T12:00:00.000Z' }]);
     const before = ndjson((await get('/export/events?from=2026-03-10&to=2026-03-10')).text)[0]!.visitor_key;
+    for (const [m, path, body] of [['PUT', '/api/v1/analytics/identity-pepper', { pepper: 'x'.repeat(40) }], ['POST', '/api/v1/analytics/identity-pepper/rotate', undefined]] as const) {
+      const r = await h.call(m, path, { token: key.key, body });
+      expect(r.status, `${m} ${path}`).toBe(403);
+      expect(r.json.error.code).toBe('SESSION_REQUIRED');
+      expect(r.json.error.message).toMatch(/signed-in person/);
+    }
     const rot = await h.call('POST', '/api/v1/analytics/identity-pepper/rotate', { token: owner.token });
     expect(rot.json.pepper).not.toBe(first.pepper);
     expect(rot.json.rotatedAt).toEqual(expect.any(String));

@@ -18,6 +18,7 @@ import { assertWithinLimit } from '../billing/limits.js';
 import { regenerateFunnel, scriptsAllowedFor, validateDoc } from './pages.js';
 import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 import { insertStep, assertValidPath, serializeStep } from './steps.js';
+import { onFunnelChanged, onFunnelPurge } from './publishing.js';
 
 const iso = (deps: Deps) => deps.now().toISOString();
 
@@ -341,6 +342,7 @@ export async function updateFunnel(deps: Deps, auth: Auth, id: string, input: z.
     if (input.tags) await setFunnelTags(d.db, ws, id, input.tags);
     if (pathsChanged || input.favicon !== undefined || input.header_tracking_code !== undefined || input.footer_tracking_code !== undefined) await regenerateFunnel(d, ws, id);
     await schedulePurge(d, [...urlsBefore, ...(await liveUrlsForFunnel(d, id))]);
+    await onFunnelChanged(d, id);
   });
   return getFunnelDetail(deps, ws, id);
 }
@@ -424,6 +426,7 @@ export async function softDeleteFunnel(deps: Deps, auth: Auth, id: string): Prom
     const at = iso(d);
     await patchFunnel(d.db, ws, id, { deleted_at: at, status: 'test', domain_id: null, updated_at: at });
     d.pageCache.invalidate((await listSteps(d.db, ws, id)).map((s) => s.id));
+    await onFunnelChanged(d, id);
   });
 }
 
@@ -445,6 +448,7 @@ export async function purgeFunnel(deps: Deps, auth: Auth, id: string): Promise<v
     const f = await lockFunnel(d.db, ws, id, true);
     if (!f.deleted_at) throw conflict('NOT_IN_TRASH', 'Move the funnel to the trash before purging it');
     const stepIds = (await listSteps(d.db, ws, id)).map((s) => s.id);
+    await onFunnelPurge(d, ws, id); // removes the Cloudflare Pages project this funnel created, if any
     await d.db.run('UPDATE domains SET default_home_step_id = NULL WHERE workspace_id = ? AND default_home_step_id IN (SELECT id FROM steps WHERE funnel_id = ?)', ws, id);
     await d.db.run('UPDATE domains SET default_404_step_id = NULL WHERE workspace_id = ? AND default_404_step_id IN (SELECT id FROM steps WHERE funnel_id = ?)', ws, id);
     await d.db.run('DELETE FROM funnels WHERE workspace_id = ? AND id = ?', ws, id);

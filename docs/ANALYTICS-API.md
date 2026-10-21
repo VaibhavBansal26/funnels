@@ -93,6 +93,15 @@ done
 
 **Funnel structure** (`/export/funnel-structure`, JSON): per funnel `steps[] { step_id, name, order, path, blocks { form, checkout, video, countdown }, word_count, has_order_bump, has_upsell }` plus funnel-level `has_order_bump`, `has_upsell`, `word_count`. Word count covers visible copy: headings, paragraphs, button labels, list items and FAQ questions and answers.
 
+## Ads: attribution and ad performance (additive)
+
+Two more read endpoints, scope `analytics:read`, following the same conventions (`{ data, next_cursor: null, ... }`, snake_case, `429` with `Retry-After`). Dates are whole calendar days (`YYYY-MM-DD`, default the last 30 local days in `tz`, at most 366 days) because ad spend is booked per day. Every amount is in **one currency** (`currency`, default: the one with the most money in the range; the others are in `currencies`): amounts of different currencies are never added.
+
+* `GET /api/v1/analytics/ads?from=&to=&tz=&model=first|last&group_by=campaign|source|funnel|day&currency=&funnel_id=` -> rows `{ key, source, campaign, funnel_id, day, spend, impressions, clicks, visits, leads, orders, revenue, cpl, cpa, cpc, ctr, roas, profit }`, `totals`, `other` (results of campaigns with no spend), `unmatched_spend` (spend whose campaign never appears in the traffic). `revenue` is net of refunds and of amounts lost in Stripe disputes; ratios with a zero denominator are `null`; `roas = revenue / spend`. Schema: [analytics-api/ads.schema.json](analytics-api/ads.schema.json).
+* `GET /api/v1/analytics/attribution?...&dimension=source|medium|campaign|content|source_medium|source_medium_campaign` -> rows `{ source, medium, campaign, content, visits, leads, orders, revenue, conversion_rate }` (`(direct)` for visitors, leads or orders without a marketing touch). Schema: [analytics-api/attribution.schema.json](analytics-api/attribution.schema.json).
+
+A `test` key sees test funnels only and therefore no ad spend. Definitions, joining rules and limits: [ADS.md](ADS.md).
+
 ## Rate limits
 
 Per API key: `analytics.read` 60 requests per minute (`ANALYTICS_API_PER_MINUTE`), `analytics.export` 10 per minute (`ANALYTICS_EXPORT_PER_MINUTE`); and per workspace across all its keys: `analytics.workspace` (a plan-tiered quota, so many keys cannot multiply the load). Refusals are `429` with `Retry-After`, the IETF `RateLimit` headers and the usual body; see [RATE-LIMITING.md](RATE-LIMITING.md).

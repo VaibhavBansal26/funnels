@@ -59,7 +59,7 @@ export function resolvePermissions(roleId: string, custom: { name: string; permi
 const TOUCH_MS = 5 * 60_000;
 
 /** What support staff may not do while acting as a user, whatever the user's role: change credentials, billing and money, access and ownership. */
-export const IMPERSONATION_DENIED: readonly Permission[] = ['billing:manage', 'orders:refund', 'members:manage', 'roles:manage', 'workspace:manage', 'api_keys:manage', 'analytics_identity:manage', 'funnels:purge'];
+export const IMPERSONATION_DENIED: readonly Permission[] = ['billing:manage', 'orders:refund', 'members:manage', 'roles:manage', 'workspace:manage', 'api_keys:manage', 'analytics_identity:manage', 'funnels:purge', 'integrations:manage', 'publishing:manage'];
 
 async function loadAuth(deps: Deps, userId: string, sessionId: string): Promise<Auth & { suspended: boolean }> {
   const u = await deps.db.get<AuthRow>(

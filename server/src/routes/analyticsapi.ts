@@ -4,6 +4,7 @@ import { gzip } from 'node:zlib';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { authenticate, authOf, type AppEnv } from '../auth/context.js';
 import type { Deps } from '../deps.js';
+import { AppError } from '../errors.js';
 import { schemaDocument } from '../analyticsapi/schemas.js';
 import * as api from '../services/analyticsapi.js';
 import * as keys from '../services/apikeys.js';
@@ -73,7 +74,13 @@ export function analyticsApiRoutes(deps: Deps): Hono<AppEnv> {
     await next();
   };
   r.get('/analytics/identity-pepper', pepperReader, async (c) => c.json(await api.identityPepper(deps, (c.get(API as never) as keys.ApiAuth | undefined)?.workspaceId ?? authOf(c).workspaceId)));
-  r.put('/analytics/identity-pepper', auth, async (c) => c.json(await api.setPepper(deps, authOf(c), await bodyOf(c, api.PepperInput), ip(c))));
-  r.post('/analytics/identity-pepper/rotate', auth, async (c) => c.json(await api.rotatePepper(deps, authOf(c), ip(c))));
+  // A valid API key is authenticated but may not change the pepper: that needs a person's session (403, not the 401 of a bad credential; same answer as Conversations).
+  const sessionOnly: MiddlewareHandler = async (c, next) => {
+    const bearer = /^Bearer (.+)$/i.exec(c.req.header('authorization') ?? '')?.[1];
+    if (bearer && keys.KEY_FORMAT.test(bearer)) throw new AppError(403, 'SESSION_REQUIRED', 'This action needs a signed-in person, not an API key: an API key can read the identity pepper but never change it.');
+    await next();
+  };
+  r.put('/analytics/identity-pepper', sessionOnly, auth, async (c) => c.json(await api.setPepper(deps, authOf(c), await bodyOf(c, api.PepperInput), ip(c))));
+  r.post('/analytics/identity-pepper/rotate', sessionOnly, auth, async (c) => c.json(await api.rotatePepper(deps, authOf(c), ip(c))));
   return r;
 }
