@@ -71,17 +71,17 @@ export const ColorRow = ({ label, prop, value, onChange }: { label: string; prop
 export function BoxModel({ get, placeholder, set }: { get: (p: string) => string; placeholder: (p: string) => string; set: (p: string, v: string) => boolean }) {
   const cell = (kind: 'margin' | 'padding', s: 'top' | 'right' | 'bottom' | 'left', cls: string) => (
     <div className={cls}>
-      <ValueInput label={`${kind} ${s}`} value={get(`${kind}-${s}`)} placeholder={placeholder(`${kind}-${s}`)} onCommit={(v) => set(`${kind}-${s}`, v)} className="!min-h-6 px-0.5 text-center text-[0.75rem]" />
+      <ValueInput label={`${kind} ${s}`} value={get(`${kind}-${s}`)} placeholder={placeholder(`${kind}-${s}`)} onCommit={(v) => set(`${kind}-${s}`, v)} className="!min-h-6 !px-0 text-center text-[0.7rem]" />
     </div>
   );
-  const grid = 'grid grid-cols-[3.1rem_1fr_3.1rem] items-center gap-1';
+  const grid = 'grid grid-cols-[3.25rem_1fr_3.25rem] items-center gap-1';
   return (
-    <div role="group" aria-label="Spacing" className={`${grid} rounded-lg border border-dashed border-warn/60 bg-warn-soft/60 p-1.5`}>
-      <span className="col-span-3 -mb-0.5 text-[0.65rem] font-semibold tracking-wide text-warn uppercase">Margin</span>
+    <div role="group" aria-label="Spacing" className={`${grid} rounded-lg border border-dashed border-border-strong bg-surface-2 p-2`}>
+      <span className="col-span-3 -mb-0.5 text-[0.65rem] font-medium tracking-wide text-muted uppercase">Margin</span>
       {cell('margin', 'top', 'col-start-2')}
       {cell('margin', 'left', 'col-start-1 row-start-3')}
-      <div className={`${grid} col-start-2 row-start-3 rounded-md border border-dashed border-ok/60 bg-ok-soft/70 p-1.5`}>
-        <span className="col-span-3 -mb-0.5 text-[0.65rem] font-semibold tracking-wide text-ok uppercase">Padding</span>
+      <div className={`${grid} col-start-2 row-start-3 rounded-md border border-dashed border-border-strong bg-surface p-1.5`}>
+        <span className="col-span-3 -mb-0.5 text-[0.65rem] font-medium tracking-wide text-muted uppercase">Padding</span>
         {cell('padding', 'top', 'col-start-2')}
         {cell('padding', 'left', 'col-start-1 row-start-3')}
         <div className="col-start-2 row-start-3 h-6 rounded bg-surface shadow-sm" aria-hidden="true" />

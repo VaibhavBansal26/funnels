@@ -106,24 +106,24 @@ export function FunnelsPage() {
   const status = sp.get('status') ?? '';
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="!mb-0">My Funnels</h1>
-          <p className="small muted m-0">{total} funnel{total === 1 ? '' : 's'} · {filters.data?.status.live ?? 0} live</p>
+          <p className="mt-1.5 mb-0 text-muted">{total} funnel{total === 1 ? '' : 's'} · {filters.data?.status.live ?? 0} live</p>
         </div>
         <Link className="btn primary" to="/funnels/new"><Plus className="size-4" aria-hidden="true" /> New funnel</Link>
       </div>
 
-      <form className="flex flex-wrap items-center gap-2.5" role="search" aria-label="Filter funnels" onSubmit={(e) => e.preventDefault()}>
+      <form className="-mt-3 flex flex-wrap items-center gap-3" role="search" aria-label="Filter funnels" onSubmit={(e) => e.preventDefault()}>
         <div className="relative w-full sm:w-64">
           <label htmlFor="f-search" className="sr-only">Search by name</label>
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
           <Input id="f-search" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search funnels" />
         </div>
-        <div role="group" aria-label="Status" className="inline-flex overflow-hidden rounded-md border border-border-strong bg-surface shadow-sm">
+        <div role="group" aria-label="Status" className="inline-flex gap-0.5 rounded-lg bg-surface-2 p-0.5">
           {[{ v: '', l: 'All', n: total }, { v: 'live', l: 'Live', n: filters.data?.status.live ?? 0 }, { v: 'test', l: 'Test', n: filters.data?.status.test ?? 0 }].map((o) => (
-            <button key={o.v} type="button" aria-pressed={status === o.v} onClick={() => set({ status: o.v || null })} className={cn('min-h-9 px-3 text-sm font-semibold text-muted hover:bg-surface-2', status === o.v && 'bg-primary-soft text-primary')}>{o.l} <span className="font-normal opacity-80">{o.n}</span></button>
+            <button key={o.v} type="button" aria-pressed={status === o.v} onClick={() => set({ status: o.v || null })} className={cn('min-h-9 rounded-md px-3.5 text-sm font-medium text-muted transition-colors hover:text-fg max-sm:min-h-11', status === o.v && 'bg-surface text-fg shadow-sm')}>{o.l} <span className="font-normal opacity-80">{o.n}</span></button>
           ))}
         </div>
         <div>
@@ -149,9 +149,9 @@ export function FunnelsPage() {
             <option value="name">Name</option>
           </select>
         </div>
-        <div className="ml-auto inline-flex overflow-hidden rounded-md border border-border-strong bg-surface shadow-sm" role="group" aria-label="View">
-          <button type="button" aria-label="Cards" aria-pressed={view === 'cards'} onClick={() => set({ view: null })} className={cn('grid size-9 place-items-center text-muted hover:bg-surface-2', view === 'cards' && 'bg-primary-soft text-primary')}><LayoutGrid className="size-4" /></button>
-          <button type="button" aria-label="Table" aria-pressed={view === 'table'} onClick={() => set({ view: 'table' })} className={cn('grid size-9 place-items-center text-muted hover:bg-surface-2', view === 'table' && 'bg-primary-soft text-primary')}><Rows3 className="size-4" /></button>
+        <div className="ml-auto inline-flex gap-0.5 rounded-lg bg-surface-2 p-0.5" role="group" aria-label="View">
+          <button type="button" aria-label="Cards" aria-pressed={view === 'cards'} onClick={() => set({ view: null })} className={cn('grid size-9 place-items-center rounded-md text-muted transition-colors hover:text-fg max-sm:size-11', view === 'cards' && 'bg-surface text-fg shadow-sm')}><LayoutGrid className="size-4" /></button>
+          <button type="button" aria-label="Table" aria-pressed={view === 'table'} onClick={() => set({ view: 'table' })} className={cn('grid size-9 place-items-center rounded-md text-muted transition-colors hover:text-fg max-sm:size-11', view === 'table' && 'bg-surface text-fg shadow-sm')}><Rows3 className="size-4" /></button>
         </div>
       </form>
 
@@ -172,30 +172,32 @@ export function FunnelsPage() {
 
       {rows.length && view === 'cards' ? (
         <>
-          <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 19rem), 1fr))' }}>
+          <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 20rem), 1fr))' }}>
             {rows.map((f) => (
-              <Card key={f.id} className="group/card flex flex-col overflow-hidden transition-shadow hover:shadow-pop" aria-label={f.name} role="article">
+              <Card key={f.id} className="group/card flex flex-col overflow-hidden transition-shadow duration-200 hover:shadow-pop" aria-label={f.name} role="article">
+                <div className="relative">
                 <Link to={`/funnels/${f.id}`} tabIndex={-1} aria-hidden="true" className="relative block border-b border-border bg-surface-2">
                   <FunnelThumb thumb={f.thumbnail} funnelId={f.id} className="rounded-none border-0" />
                   <span className="pointer-events-none absolute inset-0 bg-primary/0 transition-colors group-hover/card:bg-primary/5" />
                 </Link>
-                <div className="flex flex-1 flex-col gap-2.5 p-4">
+                <label className={cn('absolute top-3 left-3 grid size-8 cursor-pointer place-items-center rounded-lg bg-surface/90 shadow-sm backdrop-blur transition-opacity max-sm:size-11 [@media(hover:hover)]:opacity-0 group-focus-within/card:opacity-100 group-hover/card:opacity-100', selected.includes(f.id) && '!opacity-100')}><input type="checkbox" className="size-[18px] accent-primary" checked={selected.includes(f.id)} onChange={() => toggle(f.id)} aria-label={`Select ${f.name}`} /></label>
+                </div>
+                <div className="flex flex-1 flex-col gap-3 p-5">
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="!mb-0 min-w-0 text-[0.98rem] leading-snug"><Link to={`/funnels/${f.id}`} className="text-fg no-underline hover:text-primary">{f.name}</Link></h3>
+                    <h3 className="!mb-0 min-w-0 text-[1rem] leading-snug"><Link to={`/funnels/${f.id}`} className="text-fg no-underline hover:text-primary">{f.name}</Link></h3>
                     <StatusBadge status={f.status} />
                   </div>
                   <p className="small muted !mb-0 truncate">{f.domain ? f.domain.hostname : 'No domain connected'} · updated {fmtDay(f.updatedAt)}</p>
                   {f.tags.length ? <div className="flex flex-wrap gap-1">{f.tags.map((t) => <span key={t.id} className="tag-chip">{t.name}</span>)}</div> : null}
-                  <dl className="m-0 mt-auto grid grid-cols-4 gap-2 border-t border-border pt-3 text-center">
+                  <dl className="m-0 mt-auto grid grid-cols-4 gap-2 pt-2 text-left">
                     {[['Visits', fmtNum(f.stats.visits)], ['Opt-ins', fmtNum(f.stats.optins)], ['Orders', fmtNum(f.stats.orders)], ['Sales', fmtMoney(f.stats.sales)]].map(([l, v]) => (
-                      <div key={l}><dd className="m-0 text-sm font-bold tabular-nums">{v}</dd><dt className="text-[0.7rem] text-muted">{l}</dt></div>
+                      <div key={l}><dd className="m-0 text-sm font-semibold tabular-nums">{v}</dd><dt className="text-xs text-muted">{l}</dt></div>
                     ))}
                   </dl>
-                  <div className="flex items-center gap-1.5 border-t border-border pt-3">
-                    <label className="check small !font-normal"><input type="checkbox" checked={selected.includes(f.id)} onChange={() => toggle(f.id)} aria-label={`Select ${f.name}`} />Select</label>
-                    <span className="ml-auto flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 border-t border-border pt-4">
+                    <span className="flex w-full items-center gap-1.5">
                       <Button size="sm" onClick={() => nav(`/funnels/${f.id}`)}><Pencil /> Open</Button>
-                      {actions(f)}
+                      <span className="ml-auto">{actions(f)}</span>
                     </span>
                   </div>
                 </div>

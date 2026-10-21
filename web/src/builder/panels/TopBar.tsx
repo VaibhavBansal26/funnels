@@ -31,7 +31,7 @@ export function TopBar({ funnelName, stepId, steps, onStep, device, onDevice, pr
   useEditorEvents(editor, 'undo redo update component:add component:remove');
   const um = editor.UndoManager;
   return (
-    <header role="toolbar" aria-label="Builder" className="flex h-14 shrink-0 items-center gap-1.5 border-b border-border bg-surface px-2.5 sm:gap-2 sm:px-3">
+    <header role="toolbar" aria-label="Builder" className="flex h-12 shrink-0 items-center gap-1 border-b border-border/70 bg-surface px-2.5 sm:gap-1.5 sm:px-3">
       <Tooltip label="Back to the funnel"><Link to={`/funnels/${env.funnelId}/steps`} aria-label={`Back to ${funnelName}`} className={buttonVariants({ variant: 'ghost', size: 'icon' })}><ArrowLeft /></Link></Tooltip>
       {toggles.left ? <Tooltip label="Blocks, layers and pages"><Button variant="ghost" size="icon" aria-label="Open blocks, layers and pages" onClick={() => onTogglePanels('left')}><LayoutPanelLeft /></Button></Tooltip> : null}
       <div className="hidden min-w-0 max-w-44 flex-col leading-tight xl:flex">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, errorMessage } from '../api/client';
 import { useMutate } from '../api/hooks';
@@ -55,20 +55,34 @@ function AiUsage() {
 
 export function SettingsPage() {
   const { session, can } = useAuth();
+  const sections: { id: string; label: string; show: boolean; node: ReactNode }[] = [
+    { id: 'workspace', label: 'Workspace', show: true, node: <WorkspaceCard /> },
+    { id: 'security', label: 'Security', show: true, node: <SecurityCard /> },
+    { id: 'team', label: 'Team and roles', show: can('members:read'), node: <TeamSection /> },
+    { id: 'billing', label: 'Plan', show: can('billing:read'), node: <Billing /> },
+    { id: 'payments', label: 'Payments', show: can('products:read'), node: <Payments /> },
+    { id: 'publishing', label: 'Publishing', show: can('publishing:manage'), node: <ConnectionCard /> },
+    { id: 'tracking', label: 'Tracking', show: can('funnels:read'), node: <WorkspaceTracking /> },
+    { id: 'reviews', label: 'Google reviews', show: can('integrations:manage'), node: <GoogleReviewsCard /> },
+    { id: 'api', label: 'API access', show: true, node: <ApiAccess /> },
+    { id: 'ai', label: 'AI assistant', show: can('ai:use'), node: <AiUsage /> },
+  ].filter((x) => x.show);
   return (
-    <div className="stack" style={{ maxWidth: 900 }}>
-      <h1>Settings</h1>
-      <p className="muted">Signed in as {session?.user.email} ({session?.user.roleName}).{can('audit:read') ? <> <Link to="/audit">Audit log</Link></> : null}</p>
-      <WorkspaceCard />
-      <SecurityCard />
-      {can('members:read') ? <TeamSection /> : null}
-      {can('billing:read') ? <Billing /> : null}
-      {can('products:read') ? <Payments /> : null}
-      {can('publishing:manage') ? <ConnectionCard /> : null}
-      {can('funnels:read') ? <WorkspaceTracking /> : null}
-      {can('integrations:manage') ? <GoogleReviewsCard /> : null}
-      <ApiAccess />
-      {can('ai:use') ? <AiUsage /> : null}
+    <div className="flex flex-col gap-8">
+      <div>
+        <h1>Settings</h1>
+        <p className="mt-1.5 mb-0 text-muted">Signed in as {session?.user.email} ({session?.user.roleName}).{can('audit:read') ? <> <Link to="/audit">Audit log</Link></> : null}</p>
+      </div>
+      <div className="grid gap-8 lg:grid-cols-[10rem_minmax(0,1fr)] lg:gap-12">
+        <nav aria-label="Settings sections" className="hidden lg:block">
+          <ul className="sticky top-24 m-0 flex list-none flex-col gap-0.5 p-0">
+            {sections.map((x) => <li key={x.id}><a href={`#${x.id}`} className="block rounded-lg px-3 py-1.5 text-sm text-muted no-underline transition-colors hover:bg-surface-2 hover:text-fg">{x.label}</a></li>)}
+          </ul>
+        </nav>
+        <div className="flex max-w-4xl flex-col gap-8">
+          {sections.map((x) => <div key={x.id} id={x.id} className="scroll-mt-24">{x.node}</div>)}
+        </div>
+      </div>
     </div>
   );
 }

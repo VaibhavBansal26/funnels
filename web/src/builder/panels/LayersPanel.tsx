@@ -114,7 +114,7 @@ export function LayersPanel() {
             }}
             onClick={(e) => (e.shiftKey || e.metaKey || e.ctrlKey ? editor.selectToggle(c) : editor.select(c))}
             onKeyDown={(e) => onKey(e, i)}
-            className={cn('group relative mx-1.5 flex min-h-8 cursor-pointer items-center gap-1 rounded-md pr-1 text-[0.82rem] outline-none', isSel ? 'bg-primary-soft text-primary' : 'hover:bg-surface-2', !visible && 'opacity-50', 'focus-visible:ring-2 focus-visible:ring-ring',
+            className={cn('group relative mx-1.5 flex min-h-9 cursor-pointer items-center gap-1 rounded-lg pr-1 text-[0.8125rem] outline-none', isSel ? 'bg-surface-3 text-fg' : 'hover:bg-surface-2', !visible && 'opacity-50', 'focus-visible:ring-2 focus-visible:ring-ring',
               d?.ok && d.zone === 'before' && 'before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded before:bg-primary',
               d?.ok && d.zone === 'after' && 'after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded after:bg-primary',
               d?.ok && d.zone === 'inside' && 'ring-2 ring-primary', d && !d.ok && 'cursor-not-allowed ring-1 ring-danger/50')}

@@ -61,7 +61,7 @@ function Tile({ block, mine, onDelete }: { block: Block; mine?: boolean; onDelet
         }}
         onDragEnd={() => editor.Blocks.__endDrag()}
         onClick={() => insertBlock(editor, block)}
-        className="flex w-full cursor-grab flex-col items-center gap-1.5 rounded-lg border border-border bg-surface px-1.5 py-3 text-center text-[0.78rem] font-medium text-fg shadow-sm transition-colors hover:border-ring hover:bg-primary-soft active:cursor-grabbing [&_svg]:size-5 [&_svg]:text-primary"
+        className="flex w-full cursor-grab flex-col items-center gap-1.5 rounded-xl border border-transparent bg-surface-2 px-1.5 py-3.5 text-center text-[0.78rem] font-medium text-fg transition-colors hover:border-border-strong hover:bg-surface-3/60 active:cursor-grabbing [&_svg]:size-5 [&_svg]:text-muted"
       >
         <GripVertical className="absolute top-1.5 left-1 !size-3 !text-muted opacity-0 group-hover:opacity-100" aria-hidden="true" />
         <Icon aria-hidden="true" />
@@ -105,19 +105,19 @@ export function BlocksPanel() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" role="region" aria-label="Blocks">
-      <div className="border-b border-border p-3">
+      <div className="border-b border-border/70 p-4">
         <div className="relative">
           <label htmlFor="block-search" className="sr-only">Search blocks</label>
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted" aria-hidden="true" />
-          <Input id="block-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search blocks" className="min-h-8 pl-8 text-[0.82rem]" />
+          <Input id="block-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search blocks" className="min-h-9 pl-8 text-[0.8125rem]" />
         </div>
-        <p className="mt-2 text-[0.75rem] text-muted">Drag a block onto the page, or click it to insert after the selection.</p>
+        <p className="mt-2.5 mb-0 text-xs text-muted">Drag onto the page, or click to insert.</p>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {groups.length === 0 ? <p className="p-6 text-center text-sm text-muted">No block matches “{query}”.</p> : null}
         {groups.map((g) => (
           <Section key={`${g.c}${q ? ':search' : ''}`} title={g.c} defaultOpen={!!q || g.c === 'Sections' || g.c === 'Text' || g.c === 'Layout'} badge={<span className="rounded-full bg-surface-2 px-1.5 text-[0.7rem] font-semibold text-muted">{g.blocks.length}</span>}>
-            <div className={cn('grid grid-cols-2 gap-2')}>
+            <div className={cn('grid grid-cols-2 gap-2.5')}>
               {g.blocks.map((b) => <Tile key={b.getId()} block={b} mine={g.c === MY} onDelete={() => del.mutate(b.getId().replace(/^my-/, ''))} />)}
             </div>
           </Section>

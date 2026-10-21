@@ -1,4 +1,6 @@
+import { ArrowDown, ArrowUp, Copy, FileX, House, MoreHorizontal, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui';
 import { PaymentsWizard } from '../components/PaymentsWizard';
 import { useAuth } from '../auth/AuthContext';
 import { PageThumb } from '../components/FunnelThumb';
@@ -84,7 +86,7 @@ export function StepsTab({ funnel }: { funnel: FunnelDetail }) {
   return (
     <div className="stack">
       <div className="row between">
-        <p className="muted" style={{ margin: 0 }}>Drag steps to reorder, or focus a step and press Alt+↑ / Alt+↓. Buttons on each step do the same.</p>
+        <p className="small muted" style={{ margin: 0 }}>Drag to reorder, or focus a step and press Alt+↑ / Alt+↓.</p>
         <span className="row">
           {can('funnels:write') && can('products:write') ? <button type="button" className="btn" onClick={() => setPayments(true)}>Add payments</button> : null}
           <button type="button" className="btn primary" onClick={() => setAdding(true)}>Add step</button>
@@ -115,21 +117,31 @@ export function StepsTab({ funnel }: { funnel: FunnelDetail }) {
             <span className="step-index" aria-hidden="true">{i + 1}</span>
             <PageThumb funnelId={funnel.id} stepId={s.id} title={s.name} className="hidden sm:block" />
             <div className="grow">
-              <strong>{s.name}</strong> {s.isDomainHome ? <span className="badge ok">Domain home</span> : null} {s.isDomain404 ? <span className="badge warn">Domain 404</span> : null}
+              <strong className="font-semibold">{s.name}</strong> {s.isDomainHome ? <span className="badge ok">Domain home</span> : null} {s.isDomain404 ? <span className="badge warn">Domain 404</span> : null}
               <div className="muted small mono">{s.path}</div>
             </div>
-            <div className="row justify-end">
-              <button type="button" className="btn sm icon" aria-label={`Move ${s.name} up`} disabled={i === 0} onClick={() => move(i, i - 1)}>↑</button>
-              <button type="button" className="btn sm icon" aria-label={`Move ${s.name} down`} disabled={i === order.length - 1} onClick={() => move(i, i + 1)}>↓</button>
+            <div className="flex flex-none items-center gap-1.5">
+              <span className="hidden items-center sm:flex">
+                <Button variant="ghost" size="icon-sm" aria-label={`Move ${s.name} up`} disabled={i === 0} onClick={() => move(i, i - 1)}><ArrowUp /></Button>
+                <Button variant="ghost" size="icon-sm" aria-label={`Move ${s.name} down`} disabled={i === order.length - 1} onClick={() => move(i, i + 1)}><ArrowDown /></Button>
+              </span>
               <Link className="btn sm primary" to={`/funnels/${funnel.id}/builder/${s.id}`}>Edit page</Link>
-              <button type="button" className="btn sm" onClick={() => dup.mutate(s.id, { onSuccess: () => toast.push('Step duplicated', 'ok') })}>Duplicate</button>
-              {funnel.domain ? (
-                <>
-                  <button type="button" className="btn sm" aria-pressed={s.isDomainHome} onClick={() => defaults.mutate({ homeStepId: s.isDomainHome ? null : s.id })}>{s.isDomainHome ? 'Unset home' : 'Set as home'}</button>
-                  <button type="button" className="btn sm" aria-pressed={s.isDomain404} onClick={() => defaults.mutate({ notFoundStepId: s.isDomain404 ? null : s.id })}>{s.isDomain404 ? 'Unset 404' : 'Set as 404'}</button>
-                </>
-              ) : null}
-              <button type="button" className="btn sm danger" aria-label={`Delete ${s.name}`} disabled={order.length <= 1} onClick={() => setDeleting(s)}>Delete</button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`More actions for ${s.name}`}><MoreHorizontal /></Button></DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem className="sm:hidden" disabled={i === 0} onSelect={() => move(i, i - 1)}><ArrowUp /> Move up</DropdownMenuItem>
+                  <DropdownMenuItem className="sm:hidden" disabled={i === order.length - 1} onSelect={() => move(i, i + 1)}><ArrowDown /> Move down</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => dup.mutate(s.id, { onSuccess: () => toast.push('Step duplicated', 'ok') })}><Copy /> Duplicate</DropdownMenuItem>
+                  {funnel.domain ? (
+                    <>
+                      <DropdownMenuItem onSelect={() => defaults.mutate({ homeStepId: s.isDomainHome ? null : s.id })}><House /> {s.isDomainHome ? 'Unset home' : 'Set as home'}</DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => defaults.mutate({ notFoundStepId: s.isDomain404 ? null : s.id })}><FileX /> {s.isDomain404 ? 'Unset 404' : 'Set as 404'}</DropdownMenuItem>
+                    </>
+                  ) : null}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem danger disabled={order.length <= 1} onSelect={() => setDeleting(s)}><Trash2 /> Delete step</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </li>
         ))}
