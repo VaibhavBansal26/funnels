@@ -57,7 +57,7 @@ export function ConnectionCard() {
         </form>
       ) : null}
       {c?.platform.available ? <p className="muted small">This installation can also host Pages projects for you ({c.platform.projectsUsed} in use): choose it when you publish a funnel if you do not connect an account.</p> : null}
-      <p className="muted small">Not exercised against real Cloudflare in this repository: after connecting, publish a small funnel and check the result, or run <span className="mono">scripts/cf-pages-smoke.ts</span> (docs/CLOUDFLARE-SETUP.md).</p>
+      <p className="muted small">Going live on a pages.dev address has been run on a real Cloudflare account; custom domains and the Workers address have not. After connecting, publish a small funnel and check the result, or run <span className="mono">scripts/cf-pages-smoke.ts</span> (docs/CLOUDFLARE-SETUP.md).</p>
       {disconnecting ? (
         <ConfirmDialog danger title="Disconnect Cloudflare?" confirmLabel="Disconnect" busy={disconnect.isPending}
           message="The token is deleted. Funnels published to Cloudflare Pages through this connection go back to being served by this server in this app; the sites stay online on Cloudflare until you delete them there."

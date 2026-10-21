@@ -31,7 +31,7 @@ import { addressFrom, ensureBuiltinDomain, ensurePagesDomain, workspaceSlugOf, t
  *
  * Single flight: a funnel has one lease at a time; changes that arrive while a deployment runs queue exactly one follow-up that builds from the then-current state, so the last
  * change always wins and intermediate states may be skipped. A rollback holds automatic deployments until someone redeploys, otherwise the next autosave would undo it.
- * Not exercised against real Cloudflare (docs/CLOUDFLARE-PAGES.md).
+ * Going live on pages.dev was run against a real Cloudflare account; rollbacks, custom domains and the Workers target were not (docs/VERIFIED.md).
  */
 /** Cloudflare Pages allows 100 projects per account and this app creates one per funnel: https://developers.cloudflare.com/pages/platform/limits/ (checked 2026-10-21). */
 export const PAGES_PROJECT_LIMIT = 100;

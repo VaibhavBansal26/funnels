@@ -27,6 +27,6 @@ Last reviewed 2026-10-21, against the code at that date. Update it whenever some
 * The web app and the builder in a **real browser** (Playwright, real mouse drags) against the built server ([TESTING.md](TESTING.md)).
 * For this documentation pass (2026-10-21): the app was built, seeded (`npm run seed`) and run locally on a random port; every page in [USER-GUIDE.md](USER-GUIDE.md) was opened in Chromium and its text and controls compared with the guide; going live on the built-in address, taking it offline, moving a funnel to the trash and restoring it were exercised over the HTTP API (headers checked: `X-Robots-Tag`, cookie path, CSP, 404 after taking offline, restore in test mode).
 
-## Where the interface still says "not exercised"
+## Where the interface said "not exercised"
 
-The Settings > Publishing card says "Not exercised against real Cloudflare in this repository", and code comments in `server/src/publish/*.ts` and `server/src/services/publishing.ts` say the same. Since the maintainer's real Pages run that is out of date for the go-live path and still true for the rest; the wording lives in code and is listed for a later change rather than edited by a documentation pass.
+The Settings > Publishing card and the comment in `server/src/services/publishing.ts` now say that going live on pages.dev was run on a real account and that custom domains and the Workers address were not. Comments in `server/src/publish/*.ts` still describe the adapters as never run against real Cloudflare, which stays true for the parts the real run did not reach.

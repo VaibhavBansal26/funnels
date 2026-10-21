@@ -73,7 +73,7 @@ export function OrdersTab({ funnelId }: { funnelId: string }) {
       <Filters state={f} onChange={(s) => { setF(s); setPage(1); }} onExport={exp.run} exporting={exp.busy} label="orders" />
       <ErrorBanner error={q.error} onRetry={() => void q.refetch()} />
       {q.isLoading ? <Loading /> : null}
-      {q.data && q.data.data.length === 0 ? <div className="card"><Empty title="No orders yet">Test payments made through this funnel's checkout blocks are listed here.</Empty></div> : null}
+      {q.data && q.data.data.length === 0 ? <div className="card"><Empty title="No orders yet">Payments made through this funnel's checkout blocks are listed here, test and live.</Empty></div> : null}
       {q.data?.data.length ? (
         <div className="card flush table-wrap">
           <table className="table"><caption className="sr-only">Orders</caption>

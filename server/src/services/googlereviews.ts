@@ -265,7 +265,7 @@ export async function purgeReviewCache(deps: Deps): Promise<number> {
 export async function searchPlaces(deps: Deps, auth: Auth, input: z.infer<typeof SearchInput>) {
   const ws = auth.workspaceId;
   const { key } = await resolveKey(deps, ws);
-  if (!key) throw new PlacesError('no_key', 'Add a Google API key in Settings > Integrations > Google reviews to search for places');
+  if (!key) throw new PlacesError('no_key', 'Add a Google API key in Settings > Google reviews to search for places');
   await charge(deps, ws, 'reviews.search');
   await charge(deps, ws, 'reviews.fetch');
   const raw = (await callPlaces(deps, key, '/v1/places:searchText', { method: 'POST', mask: SEARCH_MASK, body: { textQuery: input.query, pageSize: 5 } })) as { places?: unknown[] };

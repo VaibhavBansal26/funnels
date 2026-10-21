@@ -5,7 +5,7 @@ import * as gr from '../services/googlereviews.js';
 import { clientIp } from '../ratelimit/ip.js';
 import { bodyOf } from './util.js';
 
-/** Settings > Integrations > Google reviews, and the place lookups of the builder. Review content for pages is served by `GET /public/reviews/:token`. */
+/** Settings > Google reviews, and the place lookups of the builder. Review content for pages is served by `GET /public/reviews/:token`. */
 export function googleReviewsRoutes(deps: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
   r.use('*', authenticate(deps));
