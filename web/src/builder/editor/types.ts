@@ -2,7 +2,7 @@
 // draggable constraints, and the per-element settings (button action, form, countdown, checkout, FAQ, tabs, popup) are re-expressed here as proper
 // GrapesJS component types with typed props (`fnAction`, `fnForm`, ...) instead of DOM attributes and iframes. Only these props are trusted by the server.
 import type { Component, Editor } from 'grapesjs';
-import { checkoutInner, countdownInner, formInner, progressInner, videoInner, type CountdownProps, type FormProps, type MarkupCtx, type ProductProps, type ProgressProps, type VideoProps } from '@pagemodel';
+import { checkoutInner, countdownInner, formInner, progressInner, reviewCtaInner, reviewsInner, videoInner, type CountdownProps, type FormProps, type MarkupCtx, type ProductProps, type ProgressProps, type ReviewCtaProps, type ReviewsProps, type ReviewsData, type VideoProps } from '@pagemodel';
 import { getEnv } from './env';
 import { bindClassFlag, bindClassGroups, type ClassGroup } from './classgroups';
 import { canDrop, TYPE_LABEL } from './rules';
@@ -255,6 +255,31 @@ export function registerTypes(editor: Editor): void {
       },
     },
     view: dynamicView('fnProduct', (v) => checkoutInner(idOf(v), v.model.get('fnProduct') as ProductProps, markupCtx(editor))),
+  });
+  // Google reviews: the canvas shows sample content (the real reviews are fetched by the server for the published page).
+  const SAMPLE: ReviewsData = { source: 'google', rating: 4.8, total: 123, mapsUri: null, reviews: [] };
+  add('fn-reviews', {
+    model: {
+      defaults: {
+        tagName: 'div', name: 'Google reviews', droppable: false,
+        fnReviews: { placeId: '', placeName: '', variant: 'list', count: 3, minRating: 4, showText: true, layout: 'grid', fallback: [{ name: 'Sample reviewer', text: 'Sample review text, shown in the editor only. Your Google reviews appear on the published page.', rating: 5 }] } satisfies ReviewsProps,
+        traits: [{ type: 'fn-reviews', name: 'fnReviews', label: 'Google reviews', changeProp: true }],
+      },
+    },
+    view: dynamicView('fnReviews', (v) => {
+      const p = v.model.get('fnReviews') as ReviewsProps;
+      return reviewsInner(idOf(v), p, p.variant === 'badge' ? SAMPLE : null, markupCtx(editor));
+    }),
+  });
+  add('fn-review-cta', {
+    model: {
+      defaults: {
+        tagName: 'div', name: 'Ask for a Google review', droppable: false,
+        fnReviewCta: { placeId: '', label: 'Leave us a Google review', prompt: 'Enjoyed your visit? A quick review helps others find us.', delaySeconds: 0 } satisfies ReviewCtaProps,
+        traits: [{ type: 'fn-review-cta', name: 'fnReviewCta', label: 'Ask for a Google review', changeProp: true }],
+      },
+    },
+    view: dynamicView('fnReviewCta', (v) => reviewCtaInner(idOf(v), v.model.get('fnReviewCta') as ReviewCtaProps, markupCtx(editor))),
   });
   add('fn-code', {
     model: { defaults: { tagName: 'div', name: 'Custom code', droppable: false, fnCode: { html: '<p>Custom HTML</p>', css: '', js: '' }, traits: [{ type: 'fn-code', name: 'fnCode', label: 'Custom code', changeProp: true }] } },

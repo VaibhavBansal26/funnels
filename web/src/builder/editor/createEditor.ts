@@ -47,7 +47,7 @@ export function createEditor(container: HTMLElement | null, env: BuilderEnv, opt
       frameStyle: '',
       customBadgeLabel: (c) => c.getName(),
       allowExternalDrop: false,
-      notTextable: ['fn-form', 'fn-checkout', 'fn-video', 'fn-countdown', 'fn-progress', 'fn-code'] as never,
+      notTextable: ['fn-form', 'fn-checkout', 'fn-video', 'fn-countdown', 'fn-progress', 'fn-code', 'fn-reviews', 'fn-review-cta'] as never,
     },
     parser: { optionsHtml: { allowScripts: false, allowUnsafeAttr: false, allowUnsafeAttrValue: false } },
     protectedCss: '',

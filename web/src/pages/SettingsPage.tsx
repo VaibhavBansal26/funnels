@@ -13,6 +13,7 @@ import { Payments } from './settings/Payments';
 import { useToast } from '../components/Toasts';
 import { ConnectionCard } from './growth/ConnectionCard';
 import { WorkspaceTracking } from './growth/TrackingCards';
+import { GoogleReviewsCard } from './settings/GoogleReviews';
 
 function WorkspaceCard() {
   const { session, can, refresh } = useAuth();
@@ -65,6 +66,7 @@ export function SettingsPage() {
       {can('products:read') ? <Payments /> : null}
       {can('publishing:manage') ? <ConnectionCard /> : null}
       {can('funnels:read') ? <WorkspaceTracking /> : null}
+      {can('integrations:manage') ? <GoogleReviewsCard /> : null}
       <ApiAccess />
       {can('ai:use') ? <AiUsage /> : null}
     </div>

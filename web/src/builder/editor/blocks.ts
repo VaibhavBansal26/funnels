@@ -25,7 +25,7 @@ export const BLOCK_CATEGORIES = ['Sections', 'Layout', 'Text', 'Media', 'Interac
 /** The DSL puts styles in project-level rules by id. A dropped block carries them as component styles (GrapesJS turns those into rules of the new component). */
 function inlineStyles(node: GjsNode, rules: GjsRule[]): GjsNode {
   const byId = new Map(rules.flatMap((r) => (r.selectors ?? []).map((s) => [String(typeof s === 'string' ? s : s.name).replace(/^#/, ''), r.style] as const)));
-  const keepIds = new Set(['fn-form', 'fn-checkout', 'fn-countdown', 'fn-code', 'fn-popup']);
+  const keepIds = new Set(['fn-form', 'fn-checkout', 'fn-countdown', 'fn-code', 'fn-popup', 'fn-reviews', 'fn-review-cta']);
   const walk = (n: GjsNode): GjsNode => {
     const out: GjsNode = { ...n };
     const attrs = { ...((n.attributes as Record<string, string> | undefined) ?? {}) };
@@ -113,6 +113,11 @@ export const BLOCKS: BlockDef[] = [
   { id: 'checkout', label: 'Checkout', category: 'Conversion', icon: 'ShoppingCart', keywords: 'checkout buy product price order payment', content: make((pm) => pm.checkout('checkout', { productName: 'My product', description: 'What the buyer gets.', price: 49, buttonLabel: 'Buy now' })) },
   { id: 'order-bump', label: 'Order bump', category: 'Conversion', icon: 'PackagePlus', keywords: 'order bump add-on checkbox', content: make((pm) => pm.checkout('bump', { productName: 'Bonus add-on', description: 'Add this bonus to your order.', price: 17, orderBump: true })) },
   { id: 'upsell', label: 'One-click upsell', category: 'Conversion', icon: 'Zap', keywords: 'upsell one click offer', content: make((pm) => pm.checkout('upsell', { productName: 'Special one-time offer', description: 'Added to the order they just placed.', price: 47, oneClickUpsell: true, buttonLabel: 'Yes, add it to my order' })) },
+
+  { id: 'google-reviews', label: 'Google reviews', category: 'Conversion', icon: 'Star', keywords: 'google reviews rating stars testimonials social proof places', content: make((pm) => pm.reviews('reviews', { variant: 'list', count: 3 })) },
+  { id: 'google-reviews-carousel', label: 'Google reviews carousel', category: 'Conversion', icon: 'GalleryHorizontal', keywords: 'google reviews carousel slider rating', content: make((pm) => pm.reviews('reviews', { variant: 'carousel', count: 5 })) },
+  { id: 'google-rating-badge', label: 'Google rating badge', category: 'Conversion', icon: 'BadgeCheck', keywords: 'google rating badge stars compact', content: make((pm) => pm.reviews('reviews', { variant: 'badge' })) },
+  { id: 'google-review-request', label: 'Ask for a Google review', category: 'Conversion', icon: 'MessageSquareHeart', keywords: 'google review request ask thank you page', content: make((pm) => pm.reviewCta('reviewask', { prompt: 'Enjoyed your visit? A quick review helps others find us.' })) },
 
   // ---- Cards ----
   { id: 'card-testimonial', label: 'Testimonial', category: 'Cards', icon: 'MessageSquareQuote', keywords: 'testimonial quote review card', content: make((pm) => testimonial(pm, 'A short, specific quote about the result.', 'Alex Morgan', 'Founder, Example Co', 'AM')) },

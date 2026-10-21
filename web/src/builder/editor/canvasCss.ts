@@ -22,7 +22,7 @@ html{scroll-behavior:auto}
 .fn-box:empty,.fn-tab-panel:empty,.fn-popup-dialog:empty{min-height:56px;border:1.5px dashed rgba(99,102,241,.45)}
 /* the canvas edits, it does not interact */
 a,button{cursor:default}
-.fn-form *,.fn-offer *,.fn-bump *,.fn-countdown *{pointer-events:none}
+.fn-form *,.fn-offer *,.fn-bump *,.fn-countdown *,.fn-rv *,.fn-rc *{pointer-events:none}
 .fn-hp{display:none!important}
 .fn-popup{display:block!important;position:relative!important;inset:auto!important;background:transparent!important;padding:12px!important;z-index:auto!important;border:1.5px dashed rgba(217,119,6,.7);border-radius:12px;margin:12px 24px}
 .fn-popup::before{content:"Popup (hidden on the published page until a button opens it)";display:block;color:#b45309;font:600 12px/1.2 Inter,system-ui,sans-serif;margin:0 0 8px 4px}

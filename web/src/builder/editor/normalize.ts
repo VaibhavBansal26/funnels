@@ -2,7 +2,7 @@ import type { Component, Editor } from 'grapesjs';
 import { canDrop, isElementType } from './rules';
 import { randomId } from './types';
 
-const NEEDS_ID = new Set(['fn-form', 'fn-checkout', 'fn-countdown', 'fn-code', 'fn-popup']);
+const NEEDS_ID = new Set(['fn-form', 'fn-checkout', 'fn-countdown', 'fn-code', 'fn-popup', 'fn-reviews', 'fn-review-cta']);
 const typeOf = (c: Component): string => String(c.get('type') ?? 'default');
 
 /**

@@ -43,6 +43,6 @@ export const isElementType = (type: string): boolean => !STRUCTURE.has(type);
 export const TYPE_LABEL: Record<string, string> = {
   wrapper: 'Page', 'fn-section': 'Section', 'fn-row': 'Row', 'fn-column': 'Column', 'fn-heading': 'Heading', 'fn-text': 'Text', 'fn-button': 'Button', 'fn-list': 'List',
   'fn-divider': 'Divider', 'fn-spacer': 'Spacer', image: 'Image', 'fn-video': 'Video', 'fn-faq': 'FAQ', 'fn-faq-item': 'FAQ item', 'fn-tabs': 'Tabs', 'fn-tab-nav': 'Tab bar',
-  'fn-tab-btn': 'Tab', 'fn-tab-panel': 'Tab panel', 'fn-countdown': 'Countdown', 'fn-progress': 'Progress bar', 'fn-form': 'Form', 'fn-checkout': 'Checkout', 'fn-code': 'Custom code',
+  'fn-tab-btn': 'Tab', 'fn-tab-panel': 'Tab panel', 'fn-countdown': 'Countdown', 'fn-progress': 'Progress bar', 'fn-form': 'Form', 'fn-checkout': 'Checkout', 'fn-code': 'Custom code', 'fn-reviews': 'Google reviews', 'fn-review-cta': 'Review request',
   'fn-popup': 'Popup', 'fn-popup-dialog': 'Dialog', 'fn-box': 'Box', link: 'Link', text: 'Text', textnode: 'Text', default: 'Box',
 };

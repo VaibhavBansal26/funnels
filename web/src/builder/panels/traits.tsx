@@ -4,6 +4,7 @@
 import type { Component, Editor, Trait } from 'grapesjs';
 import { ArrowDown, ArrowUp, ImageIcon, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
+import { PlacePicker } from './PlacePicker';
 import { CheckoutSchemaHint, FormPropsSchema, ProductPropsSchema, VideoPropsSchema, CountdownPropsSchema, parseVideoUrl, type FormProps, type ProductProps } from '../pagemodel-bridge';
 import { api, errorMessage } from '../../api/client';
 import { Button, Input, Select, Slider, Switch, Textarea } from '../../ui';
@@ -163,6 +164,55 @@ export function CountdownTrait({ trait }: TraitProps) {
       <Row label="Label"><input aria-label="Countdown label" className={inputCls} value={String(v.label ?? '')} onChange={(e) => set({ label: e.target.value })} /></Row>
       <Row label="When over"><input aria-label="Text when expired" className={inputCls} value={String(v.expiredText ?? '')} onChange={(e) => set({ expiredText: e.target.value })} /></Row>
       <Issues issues={issues} />
+    </div>
+  );
+}
+
+/* ---------- Google reviews ---------- */
+export function ReviewsTrait({ trait }: TraitProps) {
+  const v = val<{ placeId: string; placeName: string; variant: string; count: number; minRating: number; showText: boolean; layout: string; fallback: { name: string; text: string; rating?: number }[] }>(trait, { placeId: '', placeName: '', variant: 'list', count: 3, minRating: 4, showText: true, layout: 'grid', fallback: [] });
+  const set = (n: Record<string, unknown>) => trait.setValue({ ...live(trait, v), ...n });
+  const fb = v.fallback ?? [];
+  const setFb = (i: number, n: Partial<{ name: string; text: string }>) => set({ fallback: fb.map((f, k) => (k === i ? { ...f, ...n } : f)) });
+  return (
+    <div className="flex flex-col gap-3">
+      <PlacePicker placeId={v.placeId} placeName={v.placeName} onPick={(p) => set(p)} />
+      <Row label="Style"><Select size="sm" aria-label="Reviews style" value={v.variant} options={[{ value: 'list', label: 'List' }, { value: 'carousel', label: 'Carousel' }, { value: 'badge', label: 'Rating badge' }]} onValueChange={(variant) => set({ variant })} /></Row>
+      {v.variant !== 'badge' ? (
+        <>
+          <Row label={`Reviews to show: ${v.count}`}><Slider min={1} max={5} step={1} value={[v.count]} aria-label="Number of reviews" onValueChange={([n]) => set({ count: n })} /></Row>
+          <Row label="Lowest rating to show"><Select size="sm" aria-label="Minimum rating" value={String(v.minRating)} options={[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: n === 5 ? '5 stars only' : `${n} stars and up` }))} onValueChange={(n) => set({ minRating: Number(n) })} /></Row>
+          <Check id="rv-text" label="Show review text" checked={v.showText} onChange={(showText) => set({ showText })} />
+          {v.variant === 'list' ? <Row label="Layout"><Select size="sm" aria-label="Reviews layout" value={v.layout} options={[{ value: 'grid', label: 'Grid' }, { value: 'stack', label: 'One per row' }]} onValueChange={(layout) => set({ layout })} /></Row> : null}
+        </>
+      ) : null}
+      <Field label="Your own testimonials" hint="Shown when there is no Google key, no place or no result. They are labelled as customer feedback, not as Google reviews. Only real quotes, please.">
+        <div className="flex flex-col gap-2">
+          {fb.map((f, i) => (
+            <div key={i} className="flex flex-col gap-1 rounded-md border border-border p-2">
+              <input aria-label={`Testimonial ${i + 1} name`} className={inputCls} value={f.name} onChange={(e) => setFb(i, { name: e.target.value })} placeholder="Customer name" maxLength={80} />
+              <textarea aria-label={`Testimonial ${i + 1} text`} className={inputCls} rows={2} value={f.text} onChange={(e) => setFb(i, { text: e.target.value })} maxLength={400} />
+              <Button size="xs" onClick={() => set({ fallback: fb.filter((_, k) => k !== i) })} aria-label={`Remove testimonial ${i + 1}`}><Trash2 /> Remove</Button>
+            </div>
+          ))}
+          {fb.length < 6 ? <Button size="sm" onClick={() => set({ fallback: [...fb, { name: '', text: '', rating: 5 }] })}><Plus /> Add testimonial</Button> : null}
+        </div>
+      </Field>
+      <p className="m-0 text-[0.72rem] text-muted">Published pages show the review text exactly as Google returns it, with the author and a link to Google Maps. The canvas shows sample content.</p>
+    </div>
+  );
+}
+
+export function ReviewCtaTrait({ trait }: TraitProps) {
+  const v = val<{ placeId: string; label: string; prompt: string; delaySeconds: number }>(trait, { placeId: '', label: 'Leave us a Google review', prompt: '', delaySeconds: 0 });
+  const set = (n: Record<string, unknown>) => trait.setValue({ ...live(trait, v), ...n });
+  return (
+    <div className="flex flex-col gap-3">
+      <PlacePicker placeId={v.placeId} placeName="" onPick={(p) => set({ placeId: p.placeId })} />
+      <Row label="Button text"><input aria-label="Button text" className={inputCls} value={v.label} maxLength={60} onChange={(e) => set({ label: e.target.value })} /></Row>
+      <Row label="Message above the button"><input aria-label="Message above the button" className={inputCls} value={v.prompt} maxLength={200} onChange={(e) => set({ prompt: e.target.value })} /></Row>
+      <Row label="Show after"><Select size="sm" aria-label="Delay" value={String(v.delaySeconds)} options={[0, 5, 10, 15, 30, 60, 90, 120].map((n) => ({ value: String(n), label: n === 0 ? 'Immediately' : `${n} seconds` }))} onValueChange={(n) => set({ delaySeconds: Number(n) })} /></Row>
+      <p className="m-0 text-[0.72rem] text-muted">Opens Google's review form for the place in a new tab. Works best on a thank-you page.</p>
     </div>
   );
 }
@@ -369,7 +419,7 @@ export function PopupTrait({ component }: TraitProps) {
 
 export const TRAIT_EDITORS: Record<string, (p: TraitProps) => ReactNode> = {
   'fn-action': (p) => <ActionTrait {...p} />, 'fn-asset': (p) => <AssetTrait {...p} />, 'fn-video': (p) => <VideoTrait {...p} />, 'fn-countdown': (p) => <CountdownTrait {...p} />,
-  'fn-progress': (p) => <ProgressTrait {...p} />, 'fn-form': (p) => <FormTrait {...p} />, 'fn-product': (p) => <ProductTrait {...p} />, 'fn-code': (p) => <CodeTrait {...p} />,
+  'fn-progress': (p) => <ProgressTrait {...p} />, 'fn-reviews': (p) => <ReviewsTrait {...p} />, 'fn-review-cta': (p) => <ReviewCtaTrait {...p} />, 'fn-form': (p) => <FormTrait {...p} />, 'fn-product': (p) => <ProductTrait {...p} />, 'fn-code': (p) => <CodeTrait {...p} />,
   'fn-faq-items': (p) => <FaqTrait {...p} />, 'fn-tabs-items': (p) => <TabsTrait {...p} />, 'fn-list-items': (p) => <ListTrait {...p} />, 'fn-popup-open': (p) => <PopupTrait {...p} />,
 };
 export { randomId, VideoPropsSchema, Input };
