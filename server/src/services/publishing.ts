@@ -336,7 +336,11 @@ export async function updateSettings(deps: Deps, auth: Auth, funnelId: string, i
       try {
         used = await client.countProjects();
       } catch (e3) {
-        throw new AppError(422, 'CLOUDFLARE_REJECTED', explain(e3));
+        // The count is only a courtesy check (Cloudflare refuses the 101st project itself and the error is mapped below): a token or account
+        // problem must stop here with a clear message, but any other failure of the count must not block publishing.
+        if (e3 instanceof CloudflareApiError && (e3.permission || e3.status === 401 || e3.status === 403)) throw new AppError(422, 'CLOUDFLARE_REJECTED', explain(e3));
+        deps.log.warn('cloudflare project count failed; continuing without the limit pre-check', { error: String((e3 as Error).message).slice(0, 200) });
+        used = -1;
       }
       if (used >= client.unitLimit) {
         throw conflict(kind === 'cloudflare-pages' ? 'PAGES_PROJECT_LIMIT' : 'WORKERS_LIMIT', `This Cloudflare account already has ${used} ${unit}s, the maximum is ${client.unitLimit} (this app creates one per funnel). Delete the ones you no longer need in the Cloudflare dashboard (Workers & Pages), or connect another Cloudflare account.`, { limit: client.unitLimit, used });

@@ -47,6 +47,10 @@ export class CloudflareApiError extends Error {
   get retryable(): boolean {
     return this.status === 0 || this.status === 429 || this.status === 408 || this.status >= 500;
   }
+  /** Cloudflare refused the page/per_page of a list call (code 8000024). */
+  get invalidListOptions(): boolean {
+    return this.code === 8000024 || (this.status === 400 && /list options/i.test(this.message));
+  }
   get rateLimited(): boolean {
     return this.status === 429;
   }
@@ -207,9 +211,26 @@ export class CloudflarePagesClient {
    * otherwise pages through the list. A cheap call; it runs before every project creation so the 101st project is refused with a clear message instead of a vague 400.
    */
   async countProjects(): Promise<number> {
-    const perPage = 100;
+    // Cloudflare caps per_page below the 100 we first assumed: a real account answered 400 (code 8000024, "Invalid list options provided")
+    // for per_page=100 while per_page=1 worked, and the cap of this endpoint is not documented. Step down until a size is accepted.
+    let rejected: unknown;
+    for (const perPage of [100, 50, 25, 10, 5, 1]) {
+      try {
+        return await this.countWithPageSize(perPage);
+      } catch (e) {
+        if (e instanceof CloudflareApiError && e.invalidListOptions) {
+          rejected = e;
+          continue;
+        }
+        throw e;
+      }
+    }
+    throw rejected;
+  }
+
+  private async countWithPageSize(perPage: number): Promise<number> {
     let total = 0;
-    for (let page = 1; page <= 20; page++) {
+    for (let page = 1; page <= 200; page++) {
       const env = await this.callRaw<PagesProject[]>('GET', `${this.acct('/projects')}?per_page=${perPage}&page=${page}`);
       const n = Array.isArray(env.result) ? env.result.length : 0;
       const info = (env as Envelope<unknown> & { result_info?: { total_count?: number } }).result_info;

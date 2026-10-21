@@ -136,6 +136,33 @@ describe('go live on the pages.dev address', () => {
 });
 
 describe('limits and refusals', () => {
+  it('counts the projects although Cloudflare rejects big pages (real account: per_page=100 answered 400, code 8000024)', async () => {
+    const w = await world();
+    w.cf.maxPerPage = 5;
+    for (let i = 0; i < 12; i++) expect((await createProject(w, `many-${i}`)).status).toBe(200);
+    const r = await w.call('POST', `/api/funnels/${w.f.id}/go-live`, { address: { kind: 'pages' } });
+    expect(r.status).toBe(200);
+    const lists = w.cf.callsTo(/GET \/accounts\/[^/]+\/pages\/projects\?/);
+    expect(lists.some((c) => /per_page=100/.test(c.path))).toBe(true); // it tried the big page first, then stepped down
+  });
+
+  it('a failing project count does not block publishing (Cloudflare itself refuses the 101st project)', async () => {
+    const w = await world();
+    w.cf.failList = { status: 400, code: 8000024, message: 'Invalid list options provided. Review the `page` or `per_page` parameter.' };
+    const r = await w.call('POST', `/api/funnels/${w.f.id}/go-live`, { address: { kind: 'pages' } });
+    expect(r.status).toBe(200);
+    expect(w.cf.callsTo(/POST \/accounts\/[^/]+\/pages\/projects$/).length).toBe(1);
+  });
+
+  it('a token or permission problem on the count still stops with a clear message', async () => {
+    const w = await world();
+    w.cf.failList = { status: 403, code: 10000, message: 'Authentication error' };
+    const r = await w.call('POST', `/api/funnels/${w.f.id}/go-live`, { address: { kind: 'pages' } });
+    expect(r.status).toBe(422);
+    expect(r.json.error.code).toBe('CLOUDFLARE_REJECTED');
+    expect(w.cf.callsTo(/POST \/accounts\/[^/]+\/pages\/projects$/).length).toBe(0);
+  });
+
   it('refuses the 101st project before asking Cloudflare to create it', async () => {
     const w = await world();
     for (let i = 0; i < 100; i++) expect((await createProject(w, `other-${i}`)).status).toBe(200);

@@ -5,6 +5,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 ## [Unreleased]
 
 ### Fixed
+- Cloudflare publishing: counting the account's Pages projects used `per_page=100`, which a real account rejected (400, code 8000024), so the first real Go live failed. The count now steps the page size down until Cloudflare accepts one, and a failing count no longer blocks publishing (only a token or permission problem does; Cloudflare itself refuses the 101st project).
 - Disputes with Stripe status `prevented` (stopped before becoming a chargeback) are now treated as closed with no loss, like `won` and `warning_closed`; before, they stayed open forever and kept the order marked disputed. Found by checking the handlers against Stripe's API reference.
 
 ### Added

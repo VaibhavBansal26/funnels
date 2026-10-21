@@ -50,6 +50,10 @@ export class FakeCloudflarePages {
   canWrite = true;
   canRead = true;
   projects = new Map<string, FakeProject>();
+  /** The real list-projects call answered 400 (code 8000024) for per_page=100 on a real account while per_page=1 worked; the exact cap is undocumented, so the fake uses 10. */
+  maxPerPage = 10;
+  /** Make every list-projects call fail with this status/code (null = behave normally). */
+  failList: { status: number; code: number; message: string } | null = null;
   assets = new Map<string, { bytes: Buffer; contentType: string }>();
   calls: { method: string; path: string; status: number; body?: unknown }[] = [];
   /** Polls of a deployment before it reaches `success`. */
@@ -136,7 +140,9 @@ export class FakeCloudflarePages {
 
     if (rest === '/projects' && method === 'GET') {
       // Paged like the real list: ?per_page=&page=, with result_info.total_count.
+      if (this.failList) return reply(this.failList.status, undefined, [{ code: this.failList.code, message: this.failList.message }]);
       const per = Math.max(1, Number(url.searchParams.get('per_page') ?? 10));
+      if (per > this.maxPerPage) return reply(400, undefined, [{ code: 8000024, message: 'Invalid list options provided. Review the `page` or `per_page` parameter.' }]);
       const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
       const all = [...this.projects.values()];
       const result = all.slice((page - 1) * per, page * per).map((p) => this.pjson(p));
