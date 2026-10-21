@@ -117,3 +117,11 @@ Extra signals when the scale features are on: `funnels_ingest_queue_lag` (alert:
 * **No administrator can sign in.** Set `PLATFORM_ADMIN_EMAILS` to an existing user's email and restart: the row is created on their next admin request. Insert into `platform_admins (user_id, source, created_at)` with source `admin` if you cannot restart.
 * **A suspension did not reach the edge.** Check the `edge.purge` job in the queue inspector (dead jobs) and Cloudflare credentials; retry the job. The origin already refuses the pages; only cached copies at the edge can linger until their TTL.
 * **Impersonation is ending too soon or not at all.** It is a normal session row with `impersonator_id`; end it with `UPDATE sessions SET revoked_at = now WHERE impersonator_id IS NOT NULL`. Write-enabled sessions have `allow_writes = 1` and a `IMPERSONATION_WRITE_TTL_MINUTES` lifetime; to end only those add `AND allow_writes = 1`. A support session that gets `403 IMPERSONATION_READ_ONLY` is working as designed: a superadmin has to open a write-enabled one.
+
+
+## AI builder and Google reviews
+
+* **A build is stuck in `running`**: the job queue re-queues a worker-lost job after 5 minutes and the pipeline resumes after its last finished stage. Cancel it from the wizard or `POST /api/ai/builds/{id}/cancel`; a new build is refused with `409 BUILD_IN_PROGRESS` for 15 minutes after the last one started.
+* **Everything degrades to the built-in writer**: check `GET /api/ai/builds/{id}` (`stages[].detail`, `report.fallbacks`), the provider's availability, `AI_REQUEST_TIMEOUT_MS` and the budgets. A build never fails because the model did.
+* **Google reviews do not appear**: Settings > Google reviews shows the status and the last error. `PLACES_KEY_REJECTED` pauses the workspace for 15 minutes (check that the Places API (New) is enabled and the key restrictions allow the server's egress IP); a place with three failures pauses 5 to 60 minutes (circuit breaker); `PLACES_QUOTA` means the daily limit `GOOGLE_REVIEWS_DAILY_FETCHES` is reached. Saving the key or the default place clears the workspace's cached content.
+* **Rotating a Places key**: replace it in Settings (encrypted, takes effect at once) or change `GOOGLE_PLACES_API_KEY` and restart. Rotating `DATA_ENCRYPTION_KEY` makes stored workspace keys unreadable (the platform key is used if set; re-enter the key).

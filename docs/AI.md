@@ -11,6 +11,8 @@ All features go through `AiProvider` (`server/src/ai/types.ts`). `AnthropicProvi
 | Alt text suggestion | `POST /api/ai/alt-text` | Builder: Settings tab of an image, "Suggest alt text" |
 | Usage | `GET /api/ai/status` | Settings |
 
+> The multi-stage funnel builder (`POST /api/ai/builds`), the builder assistant (`POST /api/ai/edit`, `/api/ai/section`) and the quality evals are described in [AI-BUILDER.md](AI-BUILDER.md). `POST /api/ai/funnel` below is the original single-call generator and is kept for API compatibility; the wizard uses the new pipeline.
+
 ## Pipeline
 
 ```mermaid

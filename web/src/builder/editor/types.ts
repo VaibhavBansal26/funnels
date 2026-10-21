@@ -262,13 +262,16 @@ export function registerTypes(editor: Editor): void {
     model: {
       defaults: {
         tagName: 'div', name: 'Google reviews', droppable: false,
-        fnReviews: { placeId: '', placeName: '', variant: 'list', count: 3, minRating: 4, showText: true, layout: 'grid', fallback: [{ name: 'Sample reviewer', text: 'Sample review text, shown in the editor only. Your Google reviews appear on the published page.', rating: 5 }] } satisfies ReviewsProps,
+        fnReviews: { placeId: '', placeName: '', variant: 'list', count: 3, minRating: 4, showText: true, layout: 'grid', fallback: [] } satisfies ReviewsProps,
         traits: [{ type: 'fn-reviews', name: 'fnReviews', label: 'Google reviews', changeProp: true }],
       },
     },
     view: dynamicView('fnReviews', (v) => {
       const p = v.model.get('fnReviews') as ReviewsProps;
-      return reviewsInner(idOf(v), p, p.variant === 'badge' ? SAMPLE : null, markupCtx(editor));
+      // Nothing typed into the block yet: the canvas shows labelled sample cards so the layout is visible. They are never saved or published.
+      const sample = p.variant !== 'badge' && p.fallback.length === 0;
+      const shown = sample ? { ...p, fallback: [1, 2, 3].map((i) => ({ name: `Sample reviewer ${i}`, text: 'Sample review text, shown in the editor only. Your real Google reviews appear on the published page.', rating: 5 })) } : p;
+      return reviewsInner(idOf(v), shown, p.variant === 'badge' ? SAMPLE : null, markupCtx(editor)) + (sample ? '<p class="fn-rv-attr">Sample content (editor only).</p>' : '');
     }),
   });
   add('fn-review-cta', {

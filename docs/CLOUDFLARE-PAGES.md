@@ -122,3 +122,8 @@ Direct Upload: <https://developers.cloudflare.com/pages/get-started/direct-uploa
 ## Not covered
 
 Cloudflare Workers/Functions in the bundle; preview branches (everything deploys to the production branch `main`); deleting old deployments on Cloudflare (it keeps them; the app keeps 20 in its history); Cloudflare for SaaS custom hostnames for tenants (that is the origin-side `DOMAIN_PROVIDER=cloudflare`); automatic DNS changes (you create the CNAME).
+
+
+## Google reviews on Pages
+
+A bundle carries a snapshot of the review content taken when it is built (the build refreshes expired content live, best effort) and the page fetches fresh data from `GET <app origin>/public/reviews/<token>` with `credentials: omit`. That endpoint answers CORS for the `*.pages.dev` host and custom domain of the published funnel only; the bundle CSP already allows the app origin in `connect-src` and `https:` images. See [REVIEWS.md](REVIEWS.md).

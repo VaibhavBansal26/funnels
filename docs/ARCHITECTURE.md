@@ -294,3 +294,8 @@ flowchart LR
 ```
 
 See docs/CLOUDFLARE.md and docs/PERFORMANCE.md. Domains can be managed by a `DomainProvider` (`manual` DNS checks by default, `cloudflare` for Cloudflare for SaaS). `/metrics` (Prometheus), `/readyz`, request timeouts and gzip are in `app.ts`.
+
+
+### AI and review components
+
+Two more typed components exist: `fn-reviews` (`fnReviews`: place id and name, variant, count, minimum rating, text, layout, fallback testimonials) and `fn-review-cta` (`fnReviewCta`). Their markup comes from `reviewsInner` and `reviewCtaInner` (shared with the canvas); review content is never stored in the page document, only a snapshot in the rendered HTML ([REVIEWS.md](REVIEWS.md)). AI-generated pages are assembled from the same DSL and pass the same cleaner ([AI-BUILDER.md](AI-BUILDER.md)).

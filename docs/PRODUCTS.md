@@ -93,3 +93,8 @@ Products page (`/products`): catalog table with search and status filter, create
 ## Edge cases covered by tests (`server/test/products.test.ts`, `payments.test.ts`)
 
 Archived product in a live page; currency mismatch in one order; price changed mid-checkout; subscription and one-time mixes; zero-decimal and three-decimal currencies; deleting is impossible (archive only, orders keep their link); tenant isolation of products, prices, template bindings and forged page links; Stripe down; account switched; webhook reconciliation; backfill idempotency; promotion-code allocation; total mismatch refused.
+
+
+## Products created by the AI funnel builder
+
+With `options.products: "create"` the builder creates its products as ordinary catalog products through the same template slot binding (`bindTemplateProducts`): not synced to Stripe, in test-status funnels, priced inside the author's range ([AI-BUILDER.md](AI-BUILDER.md#products-and-pricing)).
