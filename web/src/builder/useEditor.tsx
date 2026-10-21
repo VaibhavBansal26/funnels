@@ -16,7 +16,7 @@ export interface BuilderUi {
   openHistory(): void;
   saveBlock(): void;
   toast(message: string, kind?: 'info' | 'ok' | 'error'): void;
-  save(backup: boolean): Promise<void>;
+  save(backup: boolean): Promise<unknown>;
   goToStep(id: string): void;
 }
 

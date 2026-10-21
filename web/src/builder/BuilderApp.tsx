@@ -13,6 +13,7 @@ import { PaymentsWizard } from '../components/PaymentsWizard';
 import { ConfirmDialog } from '../components/ui';
 import { Button, cn, Dialog, TooltipProvider, useToast } from '../ui';
 import './builder.css';
+import { PublishDialog } from './PublishDialog';
 import { AiRewriteDialog, AssetPickerDialog, HistoryDialog, LinkDialog, PageSettingsDialog, SaveBlockDialog, ShortcutsDialog } from './dialogs';
 import { createEditor, DEVICES, type DeviceId, type FnEditor } from './editor/createEditor';
 import { checkProject, loadDoc, readProject } from './editor/load';
@@ -98,15 +99,15 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
   }, [editor, sig]);
 
   // ---- saving ----
-  const doSave = useCallback(
-    async (backup: boolean) => {
-      if (!editor || saving.current) return;
+  const saveNow = useCallback(
+    async (backup: boolean): Promise<boolean> => {
+      if (!editor) return false;
       await commitEditing(editor);
       const check = checkProject(editor);
       if (!check.ok) {
         setIssues(check.issues.map((i) => `${i.path}: ${i.message}`));
         setSave({ kind: 'error', message: 'Fix the highlighted problems before saving' });
-        return;
+        return false;
       }
       setIssues([]);
       saving.current = true;
@@ -120,16 +121,30 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
         void qc.invalidateQueries({ queryKey: keys.funnels });
         void qc.invalidateQueries({ queryKey: ['page-html', step.id] });
         setSave({ kind: backup ? 'saved' : 'autosaved', at: new Date() });
+        return true;
       } catch (e) {
         const conflict = e instanceof ApiError && e.code === 'VERSION_CONFLICT';
         const invalid = e instanceof ApiError && e.code === 'INVALID_DOCUMENT';
         if (invalid) setIssues(((e as ApiError).details as { path: string; message: string }[] | undefined)?.map((i) => `${i.path}: ${i.message}`) ?? []);
         setSave({ kind: 'error', message: conflict ? 'This page was changed in another tab or by a teammate. Reload to get the latest version.' : errorMessage(e) });
+        return false;
       } finally {
         saving.current = false;
       }
     },
     [editor, funnel.id, step.id, qc, sig],
+  );
+  const inflight = useRef<Promise<boolean> | null>(null);
+  /** Saves the page; resolves true when the server has the current content (also when nothing needed saving), false when the save failed. Waits for a save already running. */
+  const doSave = useCallback(
+    async (backup: boolean): Promise<boolean> => {
+      if (!editor) return false;
+      while (saving.current && inflight.current) await inflight.current.catch(() => false);
+      const run = saveNow(backup);
+      inflight.current = run;
+      try { return await run; } finally { if (inflight.current === run) inflight.current = null; }
+    },
+    [editor, saveNow],
   );
   const saveRef = useRef(doSave);
   saveRef.current = doSave;
@@ -274,26 +289,11 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
             {dialog === 'payments' ? <PaymentsWizard funnel={funnel} defaultStepId={step.id} onClose={() => setDialog(null)} onDone={(r) => { setDialog(null); window.location.assign(`/funnels/${funnel.id}/builder/${r.checkoutStepId}`); }} /> : null}
             <AiRewriteDialog target={aiTarget} onClose={() => setAiTarget(null)} />
             <LinkDialog state={link} onClose={() => setLink(null)} />
-            <PublishDialog open={dialog === 'publish'} onClose={() => setDialog(null)} funnel={funnel} dirty={dirty} save={doSave} saveState={save} onPreview={() => void openPreview()} />
+            {dialog === 'publish' ? <PublishDialog onClose={() => setDialog(null)} funnel={funnel} dirty={dirty} save={doSave} saveState={save} onPreview={() => void openPreview()} /> : null}
           </>,
         )}
         {blocker.state === 'blocked' ? <ConfirmDialog danger title="Discard unsaved changes?" confirmLabel="Discard changes" message="You have changes that are not saved yet." onCancel={() => blocker.reset()} onConfirm={() => blocker.proceed()} /> : null}
       </div>
     </TooltipProvider>
-  );
-}
-
-/** Publishing = saving the page with a backup and telling the author where the page is served. Going live (domain + status) is a funnel setting, linked from here. */
-function PublishDialog({ open, onClose, funnel, dirty, save, saveState, onPreview }: { open: boolean; onClose: () => void; funnel: FunnelDetail; dirty: boolean; save: (b: boolean) => Promise<void>; saveState: SaveState; onPreview: () => void }) {
-  const nav = useNavigate();
-  const live = funnel.status === 'live' && !!funnel.domain;
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()} size="sm" title={live ? 'Publish changes' : 'Publish'} description={live ? `Visitors of ${funnel.domain!.hostname} get the saved page.` : 'This funnel is in test mode.'}
-      footer={<><Button onClick={onClose}>Close</Button>{live ? null : <Button onClick={() => { onClose(); nav(`/funnels/${funnel.id}/settings`); }}>Go live in settings</Button>}<Button variant="primary" disabled={saveState.kind === 'saving'} onClick={() => void save(true).then(onClose)}>{dirty ? 'Save and publish' : 'Publish'}</Button></>}>
-      <div className="flex flex-col gap-3 text-sm">
-        {live ? <p>The page is served at <strong>{funnel.domain!.hostname}</strong>. Saving updates it within seconds (the edge cache is purged).</p> : <p>Test funnels are not served on a domain. Use the preview link to check the page; connect a domain and set the funnel live in its settings to publish it for visitors.</p>}
-        <div className="row"><Button size="sm" onClick={onPreview}>Open preview</Button>{dirty ? <span className="small text-warn">You have unsaved changes: they are saved first.</span> : <span className="small muted">Everything is saved.</span>}</div>
-      </div>
-    </Dialog>
   );
 }
