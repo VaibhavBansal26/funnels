@@ -122,7 +122,7 @@ test('saved blocks: save the selection as my block, it appears under My blocks, 
   await expect(page.getByRole('dialog', { name: 'Save as my block' })).toContainText(/cannot|not allowed|form/i);
 });
 
-test('publish dialog: saves first, says where the page is, and the status shows the save', async ({ page }) => {
+test('publish dialog: saves first, explains test mode, and the status shows the save', async ({ page }) => {
   await start(page);
   await canvas(page).locator('h1').first().dblclick();
   await page.keyboard.press('ControlOrMeta+a');
@@ -130,8 +130,8 @@ test('publish dialog: saves first, says where the page is, and the status shows 
   await page.getByLabel('Search blocks').click();
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
   const dlg = page.getByRole('dialog', { name: /Publish/ });
-  await expect(dlg).toContainText('test mode');
-  await dlg.getByRole('button', { name: /^(Save and publish|Publish)$/ }).click();
+  await expect(dlg).toContainText('In test mode');
+  await expect(dlg.getByText('Everything is saved.')).toBeVisible(); // the unsaved change was saved when the dialog opened
   await expect(page.getByRole('status').filter({ hasText: /^Saved/ })).toBeVisible();
 });
 

@@ -43,7 +43,7 @@ For someone who has never used Cloudflare. About ten minutes. **Status: the app'
 
 ## 5. Publish: no domain needed
 
-1. Open the funnel > **Settings** > **Go live**.
+1. In the builder press **Publish** (or open the funnel > **Settings** > **Go live**).
 2. Choose **Cloudflare Pages address (free)** and press **Go live**. The app creates a project, uploads the pages and shows **Publishing...**, then **Live** with the address, for example `https://fn-1a2b3c4d.pages.dev/your-page`. Use **Copy link** or **Open**.
 3. If it shows **Publishing failed**, open Settings > Publishing > the deployment log, read the message, fix it and press **Try again**.
 4. **Roll back / remove.** Settings > Publishing > Deployment history > **Roll back** on an earlier version. **Unpublish** pauses the site (a "not available" page) or deletes the project (frees one of your 100). **Take offline** in Go live returns the funnel to test mode.

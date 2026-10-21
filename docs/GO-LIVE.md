@@ -4,11 +4,23 @@ A funnel is in **test mode** until you put it live on an **address**. In test mo
 
 ## In one minute (no domain, no account)
 
-1. Open a funnel > **Settings** > **Go live**.
+1. In the builder press **Publish** (or open a funnel > **Settings** > **Go live**).
 2. Keep **Built-in address (free)** selected and press **Go live**.
 3. The final URL appears, for example `https://your-app.onrender.com/s/acme/free-guide/free-guide`. **Copy link** or **Open** it. Done.
 
-Test vs live: while the funnel is in test mode the page is only reachable through the signed preview and no visit is counted. Once live, anyone with the link can open it. **Take offline** puts it back in test mode.
+## Publishing from the builder
+
+The **Publish** button in the builder's top bar does the whole job without leaving the editor. It shares its code with the Go live card in Settings (`web/src/components/GoLive.tsx`), so both show the same choices and do the same calls.
+
+1. **Unsaved changes are saved first**, as soon as the dialog opens (with a backup, like Save). If the save fails (for example the page was changed in another tab), the dialog says so, says that nothing was published, and offers **Retry save**; **Go live** stays off until the page is saved.
+2. **Choose the address.** Each option shows its real final URL. *Built-in address (free)* is preselected when nothing else is configured. *Cloudflare Pages address (free)* needs a connected Cloudflare account: when there is none it is disabled and says **Connect Cloudflare first**, with a link (opens in a new tab, so the builder keeps your work) to **Settings > Publishing**, where you enter the Account id and an API token with the **Cloudflare Pages: Edit** permission ([CLOUDFLARE-SETUP.md](CLOUDFLARE-SETUP.md)); come back and the option is enabled (the list refreshes when the tab gets focus). *Cloudflare Workers address* is marked **Experimental**. Verified custom domains are listed too. The address name, the search engine switch and custom domains are managed in the funnel's Settings.
+3. **Go live** performs the go-live in one step (`POST /api/funnels/{id}/go-live`). The badge shows *Publishing...* while Cloudflare deploys (the dialog follows it), then *Live* with the final URL, **Copy link** and **Open**. If publishing fails the dialog shows the server's message and **Retry** redeploys.
+4. **When it is already live** the dialog is titled *Publish changes* and shows where it is served, the publish state, **Update live page** and **Take offline**. *Update live page* saves the page and, on a Cloudflare address, queues a redeploy right away (`POST /api/funnels/{id}/publishing/redeploy`, needs `publishing:manage`; without it the debounced deployment that every save schedules still runs). On the built-in address or a custom domain a save is already served within seconds.
+5. **Open preview** is always there: it opens the signed preview of the saved page and counts no visit.
+
+Accessibility: the dialog traps the focus, closes on Escape and returns the focus to the Publish button; the save, publish and error messages are announced (`role="status"` / `role="alert"`). Screenshots: [test mode 1440 light](design/publish-dialog-test-mode-1440-light.webp), [Pages chosen 1024 dark](design/publish-dialog-pages-chosen-1024-dark.webp), [live 390 light](design/publish-dialog-live-390-light.webp).
+
+Test vs live (one sentence, the same in the builder and in Settings): while the funnel is in test mode the page is only reachable through the signed preview and no visit is counted. Once live, anyone with the link can open it. **Take offline** puts it back in test mode.
 
 ## The addresses
 

@@ -4,6 +4,9 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Changed
+- **The builder's Publish dialog now publishes** (docs/GO-LIVE.md, "Publishing from the builder"): it saves unsaved changes first, then shows the same address choices as the Go live card (built-in address preselected, Cloudflare Pages with a "Connect Cloudflare first" explanation and a link to Settings > Publishing when no account is connected, the experimental Workers address marked as such, verified custom domains) with the real URL of each, and goes live in one step with progress, the server's message on failure with Retry, and Copy and Open on success. A live funnel shows where it is served and offers Update live page (save and republish) and Take offline. The old text that sent people to connect a domain is gone, here and on the Domains page, the Steps tab, the Publishing card, the funnel settings validation and docs/DEPLOY.md; the `DOMAIN_NOT_ADDED` message now names the go-live options. The dialog traps focus, announces status and errors, and returns focus to Publish.
+
 ### Fixed
 - Cloudflare publishing: counting the account's Pages projects used `per_page=100`, which a real account rejected (400, code 8000024), so the first real Go live failed. The count now steps the page size down until Cloudflare accepts one, and a failing count no longer blocks publishing (only a token or permission problem does; Cloudflare itself refuses the 101st project).
 - Disputes with Stripe status `prevented` (stopped before becoming a chargeback) are now treated as closed with no loss, like `won` and `warning_closed`; before, they stayed open forever and kept the order marked disputed. Found by checking the handlers against Stripe's API reference.
