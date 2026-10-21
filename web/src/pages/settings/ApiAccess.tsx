@@ -6,6 +6,7 @@ import type { ApiKeyInfo } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toasts';
 import { ConfirmDialog, CopyButton, ErrorBanner, fmtDate, Loading, Modal, TextField } from '../../components/ui';
+import { IdentityPepper } from './IdentityPepper';
 
 const keysKey = ['api-keys'] as const;
 const SCOPES = [
@@ -46,32 +47,6 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: (se
   );
 }
 
-function Pepper() {
-  const toast = useToast();
-  const [shown, setShown] = useState(false);
-  const [rotating, setRotating] = useState(false);
-  const q = useQuery({ queryKey: ['pepper'], enabled: shown, queryFn: () => api.get<{ pepper: string; rotatedAt: string | null }>('/api/v1/analytics/identity-pepper') });
-  const rotate = useMutate(() => api.post<{ pepper: string }>('/api/v1/analytics/identity-pepper/rotate'), [['pepper']]);
-  return (
-    <div className="stack">
-      <h3>Identity pepper</h3>
-      <p className="muted small">Exports identify people with keys computed from emails and this secret, never with the emails themselves. Copy it into another system and it computes the same keys, so the two can be joined without sharing personal data. Treat it like a password.</p>
-      <ErrorBanner error={q.error ?? rotate.error} />
-      {shown && q.data ? (
-        <div className="dns-box row between"><code aria-label="Identity pepper" style={{ wordBreak: 'break-all' }}>{q.data.pepper}</code><CopyButton text={q.data.pepper} label="Copy pepper" /></div>
-      ) : null}
-      {shown && q.isLoading ? <Loading rows={1} /> : null}
-      <div className="row">
-        <button type="button" className="btn" onClick={() => setShown((s) => !s)}>{shown ? 'Hide' : 'Show the pepper'}</button>
-        <button type="button" className="btn danger" onClick={() => setRotating(true)}>Rotate</button>
-      </div>
-      {q.data?.rotatedAt ? <p className="muted small">Last rotated {fmtDate(q.data.rotatedAt)}.</p> : null}
-      {rotating ? <ConfirmDialog danger title="Rotate the pepper?" confirmLabel="Rotate" busy={rotate.isPending} message="Every contact_key and visitor_key in future exports changes. Systems that joined on the old keys must adopt the new pepper and re-key. This is recorded in the audit log." onCancel={() => setRotating(false)}
-        onConfirm={() => rotate.mutate(undefined, { onSuccess: () => { setRotating(false); setShown(true); toast.push('Pepper rotated', 'ok'); }, onError: () => setRotating(false) })} /> : null}
-    </div>
-  );
-}
-
 export function ApiAccess() {
   const { can } = useAuth();
   const toast = useToast();
@@ -81,7 +56,7 @@ export function ApiAccess() {
   const [secret, setSecret] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<ApiKeyInfo | null>(null);
   const revoke = useMutate((id: string) => api.delete(`/api/v1/api-keys/${id}`), [keysKey]);
-  const identity = can('analytics_identity:manage') && can('analytics:export');
+  const identity = can('analytics_identity:manage');
   if (!manage && !identity) return null;
   return (
     <section className="card stack" aria-label="API access">
@@ -103,7 +78,7 @@ export function ApiAccess() {
           {q.data && !q.data.data.some((k) => !k.revokedAt) ? <p className="muted">No active keys.</p> : null}
         </div>
       ) : null}
-      {identity ? <Pepper /> : null}
+      {identity ? <IdentityPepper /> : null}
       {creating ? <CreateKey onClose={() => setCreating(false)} onCreated={(s) => { setCreating(false); setSecret(s); }} /> : null}
       {secret ? (
         <Modal title="Copy your API key now" onClose={() => setSecret(null)} footer={<button type="button" className="btn primary" onClick={() => setSecret(null)}>I copied it</button>}>

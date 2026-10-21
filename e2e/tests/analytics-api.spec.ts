@@ -38,6 +38,25 @@ test('API access: create a key (shown once), use it against the analytics API, s
   await page.getByRole('dialog').getByRole('button', { name: 'Rotate' }).click();
   await expect(page.getByLabel('Identity pepper')).not.toHaveText(pepper);
 
+  // import a pepper from another app: a mismatch and a weak value are refused with the API's errors, a good value sets the fingerprint
+  const imported = 'Zq7-Lm3pX9vK2rT8wB5nY4hJ6cD1fG0sA-e2e-import';
+  const form = page.getByRole('form', { name: 'Import a pepper' });
+  await form.getByLabel('Pepper', { exact: true }).fill(imported);
+  await form.getByLabel('Type the pepper again').fill(imported + 'x');
+  await form.getByRole('button', { name: 'Import pepper' }).click();
+  await expect(form.getByText(/two values do not match/)).toBeVisible();
+  await form.getByLabel('Pepper', { exact: true }).fill('short');
+  await form.getByLabel('Type the pepper again').fill('short');
+  await form.getByRole('button', { name: 'Import pepper' }).click();
+  await expect(form.getByRole('alert').or(form.locator('[role=alert], .field-error, [id$=-error]')).first()).toBeVisible();
+  await form.getByLabel('Pepper', { exact: true }).fill(imported);
+  await form.getByLabel('Type the pepper again').fill(imported);
+  const before = await page.getByLabel('Pepper fingerprint').textContent();
+  await form.getByRole('button', { name: 'Import pepper' }).click();
+  await expect(page.getByLabel('Pepper fingerprint')).not.toHaveText(before!);
+  await page.getByRole('button', { name: 'Show the pepper' }).click();
+  await expect(page.getByLabel('Identity pepper')).toHaveText(imported);
+
   // revoking stops the key at once
   await item.getByRole('button', { name: 'Revoke' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Revoke' }).click();
