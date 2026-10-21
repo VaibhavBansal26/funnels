@@ -267,6 +267,9 @@
   #main > .stack > h1 + p {
     @apply -mt-5 mb-0 max-w-2xl;
   }
+  #main > .stack > .tabs + * {
+    @apply -mt-2;
+  }
   #main > .stack > .row.between > h1 {
     @apply m-0;
   }
@@ -389,8 +392,11 @@
     @apply bg-primary-soft text-primary;
   }
 
+  .card > * {
+    @apply min-w-0;
+  }
   .table-wrap {
-    @apply overflow-x-auto;
+    @apply relative min-w-0 overflow-x-auto;
   }
   table.table {
     @apply w-full border-collapse text-sm;
@@ -465,7 +471,7 @@
     @apply inline-flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-semibold text-primary;
   }
   .filters {
-    @apply mb-6 flex flex-wrap items-end gap-3;
+    @apply mb-6 flex flex-wrap items-start gap-3;
   }
   .filters .field {
     @apply mb-0 min-w-36;

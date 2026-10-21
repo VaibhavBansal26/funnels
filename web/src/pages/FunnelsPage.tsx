@@ -189,7 +189,7 @@ export function FunnelsPage() {
                   </div>
                   <p className="small muted !mb-0 truncate">{f.domain ? f.domain.hostname : 'No domain connected'} · updated {fmtDay(f.updatedAt)}</p>
                   {f.tags.length ? <div className="flex flex-wrap gap-1">{f.tags.map((t) => <span key={t.id} className="tag-chip">{t.name}</span>)}</div> : null}
-                  <dl className="m-0 mt-auto grid grid-cols-4 gap-2 pt-2 text-left">
+                  <dl className="m-0 mt-auto flex flex-wrap justify-between gap-x-4 gap-y-2 pt-2 text-left">
                     {[['Visits', fmtNum(f.stats.visits)], ['Opt-ins', fmtNum(f.stats.optins)], ['Orders', fmtNum(f.stats.orders)], ['Sales', fmtMoney(f.stats.sales)]].map(([l, v]) => (
                       <div key={l}><dd className="m-0 text-sm font-semibold tabular-nums">{v}</dd><dt className="text-xs text-muted">{l}</dt></div>
                     ))}

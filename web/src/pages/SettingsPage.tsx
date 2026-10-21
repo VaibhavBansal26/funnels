@@ -73,13 +73,13 @@ export function SettingsPage() {
         <h1>Settings</h1>
         <p className="mt-1.5 mb-0 text-muted">Signed in as {session?.user.email} ({session?.user.roleName}).{can('audit:read') ? <> <Link to="/audit">Audit log</Link></> : null}</p>
       </div>
-      <div className="grid gap-8 lg:grid-cols-[10rem_minmax(0,1fr)] lg:gap-12">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[10rem_minmax(0,1fr)] lg:gap-12">
         <nav aria-label="Settings sections" className="hidden lg:block">
           <ul className="sticky top-24 m-0 flex list-none flex-col gap-0.5 p-0">
             {sections.map((x) => <li key={x.id}><a href={`#${x.id}`} className="block rounded-lg px-3 py-1.5 text-sm text-muted no-underline transition-colors hover:bg-surface-2 hover:text-fg">{x.label}</a></li>)}
           </ul>
         </nav>
-        <div className="flex max-w-4xl flex-col gap-8">
+        <div className="flex min-w-0 max-w-4xl flex-col gap-8">
           {sections.map((x) => <div key={x.id} id={x.id} className="scroll-mt-24">{x.node}</div>)}
         </div>
       </div>

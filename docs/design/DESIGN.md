@@ -20,22 +20,36 @@ Defined in `:root` (light) and under `prefers-color-scheme: dark` / `:root[data-
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `bg` | `#f6f7fb` | `#0a0e19` | page background |
-| `surface` | `#ffffff` | `#111726` | cards, panels, dialogs |
-| `surface-2`, `surface-3` | `#eef0f6`, `#e4e8f1` | `#19203a`, `#232c4a` | hover, table heads, segmented controls |
-| `text` | `#0f172a` | `#e8ecf6` | body text |
-| `muted` | `#475569` | `#a6b1c8` | secondary text |
-| `border`, `border-strong` | `#d9deea`, `#b6bed0` | `#262f4a`, `#3a4668` | separators, control borders |
-| `primary` / `primary-hover` / `primary-contrast` / `primary-soft` | `#4338ca` / `#3730a3` / `#ffffff` / `#e9ebff` | `#98a0ff` / `#b3b9ff` / `#0a0e19` / `#1f2556` | the one accent |
+| `bg` | `#fafaf9` | `#0c0c0f` | page background |
+| `surface` | `#ffffff` | `#141418` | cards, panels, dialogs |
+| `surface-2`, `surface-3` | `#f5f5f4`, `#ebebe9` | `#1c1c22`, `#26262e` | hover, segmented controls, block tiles, inset panels |
+| `text` | `#18181b` | `#ececf0` | body text |
+| `muted` | `#5f5f69` | `#a1a1ac` | secondary text |
+| `border`, `border-strong` | `#ececea`, `#bebec5` | `#25252c`, `#46464f` | `border` separates cards, rows and tables (hairline); `border-strong` is only for form controls (kept visible for accessibility) |
+| `primary` / `primary-hover` / `primary-contrast` / `primary-soft` | `#4f46e5` / `#4338ca` / `#ffffff` / `#eff0ff` | `#a5a8ff` / `#c0c2ff` / `#0c0c0f` / `#22234a` | the one accent: primary buttons, links, the active nav icon, selection |
 | `ring` | `#6366f1` | `#98a0ff` | focus outline |
 | `danger`, `ok`, `warn`, `info` (+ `-soft`) | `#b42318`, `#067647`, `#93370d`, `#175cd3` | `#ff9189`, `#55d98d`, `#fbbf24`, `#7cb0ff` | status colours and their soft backgrounds |
 
-Measured contrast (light / dark): text on surface 17.9 / 15.1, muted on surface 7.6 / 8.3, primary-contrast on primary 7.9 / 8.1, primary on surface 7.9 / 7.5, danger on danger-soft 5.6 / 7.1, ok on ok-soft 4.9 / 8.0, warn on warn-soft 6.6 / 8.4, info on info-soft 4.9 / 6.5.
+Every pair is enforced by `tokens.test.ts`; the figures here were measured on the previous palette and are approximate for the current one. Measured contrast (light / dark): text on surface 17.9 / 15.1, muted on surface 7.6 / 8.3, primary-contrast on primary 7.9 / 8.1, primary on surface 7.9 / 7.5, danger on danger-soft 5.6 / 7.1, ok on ok-soft 4.9 / 8.0, warn on warn-soft 6.6 / 8.4, info on info-soft 4.9 / 6.5.
 
 * **Type**: Inter variable (self-hosted through `@fontsource-variable/inter`, Latin subset fetched on demand), 15 px body, `font-semibold tracking-tight` headings, system monospace for code and paths.
 * **Radius**: 6, 8, 12, 16 px (`sm`, `md`, `lg`, `xl`); controls use 8, cards 12.
 * **Elevation**: `shadow-sm` for controls, `shadow-card` for cards, `shadow-pop` for menus, dialogs and the builder's floating bars.
 * **Motion**: 150 to 200 ms fades and slides on dialogs, drawers, toasts and tooltips; skeleton shimmer. `prefers-reduced-motion: reduce` turns all of it into instant changes.
+
+## The calm pass
+
+Feedback was that the app looked crowded and not classy. The fix is made in the tokens and primitives first, then per screen:
+
+* **Whitespace is the structure.** One page rhythm: 32 px between sections (`gap-8`), 24 px inside cards (`p-5`, `sm:p-6`), 16 px between fields, 1200 px content width, 40 px top padding. Pages start with a title and one muted sentence (`PageHeader` in `src/ui`, or the `#main > .stack` rule for older screens).
+* **Fewer lines.** Cards keep one hairline border and a very soft shadow; tables lose the grey header fill and use light column labels; consecutive sub-sections of a card are separated by one rule; a card inside a card is a flat inset. Segmented controls (status filter, view switch, builder style controls) are a tinted track with a raised active segment instead of bordered boxes.
+* **One accent, used sparingly.** Indigo marks primary actions, links and selection. The active nav item and tab are neutral with weight; the inspector's margin and padding boxes are neutral (they used yellow and green).
+* **Lighter type.** Buttons, labels and tabs are weight 500 (600 only for headings and table figures), body line-height 1.6, labels 13 px, the page title 26 px with tighter tracking.
+* **Progressive disclosure.** A step row shows its number, thumbnail, name and Edit page; duplicate, home/404 and delete live in its menu (move up/down too under 640 px). A funnel card shows its thumbnail, name, stats and Open; the selection checkbox sits on the thumbnail (visible on hover, focus, selection and on touch screens). Settings has a section index on wide screens.
+* **Touch and focus.** Controls are 40 px tall (44 px under 640 px); focus is a 4 px soft ring plus the border colour on inputs and the 2 px outline elsewhere.
+* **Radii and shadows.** Controls 8 px, cards 12 px, dialogs 16 px; `shadow-card` is two soft layers, `shadow-pop` only for floating surfaces.
+
+Before and after contact sheets of every screen (three widths, light and dark): `calm-pass/`. Regenerate with `e2e/review-shots.mjs` and `e2e/contact-sheet.mjs`.
 
 ## Components
 

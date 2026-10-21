@@ -37,7 +37,7 @@ export function TopBar({ funnelName, stepId, steps, onStep, device, onDevice, pr
       <div className="hidden min-w-0 max-w-44 flex-col leading-tight xl:flex">
         <span className="truncate text-[0.72rem] font-medium text-muted">{funnelName}</span>
       </div>
-      <div className="w-28 sm:w-44">
+      <div className="w-[5.5rem] sm:w-44">
         <Select size="sm" aria-label="Step" value={stepId} onValueChange={onStep} options={steps.map((s) => ({ value: s.id, label: `${s.position}. ${s.name}` }))} />
       </div>
       <span className="mx-0.5 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />

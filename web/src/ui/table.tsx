@@ -2,7 +2,7 @@ import type { HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from 'react';
 import { cn } from './cn';
 
 export const Table = ({ className, ...p }: HTMLAttributes<HTMLTableElement>) => (
-  <div className="overflow-x-auto"><table className={cn('w-full border-collapse text-sm', className)} {...p} /></div>
+  <div className="relative overflow-x-auto"><table className={cn('w-full border-collapse text-sm', className)} {...p} /></div>
 );
 export const THead = (p: HTMLAttributes<HTMLTableSectionElement>) => <thead {...p} />;
 export const TBody = (p: HTMLAttributes<HTMLTableSectionElement>) => <tbody {...p} />;

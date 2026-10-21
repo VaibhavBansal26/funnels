@@ -86,6 +86,8 @@ try {
             await page.waitForTimeout(s.wait ?? 600);
           }
           if (s.act) await s.act(page, size);
+          const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+          if (over > 1) { const who = await page.evaluate(() => [...document.querySelectorAll('body *')].filter((e) => { if (e.getBoundingClientRect().right <= window.innerWidth + 1) return false; for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { const o = getComputedStyle(p).overflowX; if (o === 'auto' || o === 'scroll' || o === 'hidden' || o === 'clip') return false; } return true; }).slice(0, 4).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 50)}`).join(' | ')); console.log(`OVERFLOW ${s.name} ${size.id} ${theme}: ${over}px ${who}`); if (process.env.SHOTS_DEBUG) console.log(await page.evaluate(() => [...document.querySelectorAll('body *')].filter((e) => e.scrollWidth > e.clientWidth + 1 && e.clientWidth > 0).slice(0, 8).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 60)} sw=${e.scrollWidth} cw=${e.clientWidth} ${getComputedStyle(e).overflowX}`).join('\n'))); if (false) console.log(await page.evaluate(() => { const t = [...document.querySelectorAll('table')].find((e) => e.getBoundingClientRect().right > window.innerWidth + 1); const out = []; for (let e = t; e && e !== document.body; e = e.parentElement) out.push(`${e.tagName.toLowerCase()}.${String(e.className).slice(0, 40)} w=${Math.round(e.getBoundingClientRect().width)} ${getComputedStyle(e).display}`); return out.join('\n'); })); }
           await page.waitForTimeout(250);
           const full = !s.builder;
           const h = await page.evaluate(() => document.documentElement.scrollHeight);

@@ -48,8 +48,8 @@ function WorkspaceDetail({ id, onClose }: { id: string; onClose: () => void }) {
         <div className="stack">
           <p className="small muted mono">{w.id}</p>
           <p>Plan <strong>{w.planName}</strong> ({w.planStatus}). {w.suspended ? <span className="badge warn">Suspended: {w.suspendedReason}</span> : <span className="badge ok">Active</span>}</p>
-          <table className="table"><caption className="sr-only">Usage</caption><thead><tr><th scope="col">Resource</th><th scope="col" className="num">Used</th><th scope="col" className="num">Limit</th></tr></thead>
-            <tbody>{Object.keys(w.usage).map((k) => <tr key={k}><td>{k}</td><td className="num">{w.usage[k]}</td><td className="num">{w.limits[k]}</td></tr>)}</tbody></table>
+          <div className="table-wrap"><table className="table"><caption className="sr-only">Usage</caption><thead><tr><th scope="col">Resource</th><th scope="col" className="num">Used</th><th scope="col" className="num">Limit</th></tr></thead>
+            <tbody>{Object.keys(w.usage).map((k) => <tr key={k}><td>{k}</td><td className="num">{w.usage[k]}</td><td className="num">{w.limits[k]}</td></tr>)}</tbody></table></div>
           <h3>Members</h3>
           <ul>{w.members.map((m) => <li key={m.id}>{m.email} {m.twoFactorEnabled ? <span className="badge ok">2FA</span> : null}</li>)}</ul>
           <h3>Recent activity</h3>
@@ -131,9 +131,9 @@ function Queues() {
       {o ? (
         <>
           <p>Outbox: <strong>{o.outbox.unpublished}</strong> unpublished{o.outbox.oldestAgeSeconds !== null ? ` (oldest ${o.outbox.oldestAgeSeconds}s)` : ''}. Event buffer depth {o.eventBuffer.depth}. Bus: {o.bus.kind}.</p>
-          <table className="table"><caption className="sr-only">Jobs</caption><thead><tr><th scope="col">Job type</th><th scope="col">Status</th><th scope="col" className="num">Count</th><th scope="col" className="num">Oldest (s)</th></tr></thead>
-            <tbody>{o.jobs.map((j) => <tr key={`${j.status}${j.type}`}><td><code>{j.type}</code></td><td>{j.status}</td><td className="num">{j.count}</td><td className="num">{j.oldestAgeSeconds ?? ''}</td></tr>)}{o.jobs.length === 0 ? <tr><td colSpan={4} className="muted">No queued, running or dead jobs.</td></tr> : null}</tbody></table>
-          {o.bus.consumers.length ? <table className="table"><caption className="sr-only">Bus consumers</caption><thead><tr><th scope="col">Topic</th><th scope="col">Group</th><th scope="col" className="num">Lag</th><th scope="col" className="num">Dead letters</th></tr></thead><tbody>{o.bus.consumers.map((c) => <tr key={c.topic}><td><code>{c.topic}</code></td><td>{c.group}</td><td className="num">{c.lag ?? '?'}</td><td className="num">{c.deadLetters}</td></tr>)}</tbody></table> : null}
+          <div className="table-wrap"><table className="table"><caption className="sr-only">Jobs</caption><thead><tr><th scope="col">Job type</th><th scope="col">Status</th><th scope="col" className="num">Count</th><th scope="col" className="num">Oldest (s)</th></tr></thead>
+            <tbody>{o.jobs.map((j) => <tr key={`${j.status}${j.type}`}><td><code>{j.type}</code></td><td>{j.status}</td><td className="num">{j.count}</td><td className="num">{j.oldestAgeSeconds ?? ''}</td></tr>)}{o.jobs.length === 0 ? <tr><td colSpan={4} className="muted">No queued, running or dead jobs.</td></tr> : null}</tbody></table></div>
+          {o.bus.consumers.length ? <div className="table-wrap"><table className="table"><caption className="sr-only">Bus consumers</caption><thead><tr><th scope="col">Topic</th><th scope="col">Group</th><th scope="col" className="num">Lag</th><th scope="col" className="num">Dead letters</th></tr></thead><tbody>{o.bus.consumers.map((c) => <tr key={c.topic}><td><code>{c.topic}</code></td><td>{c.group}</td><td className="num">{c.lag ?? '?'}</td><td className="num">{c.deadLetters}</td></tr>)}</tbody></table></div> : null}
         </>
       ) : null}
       <h3>Dead jobs</h3>
@@ -196,13 +196,13 @@ function Flags() {
     <div className="stack">
       <ErrorBanner error={q.error ?? save.error ?? override.error} />
       {q.isLoading ? <Loading rows={2} /> : null}
-      <table className="table"><caption className="sr-only">Feature flags</caption><thead><tr><th scope="col">Flag</th><th scope="col">Default</th><th scope="col" className="num">Rollout %</th><th scope="col" className="num">Overrides</th></tr></thead>
+      <div className="table-wrap"><table className="table"><caption className="sr-only">Feature flags</caption><thead><tr><th scope="col">Flag</th><th scope="col">Default</th><th scope="col" className="num">Rollout %</th><th scope="col" className="num">Overrides</th></tr></thead>
         <tbody>{q.data?.data.map((f) => (
           <tr key={f.key}><td><code>{f.key}</code><br /><span className="small muted">{f.description}</span></td>
             <td><label className="check"><input type="checkbox" aria-label={`${f.key} on by default`} checked={f.defaultEnabled} onChange={(e) => save.mutate({ key: f.key, defaultEnabled: e.target.checked })} />on</label></td>
             <td className="num"><input className="input" style={{ width: 70 }} type="number" min={0} max={100} aria-label={`${f.key} rollout percent`} defaultValue={f.rolloutPercent} onBlur={(e) => { const v = Math.max(0, Math.min(100, Math.round(Number(e.target.value)))); if (v !== f.rolloutPercent) save.mutate({ key: f.key, rolloutPercent: v }); }} /></td>
             <td className="num">{f.overrides}</td></tr>
-        ))}</tbody></table>
+        ))}</tbody></table></div>
       <div className="card stack">
         <h3>Override for one workspace</h3>
         <div className="row">
@@ -293,8 +293,8 @@ function Admins() {
     <div className="stack">
       <ErrorBanner error={q.error ?? add.error ?? remove.error} />
       {q.data?.requireTwoFactor ? <p className="muted small">Two-factor authentication is required for administrators on this installation.</p> : <p className="muted small">Two-factor authentication is not required here (it always is in production).</p>}
-      <table className="table"><caption className="sr-only">Administrators</caption><thead><tr><th scope="col">Email</th><th scope="col">Source</th><th scope="col">Role</th><th scope="col">2FA</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
-        <tbody>{q.data?.data.map((a) => <tr key={a.userId}><td>{a.email}</td><td>{a.source === 'bootstrap' ? 'PLATFORM_ADMIN_EMAILS' : 'Added here'}</td><td>{a.role === 'superadmin' ? <span className="badge primary">Superadmin</span> : <span className="badge">Support (read-only access)</span>}</td><td>{a.twoFactorEnabled ? <span className="badge ok">On</span> : <span className="badge warn">Off</span>}</td><td>{a.source === 'admin' ? <button type="button" className="btn sm danger" onClick={() => remove.mutate(a.userId)}>Remove</button> : null}</td></tr>)}</tbody></table>
+      <div className="table-wrap"><table className="table"><caption className="sr-only">Administrators</caption><thead><tr><th scope="col">Email</th><th scope="col">Source</th><th scope="col">Role</th><th scope="col">2FA</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+        <tbody>{q.data?.data.map((a) => <tr key={a.userId}><td>{a.email}</td><td>{a.source === 'bootstrap' ? 'PLATFORM_ADMIN_EMAILS' : 'Added here'}</td><td>{a.role === 'superadmin' ? <span className="badge primary">Superadmin</span> : <span className="badge">Support (read-only access)</span>}</td><td>{a.twoFactorEnabled ? <span className="badge ok">On</span> : <span className="badge warn">Off</span>}</td><td>{a.source === 'admin' ? <button type="button" className="btn sm danger" onClick={() => remove.mutate(a.userId)}>Remove</button> : null}</td></tr>)}</tbody></table></div>
       <form className="row" onSubmit={(e) => { e.preventDefault(); add.mutate(undefined, { onSuccess: () => setEmail('') }); }}>
         <TextField label="Make an existing user an administrator" hint="Their email address" value={email} onChange={setEmail} />
         <div className="field"><label htmlFor="admin-role">Role</label><select id="admin-role" className="input" value={role} onChange={(e) => setRole(e.target.value as 'support' | 'superadmin')}><option value="support">Support (read-only support sessions)</option><option value="superadmin" disabled={session?.platformRole !== 'superadmin'}>Superadmin (may open write-enabled sessions)</option></select></div>

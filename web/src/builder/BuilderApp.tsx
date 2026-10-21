@@ -252,7 +252,7 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
             {issues.length ? <div className="alert error m-2" role="alert"><strong>Fix before saving</strong><ul className="m-0 list-disc pl-5">{issues.slice(0, 6).map((i) => <li key={i}>{i}</li>)}</ul></div> : null}
             {notes.length ? <div className="alert warn m-2" role="status">{notes.slice(0, 2).join(' ')} <Button size="sm" onClick={() => setNotes([])}>Dismiss</Button></div> : null}
             {layout === 'small' && mobileNotice ? (
-              <div role="status" className="m-2 flex items-start gap-2 rounded-lg border border-info/30 bg-info-soft p-3 text-sm text-info">
+              <div role="status" className="m-2 flex items-start gap-2 rounded-xl border border-border bg-surface-2 p-3 text-sm text-muted">
                 <Monitor className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                 <span className="flex-1">The builder works best on a larger screen. You can still make changes here; use a tablet or desktop for precise layout work.</span>
                 <Button size="icon-sm" variant="ghost" aria-label="Dismiss notice" onClick={() => setMobileNotice(false)}><X /></Button>

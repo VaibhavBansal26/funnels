@@ -86,10 +86,10 @@ export function Payments() {
             <div className="stack">
               <h3>Stripe test cards</h3>
               <p className="muted small m-0">Use any future expiry date, any 3-digit CVC and any postal code. They only work in test mode.</p>
-              <table className="table"><caption className="sr-only">Stripe test cards</caption>
+              <div className="table-wrap"><table className="table"><caption className="sr-only">Stripe test cards</caption>
                 <thead><tr><th scope="col">Card number</th><th scope="col">What happens</th><th scope="col"><span className="sr-only">Copy</span></th></tr></thead>
                 <tbody>{s.testCards.map((c) => <tr key={c.number}><td><code>{c.number}</code></td><td><strong>{c.outcome}.</strong> <span className="muted small">{c.note}</span></td><td><CopyButton text={c.number.replace(/ /g, '')} label="Copy" /></td></tr>)}</tbody>
-              </table>
+              </table></div>
             </div>
           ) : null}
           {confirm ? <ConfirmDialog title="Disconnect Stripe?" message="Funnels stop taking payments through this account until you connect again. Products stay in your catalog; your Stripe account itself is untouched (revoke access in the Stripe dashboard)." confirmLabel="Disconnect" danger busy={disconnect.isPending} onCancel={() => setConfirm(false)} onConfirm={() => disconnect.mutate(undefined, { onSuccess: () => { setConfirm(false); toast.push('Stripe disconnected', 'ok'); } })} /> : null}

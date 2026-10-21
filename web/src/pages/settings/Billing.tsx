@@ -24,10 +24,10 @@ export function Billing() {
         <>
           <p>Plan: <strong>{o.planName}</strong>{o.status === 'past_due' ? <> <span className="badge warn">Payment past due</span></> : null}{o.periodEnd ? <span className="muted small"> (renews or ends {fmtDate(o.periodEnd)})</span> : null}. Funnels keeps {o.applicationFeePercent}% of checkouts made with your connected Stripe account.</p>
           {!o.enforced ? <p className="muted small">Plan limits are not enforced on this installation.</p> : null}
-          <table className="table"><caption className="sr-only">Usage against plan limits</caption>
+          <div className="table-wrap"><table className="table"><caption className="sr-only">Usage against plan limits</caption>
             <thead><tr><th scope="col">Resource</th><th scope="col" className="num">Used</th><th scope="col" className="num">Limit</th></tr></thead>
             <tbody>{(Object.keys(LABELS) as (keyof typeof LABELS)[]).map((k) => <tr key={k}><td>{LABELS[k]}</td><td className="num">{o.usage[k]}</td><td className="num">{o.limits[k]}</td></tr>)}</tbody>
-          </table>
+          </table></div>
           {manage && o.stripe.configured ? (
             <div className="row">
               {o.plans.filter((p) => p.purchasable && p.id !== o.plan).map((p) => <button key={p.id} type="button" className="btn primary" disabled={subscribe.isPending} onClick={() => subscribe.mutate(p.id)}>Upgrade to {p.name}</button>)}
