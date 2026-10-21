@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { cleanText } from '../prompts.js';
-import { detectInjection, plainOut, redactPii } from './redact.js';
+import { findViolations } from './claims.js';
+import { detectInjection, hasProfanity, plainOut, redactPii, stripProfanity } from './redact.js';
 import { TEMPLATE_GOALS, VOICES, REGULATED, type Brief, type Regulated, type StructuredBriefInput, type TemplateGoal, type Voice } from './types.js';
 
 /** Industry slugs the template library uses; the brief maps free text onto one of them (or "general"). */
@@ -12,13 +13,13 @@ const INDUSTRY_WORDS: [string, RegExp][] = [
   ['fitness', /\b(gym|fitness|personal train\w*|yoga|pilates|crossfit|workout)\b/i],
   ['real-estate', /\b(real estate|realtor|property|properties|home buyers?|house hunting|listings?)\b/i],
   ['home-services', /\b(plumb\w*|electrician|roofing|hvac|cleaning service|landscap\w*|handyman|pest control)\b/i],
+  ['agency', /\b(agency|b2b|marketing services|design studio|web design|seo services)\b/i],
   ['saas', /\b(saas|software|app\b|platform|dashboard|free trial|api|startup tool)\b/i],
   ['education', /\b(course|curriculum|lessons?|e-?learning|academy|tutor\w*|class(es)?|certification|masterclass)\b/i],
   ['coaching', /\b(coach\w*|mentor\w*|consult\w*|therapist|counsel\w*)\b/i],
   ['ecommerce', /\b(e-?commerce|online store|shop|product line|candles?|jewel\w*|apparel|merch|handmade|skincare)\b/i],
   ['nonprofit', /\b(non-?profit|charity|donat\w*|fundrais\w*|foundation|volunteer\w*)\b/i],
   ['events', /\b(event|conference|summit|festival|meetup|tickets?|workshop)\b/i],
-  ['agency', /\b(agency|b2b|marketing services|design studio|web design|seo services)\b/i],
   ['media', /\b(newsletter|podcast|blog|magazine|publication)\b/i],
 ];
 
@@ -73,8 +74,8 @@ function detectLanguage(text: string): string {
   if (!letters.length) return 'en';
   const nonLatin = letters.filter((c) => !/\p{Script=Latin}/u.test(c)).length;
   if (nonLatin / letters.length > 0.3) {
-    if (/\p{Script=Han}/u.test(text)) return 'zh';
     if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return 'ja';
+    if (/\p{Script=Han}/u.test(text)) return 'zh';
     if (/\p{Script=Hangul}/u.test(text)) return 'ko';
     if (/\p{Script=Cyrillic}/u.test(text)) return 'ru';
     if (/\p{Script=Arabic}/u.test(text)) return 'ar';
@@ -100,6 +101,20 @@ export const LANGUAGE_NAMES: Record<string, string> = { en: 'English', es: 'Span
 function firstSentence(text: string, max: number): string {
   const one = text.split(/(?<=[.!?])\s|\n/)[0]!.trim();
   return (one.length > max ? one.slice(0, max).replace(/\s+\S*$/, '') : one).replace(/[.!?]+$/, '');
+}
+
+/**
+ * Text the author wrote becomes page copy, so it is scrubbed first: profanity is left out, and clauses that make claims a funnel writer must not make
+ * (cures, guarantees, returns, rankings...) are dropped. When nothing usable is left the generic phrase is used. Returns the text and whether anything changed.
+ */
+export function scrubForCopy(text: string, regulated: Brief['regulated'], generic: string): { text: string; changed: boolean } {
+  const noProfanity = stripProfanity(text);
+  const clauses = noProfanity.split(/(?<=[,;.!])\s+|\s+(?:and|but|while)\s+/i).map((c) => c.replace(/[.,;!\s]+$/, '').trim()).filter(Boolean);
+  const kept = clauses.filter((c) => findViolations(c, regulated).length === 0);
+  const unsafe = kept.length !== clauses.length;
+  const good = kept.filter((c) => c.split(/\s+/).length >= 3);
+  const out = unsafe ? (good.length ? good.join(', ') : generic) : noProfanity;
+  return { text: out, changed: unsafe || noProfanity !== text };
 }
 
 export interface PreparedInput { prompt: string; redactions: number; injectionSuspected: boolean }
@@ -143,11 +158,11 @@ export function heuristicBrief(prompt: string, s: StructuredBriefInput = {}, inj
   const prices: number[] = [];
   let priceMin: number | null = s.priceMin ?? null;
   let priceMax: number | null = s.priceMax ?? null;
-  const sym = /([$€£₹¥])\s?(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s?(USD|EUR|GBP|INR|dollars?|euros?|pounds?)/gi;
+  const sym = /([$€£₹¥])\s?(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s?(USD|EUR|GBP|INR|dollars?|euros?)\b/gi;
   for (const m of all.matchAll(sym)) {
     const amount = money(m[2] ?? m[3]!);
     if (Number.isFinite(amount) && amount > 0 && amount <= 1_000_000) prices.push(amount);
-    if (!currency) currency = m[1] ? SYMBOL[m[1]]! : /eur/i.test(m[4]!) ? 'EUR' : /gbp|pound/i.test(m[4]!) ? 'GBP' : /inr/i.test(m[4]!) ? 'INR' : 'USD';
+    if (!currency) currency = m[1] ? SYMBOL[m[1]]! : /eur/i.test(m[4]!) ? 'EUR' : /gbp/i.test(m[4]!) ? 'GBP' : /inr/i.test(m[4]!) ? 'INR' : 'USD';
   }
   if (priceMin === null && priceMax === null && prices.length) {
     const under = /\b(under|below|less than|max(?:imum)?|at most|up to|no more than)\s*[$€£₹]?\s?\d/i.test(all);
@@ -189,8 +204,18 @@ export function heuristicBrief(prompt: string, s: StructuredBriefInput = {}, inj
   if (empty) assumptions.push('The description is empty; defaults were used for everything.');
   if (injectionSuspected) assumptions.push('Parts of your description looked like instructions to the AI. They were treated as plain text about your business and ignored as instructions.');
 
+  const scrub = (v: string, generic: string) => {
+    const r = scrubForCopy(v, regulated, generic);
+    if (r.changed) scrubbed = true;
+    return r.text;
+  };
+  let scrubbed = false;
+  const safeBusiness = scrub(business, 'your business');
+  const safeOffer = offer ? scrub(offer, '') : '';
+  const safeAudience = audience ? scrub(audience, '') : '';
+  if (scrubbed || hasProfanity(all)) assumptions.push('Some wording in your description (strong language or claims such as cures, guarantees or returns) was left out of the page copy.');
   return {
-    business, offer, audience, tone, goal, industry, currency, priceMin, priceMax,
+    business: safeBusiness, offer: safeOffer, audience: safeAudience, tone, goal, industry, currency, priceMin, priceMax,
     constraints: [...new Set(constraints)].slice(0, 10), avoid: [...new Set(avoid)].slice(0, 20), mustInclude: (s.mustInclude ?? []).slice(0, 10),
     language, regulated, assumptions, injectionSuspected,
   };
@@ -230,7 +255,7 @@ export function mergeBrief(model: z.infer<typeof BriefModelSchema> | null, base:
   const regulatedRank = (r: Regulated) => REGULATED.indexOf(r);
   // A topic the rules recognised as regulated stays regulated even when the model says otherwise (the stricter reading wins).
   const regulated = regulatedRank(base.regulated) > regulatedRank(model.regulated) ? base.regulated : model.regulated;
-  const clean = (v: string, max: number) => plainOut(v, max);
+  const clean = (v: string, max: number) => scrubForCopy(plainOut(v, max), regulated, '').text;
   return {
     ...base,
     business: s.business ? base.business : clean(model.business, 200) || base.business,

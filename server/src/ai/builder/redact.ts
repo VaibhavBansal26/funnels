@@ -34,9 +34,14 @@ const INJECTION = [
 ];
 export const detectInjection = (text: string): boolean => INJECTION.some((re) => re.test(text));
 
+const PROFANE = /(?<![\p{L}])(?:f+u+c+k\w*|sh[i1]+t\w*|bastards?|damn\w*|b[i1]tch\w*|assholes?|crap\w*|dick(?:head)?s?|pi+ss\w*|bullshit|motherf\w*|wanker\w*|cunt\w*)(?![\p{L}])/giu;
+/** Profanity out of text that will become page copy (the author's own wording is not echoed onto a public page). */
+export const stripProfanity = (text: string): string => text.replace(PROFANE, '').replace(/\s{2,}/g, ' ').replace(/\s+([,.;!?])/g, '$1').replace(/(^|[\s-])-+(?=\s|$)/g, '$1').trim();
+export const hasProfanity = (text: string): boolean => new RegExp(PROFANE.source, 'iu').test(text);
+
 /** Control characters out, tags and links out, whitespace collapsed. Model text is plain text; the renderer escapes it again. */
 export function plainOut(value: unknown, max: number): string {
-  return String(value ?? '')
+  return stripProfanity(String(value ?? ''))
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f‪-‮⁦-⁩]/g, '')
     .replace(/<[^>]*>/g, ' ')
     .replace(/[<>]/g, '')

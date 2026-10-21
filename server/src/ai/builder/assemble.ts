@@ -10,7 +10,7 @@ export interface AssembledStep { key: string; kind: StepPlan['kind']; name: stri
 
 function illustration(pm: PageBuilder, kind: IllustrationKind, alt: string, accent: string): GjsNode {
   const art =
-    kind === 'phone' ? phoneMock(pm, accent) : kind === 'chart' ? chartMock(pm, [30, 45, 40, 62, 78, 95], accent) : kind === 'ring' ? ringMock(pm, 72, '72%', accent) : kind === 'discs' ? discs(pm) : browserMock(pm, accent);
+    kind === 'phone' ? phoneMock(pm, accent) : kind === 'chart' ? chartMock(pm, [30, 45, 40, 62, 78, 95], accent) : kind === 'ring' ? ringMock(pm, 72, '✓', accent) : kind === 'discs' ? discs(pm) : browserMock(pm, accent);
   const wrap = pm.box([art], { name: 'Illustration', style: { display: 'flex', 'justify-content': 'center', 'align-items': 'center', width: '100%' } });
   wrap.attributes = { ...(wrap.attributes as Record<string, string>), role: 'img', 'aria-label': alt || 'Decorative illustration' };
   return wrap;
