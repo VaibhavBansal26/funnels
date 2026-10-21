@@ -37,7 +37,7 @@ export interface DeploymentSummary {
 }
 
 export interface PublishSettings {
-  target: 'origin' | 'cloudflare-pages';
+  target: 'origin' | 'cloudflare-pages' | 'cloudflare-workers-assets';
   owner: 'workspace' | 'platform' | null;
   project: { name: string; host: string | null; url: string | null; created: boolean } | null;
   customDomain: { hostname: string; status: 'pending' | 'active' | 'failed' | null; error: string | null; dns: { type: string; name: string; value: string | null } } | null;

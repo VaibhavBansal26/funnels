@@ -131,6 +131,22 @@ Cloudflare also restricts **how many projects a new account can create in its fi
 
 **Latency of a change.** The app's part is the debounce (`PAGES_DEBOUNCE_SECONDS`), the build and the upload of changed files only; then Cloudflare's own deployment and propagation, then up to 60 s of HTML cache. The tests run against a fake and say nothing about Cloudflare's timings: measure with the smoke test; the repository has no real number.
 
+## Experimental: Cloudflare Workers Static Assets target
+
+Second `PublishTarget` implementation (`server/src/publish/target.ts`, client `cfworkers.ts`; ADR [0044](adr/0044-publish-target-interface-workers-assets.md)): `cloudflare-workers-assets` publishes the same bundle as a Worker with static assets (one Worker per funnel) and uses the free `<worker>.<account subdomain>.workers.dev` address as the funnel's system domain, with the same state machine, history, rollback, unpublish and Go live flow. **It is unverified**: written from <https://developers.cloudflare.com/workers/static-assets/direct-upload/> (read 2026-10-21) and tested against the fake only; several details are not in that page and are assumed (marked in the code): the request body of `POST .../scripts/{name}/subdomain`, whether the script `PUT` also deploys (the client reads `GET .../deployments` afterwards and creates the deployment from `GET .../versions` when it did not), the `_headers` / `_redirects` files travelling in the asset manifest, and the asset hash being the same BLAKE3 scheme as Pages. Run `server/scripts/cf-workers-smoke.ts` with your own token to check it.
+
+| | Pages | Workers assets (experimental) |
+|---|---|---|
+| Token permission | Account > Cloudflare Pages > Edit | Account > Workers Scripts > Edit (and Account Settings > Read) |
+| Free address | `<project>.pages.dev` | `<worker>.<subdomain>.workers.dev`; the account needs a workers.dev subdomain (`GET /accounts/{id}/workers/subdomain`), otherwise `WORKERS_SUBDOMAIN_MISSING` explains where to register one |
+| Unit per funnel and limit | Pages project, 100 per account | Worker, 100 on Free, 500 on Paid (the app refuses at 500 and maps Cloudflare's own refusal) |
+| Files per site | 20,000 Free / 100,000 Paid | 20,000 Free / 100,000 Paid per version |
+| Deployment | create deployment, poll stages | upload session, upload buckets, script upload with the `assets` JWT, then the deployment is read back |
+| Rollback | Pages rollback | `POST .../deployments` with the earlier version at 100% |
+| Custom domains | yes | **not yet** (needs the zone id; choosing a verified domain serves the funnel from this server) |
+
+A funnel uses one Cloudflare target at a time: to change, switch it back to this server (choosing what happens to the old site) and then choose the other (`SWITCH_TARGET_FIRST`).
+
 ## Cloudflare's direction (read 2026-10-21)
 
 Cloudflare's own guidance now steers new projects to Workers: the Workers best-practices page says to "use Workers Static Assets for new projects" and that Pages "continues to work, but new features and optimizations are focused on Workers" (<https://developers.cloudflare.com/workers/best-practices/workers-best-practices/>); the Pages home page says to start new projects with Workers (<https://developers.cloudflare.com/pages/>). Pages Direct Upload remains documented and supported, which is why it is the verified-by-fake default here. A second publish target on Workers Static Assets with the free `workers.dev` address is described in [CLOUDFLARE-SETUP.md](CLOUDFLARE-SETUP.md) and ADR 0030. Limits for Workers static assets (<https://developers.cloudflare.com/workers/platform/limits/>, read 2026-10-21): 100 Workers per account on Free, 500 on Paid, 20,000 files per Worker version on Free (100,000 Paid), 25 MiB per file.

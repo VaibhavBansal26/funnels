@@ -73,9 +73,10 @@ export function GoLivePanel({ funnel, onDone }: { funnel: FunnelDetail; onDone?:
             <span className="min-w-0">
               <strong>{o.label}</strong>{o.selected ? <> <Badge tone="primary">In use</Badge></> : null}
               <br />
-              {o.url ? <span className="mono small break-all">{o.url}</span> : <span className="muted small">{o.kind === 'pages' ? 'Created when you go live (name.pages.dev)' : '—'}</span>}
+              {o.url ? <span className="mono small break-all">{o.url}</span> : <span className="muted small">{o.kind === 'pages' ? 'Created when you go live (name.pages.dev)' : o.kind === 'workers' ? 'Created when you go live (name.account.workers.dev)' : '—'}</span>}
               {!o.available && o.reason ? <><br /><span className="small text-warn">{o.reason}</span></> : null}
               {o.kind === 'pages' && o.available ? <><br /><span className="muted small">Free. Served by Cloudflare; Cloudflare allows 100 Pages projects per account (one per funnel). The first publish takes about a minute.</span></> : null}
+              {o.kind === 'workers' && o.available ? <><br /><span className="muted small">Experimental: not yet checked against real Cloudflare. Needs a workers.dev subdomain on your Cloudflare account and the token permission Workers Scripts: Edit.</span></> : null}
               {o.kind === 'custom' ? <><br /><span className="muted small">Your own domain.</span></> : null}
             </span>
           </label>

@@ -3675,6 +3675,7 @@
                         "type": "string",
                         "enum": [
                           "pages",
+                          "workers",
                           "custom"
                         ]
                       },
@@ -12452,7 +12453,8 @@
                     "type": "string",
                     "enum": [
                       "origin",
-                      "cloudflare-pages"
+                      "cloudflare-pages",
+                      "cloudflare-workers-assets"
                     ]
                   },
                   "owner": {

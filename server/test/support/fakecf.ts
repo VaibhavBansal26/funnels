@@ -27,6 +27,23 @@ interface FakeProject {
   production: string | null;
 }
 
+interface FakeVersion {
+  id: string;
+  manifest: Record<string, string>;
+}
+interface FakeWorkerDeployment {
+  id: string;
+  versions: { version_id: string; percentage: number }[];
+  created_on: string;
+}
+interface FakeWorker {
+  name: string;
+  versions: FakeVersion[];
+  deployments: FakeWorkerDeployment[];
+  live: string | null;
+  workersDev: boolean;
+}
+
 export class FakeCloudflarePages {
   accountId = 'a'.repeat(32);
   token = 'cf-test-token-0123456789abcdef';
@@ -44,6 +61,13 @@ export class FakeCloudflarePages {
   /** Fail the next N matching calls: `[regexp on "METHOD path", status, body?, headers?]`. */
   failures: { re: RegExp; status: number; body?: Json; retryAfter?: number; times: number }[] = [];
   maxProjects = 100;
+  /** Workers Static Assets (cfworkers.ts): scripts of the account, the account's workers.dev subdomain (null = none registered) and the upload sessions. */
+  workers = new Map<string, FakeWorker>();
+  workersSubdomain: string | null = 'acct-sub';
+  maxWorkers = 500;
+  /** When false, PUT script uploads a version without deploying it (the documentation does not say which the real API does); the client must then create the deployment. */
+  putDeploys = true;
+  private sessions = new Map<string, { name: string; manifest: Record<string, { hash: string; size: number }>; done: string | null }>();
   private seq = 0;
   now = () => new Date('2026-03-10T12:00:00.000Z');
 
@@ -72,7 +96,9 @@ export class FakeCloudflarePages {
     const isAsset = path.startsWith('/pages/assets/');
     if (isAsset) {
       if (!/^jwt\.[a-z0-9-]+\.\d+$/.test(bearer)) return reply(401, undefined, [{ code: 8000013, message: 'Invalid upload token' }]);
-    } else if (bearer !== this.token) return reply(401, undefined, [{ code: 10000, message: 'Authentication error' }]);
+    } else if (!/^\/accounts\/[^/]+\/workers\/assets\/upload/.test(path) && bearer !== this.token) return reply(401, undefined, [{ code: 10000, message: 'Authentication error' }]);
+    const wm = /^\/accounts\/([^/]+)\/workers(\/.*)?$/.exec(path.split('?')[0]!);
+    if (wm) return this.workersCall(method, url, wm[1]!, wm[2] ?? '', bearer, init, reply);
 
     const m = /^\/accounts\/([^/]+)\/pages(\/.*)?$/.exec(path.split('?')[0]!);
     const body = (): unknown => {
@@ -202,6 +228,140 @@ export class FakeCloudflarePages {
     }
     return reply(404);
   };
+
+  // ---- Workers Static Assets ---------------------------------------------------------------------------------------------------------------------------
+
+  addWorker(name: string) {
+    this.workers.set(name, { name, versions: [], deployments: [], live: null, workersDev: false });
+  }
+
+  private workersCall(method: string, url: URL, account: string, rest: string, bearer: string, init: RequestInit | undefined, reply: (status: number, result?: unknown, errors?: { code: number; message: string }[]) => Response): Response | Promise<Response> {
+    if (account !== this.accountId) return reply(403, undefined, [{ code: 7003, message: 'Account not accessible' }]);
+    const body = (): any => {
+      try {
+        return typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+      } catch {
+        return null;
+      }
+    };
+    const readOnly = method === 'GET';
+    if (!readOnly && !this.canWrite) return reply(403, undefined, [{ code: 10000, message: 'Authentication error' }]);
+    if (rest === '/scripts' && method === 'GET') return reply(200, [...this.workers.values()].map((w) => ({ id: w.name })));
+    if (rest === '/subdomain' && method === 'GET') return this.workersSubdomain ? reply(200, { subdomain: this.workersSubdomain }) : reply(404, undefined, [{ code: 10007, message: 'This account has not enabled a workers.dev subdomain' }]);
+
+    if (rest === '/assets/upload' && method === 'POST') {
+      const session = [...this.sessions.entries()].find(([jwt]) => jwt === bearer)?.[1];
+      if (!session) return reply(401, undefined, [{ code: 8000013, message: 'Invalid upload token' }]);
+      const form = init?.body;
+      if (!(form instanceof FormData) || url.searchParams.get('base64') !== 'true') return reply(400, undefined, [{ code: 8000000, message: 'multipart/form-data with base64=true expected' }]);
+      return (async () => {
+        for (const [hash, part] of form.entries()) {
+          if (!(part instanceof Blob)) return reply(400, undefined, [{ code: 8000000, message: 'Bad upload part' }]);
+          this.assets.set(hash, { bytes: Buffer.from(await part.text(), 'base64'), contentType: part.type });
+        }
+        const all = Object.values(session.manifest).every((m) => this.assets.has(m.hash));
+        if (!all) return reply(202, { jwt: null });
+        session.done = `wdone.${session.name}.${++this.seq}`;
+        this.sessions.set(session.done, session);
+        return reply(201, { jwt: session.done });
+      })();
+    }
+
+    const sm = /^\/scripts\/([^/]+)(\/.*)?$/.exec(rest);
+    if (!sm) return reply(404);
+    const name = decodeURIComponent(sm[1]!);
+    const sub = sm[2] ?? '';
+    let worker = this.workers.get(name);
+    if (sub === '/assets-upload-session' && method === 'POST') {
+      const manifest = body()?.manifest as Record<string, { hash: string; size: number }> | undefined;
+      if (!manifest || typeof manifest !== 'object') return reply(400, undefined, [{ code: 8000000, message: 'manifest expected' }]);
+      if (Object.keys(manifest).length > 20_000) return reply(400, undefined, [{ code: 8000011, message: 'Too many files' }]);
+      for (const [path, m] of Object.entries(manifest)) if (!path.startsWith('/') || !/^[0-9a-f]{32}$/.test(m?.hash ?? '') || typeof m.size !== 'number') return reply(400, undefined, [{ code: 8000000, message: `Bad manifest entry ${path}` }]);
+      const missing = [...new Set(Object.values(manifest).map((m) => m.hash))].filter((h) => !this.assets.has(h));
+      const jwt = `wjwt.${name}.${++this.seq}`;
+      this.sessions.set(jwt, { name, manifest, done: missing.length === 0 ? jwt : null });
+      const buckets: string[][] = [];
+      for (let i = 0; i < missing.length; i += 2) buckets.push(missing.slice(i, i + 2));
+      return reply(200, { jwt, buckets });
+    }
+    if (sub === '/settings' && method === 'GET') return worker ? reply(200, { name }) : reply(404, undefined, [{ code: 10007, message: 'This Worker does not exist' }]);
+    if (sub === '' && method === 'PUT') {
+      const form = init?.body;
+      if (!(form instanceof FormData)) return reply(400, undefined, [{ code: 8000000, message: 'multipart/form-data expected' }]);
+      const metaPart = form.get('metadata');
+      if (!(metaPart instanceof Blob)) return reply(400, undefined, [{ code: 10021, message: 'metadata part missing' }]);
+      return (async () => {
+        let meta: any;
+        try {
+          meta = JSON.parse(await metaPart.text());
+        } catch {
+          return reply(400, undefined, [{ code: 10021, message: 'metadata is not JSON' }]);
+        }
+        if (!meta.main_module || !(form.get(meta.main_module) instanceof Blob)) return reply(400, undefined, [{ code: 10021, message: 'main_module part missing' }]);
+        const session = meta.assets?.jwt ? this.sessions.get(meta.assets.jwt) : undefined;
+        if (!session || session.name !== name || session.done !== meta.assets.jwt) return reply(400, undefined, [{ code: 10021, message: 'assets.jwt is not a completion token for this Worker' }]);
+        if (!worker) {
+          if (this.workers.size >= this.maxWorkers) return reply(400, undefined, [{ code: 10037, message: `You have reached the limit of ${this.maxWorkers} Workers` }]);
+          worker = { name, versions: [], deployments: [], live: null, workersDev: false };
+          this.workers.set(name, worker);
+        }
+        const version: FakeVersion = { id: `00000000-0000-4000-9000-${String(++this.seq).padStart(12, '0')}`, manifest: Object.fromEntries(Object.entries(session.manifest).map(([k, m]) => [k, m.hash])) };
+        worker.versions.push(version);
+        if (this.putDeploys) this.deployVersion(worker, version.id);
+        return reply(200, { id: name, etag: version.id });
+      })();
+    }
+    if (!worker) return reply(404, undefined, [{ code: 10007, message: 'This Worker does not exist' }]);
+    if (sub === '/versions' && method === 'GET') return reply(200, { items: [...worker.versions].reverse().map((v) => ({ id: v.id })) });
+    if (sub === '/deployments' && method === 'GET') return reply(200, { deployments: worker.deployments });
+    if (sub === '/deployments' && method === 'POST') {
+      const b = body();
+      const v = b?.versions?.[0];
+      if (b?.strategy !== 'percentage' || !v || !worker.versions.some((x) => x.id === v.version_id) || v.percentage !== 100) return reply(400, undefined, [{ code: 10021, message: 'Invalid deployment' }]);
+      return reply(200, this.deployVersion(worker, v.version_id));
+    }
+    if (sub === '/subdomain' && method === 'POST') {
+      worker.workersDev = body()?.enabled === true;
+      return reply(200, { enabled: worker.workersDev, previews_enabled: false });
+    }
+    if (sub === '' && method === 'DELETE') {
+      this.workers.delete(name);
+      return reply(200, null);
+    }
+    return reply(404);
+  }
+
+  private deployVersion(w: FakeWorker, versionId: string): FakeWorkerDeployment {
+    const d: FakeWorkerDeployment = { id: `00000000-0000-4000-a000-${String(++this.seq).padStart(12, '0')}`, versions: [{ version_id: versionId, percentage: 100 }], created_on: this.now().toISOString() };
+    w.deployments.unshift(d);
+    w.live = versionId;
+    return d;
+  }
+
+  /** What visitors get from `https://<worker>.<subdomain>.workers.dev<path>` (null when the address does not answer: no workers.dev route, or nothing deployed). */
+  serveWorker(name: string, path: string): { status: number; body: string; contentType: string } | null {
+    const w = this.workers.get(name);
+    const v = w?.versions.find((x) => x.id === w.live);
+    if (!w || !w.workersDev || !v) return null;
+    const read = (file: string) => {
+      const h = v.manifest[file];
+      const a = h ? this.assets.get(h) : undefined;
+      return a && pagesHash(a.bytes, file) === h ? a : null;
+    };
+    for (const c of path.endsWith('/') ? [`${path}index.html`] : [path, `${path}/index.html`]) {
+      const a = read(c);
+      if (a) return { status: 200, body: a.bytes.toString('utf8'), contentType: a.contentType };
+    }
+    const nf = read('/404.html');
+    return nf ? { status: 404, body: nf.bytes.toString('utf8'), contentType: nf.contentType } : { status: 404, body: '', contentType: '' };
+  }
+  /** The `_headers` file of the live version of a Worker (the platform applies it; the fake only stores it). */
+  workerHeaders(name: string): string | null {
+    const w = this.workers.get(name);
+    const v = w?.versions.find((x) => x.id === w.live);
+    const h = v?.manifest['/_headers'];
+    return h && this.assets.get(h) ? this.assets.get(h)!.bytes.toString('utf8') : null;
+  }
 
   private pjson(p: FakeProject): Json {
     return { name: p.name, subdomain: p.subdomain, domains: [p.subdomain, ...p.domains.keys()], production_branch: 'main', created_on: this.now().toISOString() };

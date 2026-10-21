@@ -5,7 +5,7 @@ import { api } from './client';
 export type PublishState = 'draft' | 'publishing' | 'live' | 'failed' | 'paused';
 
 export interface AddressOption {
-  kind: 'builtin' | 'pages' | 'custom';
+  kind: 'builtin' | 'pages' | 'workers' | 'custom';
   domainId: string | null;
   label: string;
   url: string | null;

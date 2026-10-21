@@ -1,5 +1,6 @@
 import type { Deps } from '../deps.js';
 import { AppError } from '../errors.js';
+import { CF_TARGETS_SQL } from '../publish/target.js';
 import type { Plan } from '../ratelimit/types.js';
 import { type Limited, PLAN_DEFS } from './plans.js';
 
@@ -12,7 +13,7 @@ export async function usageOf(deps: Deps, ws: string): Promise<Record<Limited, n
     domains: await count(deps, "SELECT COUNT(*) AS n FROM domains WHERE workspace_id = ? AND kind = 'custom'", ws),
     members: (await count(deps, 'SELECT COUNT(*) AS n FROM users WHERE workspace_id = ?', ws)) + (await count(deps, 'SELECT COUNT(*) AS n FROM invitations WHERE workspace_id = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?', ws, now)),
     apiKeys: await count(deps, 'SELECT COUNT(*) AS n FROM api_keys WHERE workspace_id = ? AND revoked_at IS NULL', ws),
-    pagesProjects: await count(deps, "SELECT COUNT(*) AS n FROM funnel_publish WHERE workspace_id = ? AND owner = 'platform' AND target = 'cloudflare-pages'", ws),
+    pagesProjects: await count(deps, `SELECT COUNT(*) AS n FROM funnel_publish WHERE workspace_id = ? AND owner = 'platform' AND target IN ${CF_TARGETS_SQL}`, ws),
   };
 }
 

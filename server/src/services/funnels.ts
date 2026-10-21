@@ -19,6 +19,7 @@ import { regenerateFunnel, scriptsAllowedFor, validateDoc } from './pages.js';
 import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 import { insertStep, assertValidPath, serializeStep } from './steps.js';
 import { onFunnelChanged, onFunnelPurge } from './publishing.js';
+import { CF_TARGETS_SQL } from '../publish/target.js';
 import { addressFrom, mountKey, mountOf, pagesHostOf, workspaceSlugOf, type Address } from './addresses.js';
 
 const iso = (deps: Deps) => deps.now().toISOString();
@@ -342,7 +343,7 @@ export async function updateFunnel(deps: Deps, auth: Auth, id: string, input: z.
     if (domainId) {
       const domain = await requireDomain(d, ws, domainId);
       // A funnel's own *.pages.dev address is attachable while it is still "pending" (it turns active with the first successful deployment).
-      const pagesPending = domain.kind === 'pages' && domain.system_funnel_id === funnel.id && !!(await d.db.get("SELECT 1 FROM funnel_publish WHERE funnel_id = ? AND target = 'cloudflare-pages'", funnel.id));
+      const pagesPending = domain.kind === 'pages' && domain.system_funnel_id === funnel.id && !!(await d.db.get(`SELECT 1 FROM funnel_publish WHERE funnel_id = ? AND target IN ${CF_TARGETS_SQL}`, funnel.id));
       if (domain.kind === 'pages' && domain.system_funnel_id !== funnel.id) throw notFound('Domain');
       if (domain.status !== 'active' && !pagesPending) throw conflict('DOMAIN_NOT_ACTIVE', 'The domain is not verified yet');
       // Only customer domains share one path space between funnels; system addresses are per funnel.

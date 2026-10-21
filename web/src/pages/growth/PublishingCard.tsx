@@ -103,14 +103,15 @@ export function PublishingCard({ funnel }: { funnel: FunnelDetail }) {
 
   if (q.isLoading) return <section className="card"><h2>Publishing</h2><Loading rows={2} /></section>;
   if (!s) return <section className="card"><h2>Publishing</h2><ErrorBanner error={q.error} onRetry={() => void q.refetch()} /></section>;
-  const onPages = s.target === 'cloudflare-pages';
+  const onPages = s.target !== 'origin';
+  const workers = s.target === 'cloudflare-workers-assets';
   const canChoosePages = conn.data?.connected || conn.data?.platform.available;
 
   return (
     <section className="card stack" aria-label="Publishing">
       <div className="row between">
         <div><h2 style={{ margin: 0 }}>Publishing</h2><span className="muted small">Where visitors get this funnel from.</span></div>
-        <Badge tone={onPages ? 'primary' : 'neutral'}>{onPages ? 'Cloudflare Pages' : 'This server'}</Badge>
+        <Badge tone={onPages ? 'primary' : 'neutral'}>{workers ? 'Cloudflare Workers (experimental)' : onPages ? 'Cloudflare Pages' : 'This server'}</Badge>
       </div>
       <ErrorBanner error={q.error} />
 

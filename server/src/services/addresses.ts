@@ -6,6 +6,7 @@ import { inTx } from '../db/scope.js';
 import { conflict, notFound } from '../errors.js';
 import type { DomainRow, FunnelRow } from '../repos/types.js';
 import { newId } from '../util/ids.js';
+import { CF_TARGETS_SQL } from '../publish/target.js';
 
 /**
  * Where a funnel lives on the internet. Three kinds of address, all stored as a row in `domains` (see migration 042):
@@ -208,7 +209,7 @@ export function addressFrom(deps: Pick<Deps, 'config'>, funnel: Pick<FunnelRow, 
 }
 
 export async function pagesHostOf(deps: Pick<Deps, 'db'>, funnelId: string): Promise<string | null> {
-  return (await deps.db.get<{ pages_host: string | null }>("SELECT pages_host FROM funnel_publish WHERE funnel_id = ? AND target = 'cloudflare-pages'", funnelId))?.pages_host ?? null;
+  return (await deps.db.get<{ pages_host: string | null }>(`SELECT pages_host FROM funnel_publish WHERE funnel_id = ? AND target IN ${CF_TARGETS_SQL}`, funnelId))?.pages_host ?? null;
 }
 
 /** Reads what addressFrom needs. Does not create slugs (lists must not write); use `ensure*` before attaching a built-in domain. */
