@@ -20,7 +20,7 @@ export default defineConfig({
   // *.e2e.test resolves to the local server, so a verified domain can be opened in the browser with its own Host header.
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1360, height: 900 }, launchOptions: { args: ['--host-resolver-rules=MAP *.e2e.test 127.0.0.1'] } } }],
   webServer: {
-    command: 'node server.mjs',
+    command: 'node --import ../server/node_modules/tsx/dist/esm/index.mjs server.mjs',
     url: `${BASE}/readyz`,
     reuseExistingServer: false,
     timeout: 30_000,
@@ -42,6 +42,9 @@ export default defineConfig({
       API_USER_PER_MINUTE: '1000000',
       API_WORKSPACE_PER_MINUTE: '1000000',
       EVENT_BUFFER_MS: '0',
+      JOB_POLL_MS: '300',
+      PAGES_POLL_INTERVAL_MS: '300',
+      PAGES_DEBOUNCE_SECONDS: '0',
       MAIL_PORT: String(PORT + 1),
     },
   },

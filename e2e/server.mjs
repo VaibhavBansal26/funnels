@@ -10,9 +10,14 @@ const { serve } = await import(pathToFileURL(createRequire(join(import.meta.dirn
 
 const dist = (f) => import(pathToFileURL(join(import.meta.dirname, '../server/dist', f)).href);
 const { createApp } = await dist('app.js');
-const { createDeps } = await dist('bootstrap.js');
+const { createDeps, createWorker } = await dist('bootstrap.js');
 const { loadConfig } = await dist('config.js');
 
+// Stripe suite (playwright.stripe.config.ts): a fake Stripe API and its hosted pages, reached through STRIPE_API_BASE.
+if (process.env.E2E_FAKE_STRIPE_PORT) {
+  const { startFakeStripe } = await import('./fakestripe.mjs');
+  await startFakeStripe({ port: Number(process.env.E2E_FAKE_STRIPE_PORT), appBase: process.env.APP_PUBLIC_URL, connectSecret: process.env.STRIPE_CONNECT_WEBHOOK_SECRET });
+}
 const config = loadConfig();
 let deps;
 const dns = {
@@ -36,7 +41,14 @@ createServer((req, res) => {
   res.writeHead(m ? 200 : 404, { 'content-type': 'application/json' });
   res.end(JSON.stringify(m ?? { error: 'no mail for ' + to }));
 }).listen(Number(process.env.MAIL_PORT ?? 4181), '127.0.0.1');
-deps = await createDeps(config, { dns, mailer });
+// Cloudflare Pages is answered by the in-memory fake of the test suite (server/test/support/fakecf.ts, loaded through tsx): the connection, the deployments and the
+// history screens run for real, against the documented API shapes only.
+const { FakeCloudflarePages } = await import(pathToFileURL(join(import.meta.dirname, '../server/test/support/fakecf.ts')).href);
+const cf = new FakeCloudflarePages();
+cf.pollsToFinish = 1;
+deps = await createDeps(config, { dns, mailer, outbound: cf.fetch });
+// The job worker (deployments to Cloudflare Pages, conversions, webhooks) runs in this process like in production.
+createWorker(deps).start(config.JOB_POLL_MS);
 const server = serve({ fetch: createApp(deps).fetch, port: config.PORT, hostname: config.HOST });
 const stop = () => server.close(() => deps.db.close().finally(() => process.exit(0)));
 process.on('SIGTERM', stop);
