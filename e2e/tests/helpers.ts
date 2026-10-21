@@ -18,7 +18,8 @@ export async function register(page: Page, name = 'E2E Owner', fixedEmail?: stri
 export async function createLeadMagnet(page: Page) {
   await page.goto('/funnels/new');
   await page.getByRole('button', { name: /From a template/ }).click();
-  await page.getByRole('article', { name: 'Lead magnet' }).getByRole('button', { name: 'Use template' }).click();
+  await page.getByRole('article', { name: 'Lead magnet', exact: true }).getByRole('button', { name: 'Use template Lead magnet', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Use "Lead magnet"' }).getByRole('button', { name: 'Create funnel' }).click(); // the use-template wizard
   await expect(page.getByRole('heading', { name: 'Lead magnet', level: 1 })).toBeVisible();
   await expect(page.getByRole('list', { name: 'Funnel steps' })).toBeVisible();
   const funnelId = /\/funnels\/(fn_[^/]+)/.exec(page.url())![1]!;
