@@ -20,12 +20,12 @@ sequenceDiagram
   participant P as Page (origin or Cloudflare Pages)
   participant S as Server
   participant G as Places API (New)
-  Note over S: page save or publish: snapshot of cached content rendered into the page, token registered
+  Note over S: page save or publish renders a snapshot of cached content and registers the token
   B->>P: GET page (static HTML with snapshot + attribution)
   B->>S: GET /public/reviews/:blockToken (CORS allow-list)
-  S->>S: token -> workspace; cache fresh?
-  S->>G: GET /v1/places/{id} (key, field mask) when stale (single flight, quota, circuit breaker)
-  S-->>B: JSON (cached, 5 min) -> script replaces the snapshot with text nodes
+  S->>S: token to workspace, is the cache fresh
+  S->>G: Place Details call when stale, single flight, quota and circuit breaker
+  S-->>B: JSON cached 5 min, script replaces the snapshot with text nodes
 ```
 
 * **Fetch**: `GET https://places.googleapis.com/v1/places/{placeId}` with headers `X-Goog-Api-Key` and `X-Goog-FieldMask: id,displayName,rating,userRatingCount,googleMapsUri,reviews`. Search: `POST /v1/places:searchText` with `{textQuery, pageSize: 5}` and mask `places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount`. The key travels in a header, never in a URL or log. Calls use `deps.outbound` (public addresses only, no redirects, 8 second timeout); `GOOGLE_PLACES_API_BASE` exists for tests.
