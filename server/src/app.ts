@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { compress } from 'hono/compress';
 import { cors } from 'hono/cors';
@@ -31,6 +31,19 @@ import { funnelProductAnalyticsRoutes, productAnalyticsRoutes } from './routes/p
 import type { Deps } from './deps.js';
 import { AppError } from './errors.js';
 
+/** Reports a 5xx or unhandled error to Sentry with the request id, the route PATTERN, the hashed workspace id and the plan. Never throws; does nothing without a DSN. */
+async function reportUnexpected(deps: Deps, c: Context, err: unknown): Promise<void> {
+  if (!deps.monitor.enabled) return;
+  try {
+    const auth = (c as unknown as { get(k: string): { workspaceId?: string } | undefined }).get('auth');
+    const workspaceId = auth?.workspaceId;
+    const plan = workspaceId ? (await deps.db.get<{ plan: string }>('SELECT plan FROM workspaces WHERE id = ?', workspaceId))?.plan : undefined;
+    deps.monitor.captureError(err, { kind: 'request', requestId: (c as unknown as { get(k: string): string | undefined }).get('requestId'), route: c.req.routePath, workspaceId, plan });
+  } catch {
+    /* monitoring never breaks a response */
+  }
+}
+
 export function createApp(deps: Deps): Hono {
   const app = new Hono();
   const metrics = createMetrics(deps);
@@ -39,6 +52,8 @@ export function createApp(deps: Deps): Hono {
     const started = Date.now();
     const id = c.req.header('x-request-id')?.slice(0, 64) || randomUUID();
     c.header('x-request-id', id);
+    (c as unknown as { set(k: string, v: unknown): void }).set('requestId', id);
+    const span = deps.monitor.startRequest(c.req.method);
     c.header('x-content-type-options', 'nosniff');
     c.header('referrer-policy', 'strict-origin-when-cross-origin');
     // A handler that outlives REQUEST_TIMEOUT_MS gets a 504 (synchronous work cannot be interrupted, but the client is released).
@@ -46,7 +61,11 @@ export function createApp(deps: Deps): Hono {
     const timeout = new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), deps.config.REQUEST_TIMEOUT_MS); timer.unref(); });
     const done = await Promise.race([next().then(() => 'done' as const), timeout]);
     clearTimeout(timer);
-    if (done === 'timeout') c.res = c.json({ error: { code: 'REQUEST_TIMEOUT', message: 'The request took too long' } }, 504);
+    if (done === 'timeout') {
+      c.res = c.json({ error: { code: 'REQUEST_TIMEOUT', message: 'The request took too long' } }, 504);
+      deps.monitor.captureError(Object.assign(new Error('Request exceeded REQUEST_TIMEOUT_MS'), { status: 504, code: 'REQUEST_TIMEOUT_SERVER' }), { kind: 'request', requestId: id, route: c.req.routePath });
+    }
+    span?.end(c.req.routePath ?? 'unmatched', c.res.status);
     const path = new URL(c.req.url).pathname;
     if (path !== '/healthz' && path !== '/readyz' && path !== '/metrics') {
       metrics.observe(c.req.method, c.req.routePath ?? 'unmatched', c.res.status, (Date.now() - started) / 1000);
@@ -125,9 +144,11 @@ export function createApp(deps: Deps): Hono {
 
   app.onError((err, c) => {
     if (err instanceof AppError) {
+      if (err.status >= 500) void reportUnexpected(deps, c, err); // 4xx, validation and rate limits are expected and never reported
       return c.json({ error: { code: err.code, message: err.message, ...err.extra, ...(err.details !== undefined ? { details: err.details } : {}) } }, err.status as 400, err.headers);
     }
     deps.log.error('unhandled error', { path: new URL(c.req.url).pathname, error: err instanceof Error ? err.stack ?? err.message : String(err) });
+    void reportUnexpected(deps, c, err);
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Something went wrong' } }, 500);
   });
 

@@ -8,9 +8,9 @@ import { ConfirmDialog, ErrorBanner, fmtDate, Loading, Modal, TextField } from '
 import { SupportSessionDialog } from '../components/SupportAccess';
 import { useToast } from '../components/Toasts';
 
-const TABS = ['workspaces', 'queues', 'flags', 'announcements', 'audit', 'privacy', 'admins'] as const;
+const TABS = ['workspaces', 'queues', 'monitoring', 'flags', 'announcements', 'audit', 'privacy', 'admins'] as const;
 type Tab = (typeof TABS)[number];
-const LABEL: Record<Tab, string> = { workspaces: 'Workspaces', queues: 'Queues', flags: 'Feature flags', announcements: 'Announcements', audit: 'Audit', privacy: 'Personal data', admins: 'Administrators' };
+const LABEL: Record<Tab, string> = { workspaces: 'Workspaces', queues: 'Queues', monitoring: 'Monitoring', flags: 'Feature flags', announcements: 'Announcements', audit: 'Audit', privacy: 'Personal data', admins: 'Administrators' };
 
 interface WsRow { id: string; name: string; createdAt: string; plan: string; planStatus: string; suspended: boolean; suspendedReason: string | null; ownerEmail: string | null; members: number; funnels: number }
 interface WsDetail { id: string; name: string; planName: string; planStatus: string; suspended: boolean; suspendedReason: string | null; usage: Record<string, number>; limits: Record<string, number>; members: { id: string; email: string; twoFactorEnabled: boolean }[]; recentAudit: { id: string; action: string; actorId: string; createdAt: string }[] }
@@ -142,6 +142,45 @@ function Queues() {
         <li key={j.id} className="card row between"><span><code>{j.type}</code> <span className="mono small">{j.id}</span><br /><span className="small muted">{j.lastError ?? 'no error recorded'} ({j.attempts} attempts)</span></span>
           <span className="row"><button type="button" className="btn sm" onClick={() => retry.mutate(j.id)}>Retry</button><button type="button" className="btn sm danger" onClick={() => discard.mutate(j.id)}>Discard</button></span></li>
       ))}</ul>
+    </div>
+  );
+}
+
+interface MonitoringStatus { enabled: boolean; environment: string | null; release: string | null; tracesSampleRate: number; ingestHost: string | null; browserEnabled: boolean }
+interface MonitoringTest extends MonitoringStatus { sent: boolean; eventId: string | null; flushed: boolean }
+
+function Monitoring() {
+  const q = useQuery({ queryKey: ['admin', 'monitoring'], queryFn: () => adminGet<MonitoringStatus>('/monitoring') });
+  const test = useMutate(() => api.post<MonitoringTest>('/api/admin/monitoring/test'), []);
+  const s = q.data;
+  const r = test.data;
+  return (
+    <div className="stack" style={{ maxWidth: 720 }}>
+      <ErrorBanner error={q.error ?? test.error} onRetry={() => void q.refetch()} />
+      {q.isLoading ? <Loading rows={2} /> : null}
+      {s ? (
+        <section className="card stack" aria-label="Error monitoring">
+          <div className="row between"><div><h2 style={{ margin: 0 }}>Error monitoring (Sentry)</h2><span className="muted small">Optional. Set SENTRY_DSN on the server to turn it on; nothing is sent without it.</span></div>{s.enabled ? <span className="badge ok">On</span> : <span className="badge">Off</span>}</div>
+          {s.enabled ? (
+            <dl className="grid small" style={{ gridTemplateColumns: 'minmax(140px, 180px) 1fr', gap: '6px 12px', margin: 0 }}>
+              <dt className="muted">Environment</dt><dd>{s.environment}</dd>
+              <dt className="muted">Release</dt><dd className="mono">{s.release ?? 'not set (RENDER_GIT_COMMIT, GIT_SHA or SENTRY_RELEASE)'}</dd>
+              <dt className="muted">Traces sample rate</dt><dd>{s.tracesSampleRate}</dd>
+              <dt className="muted">Sentry host</dt><dd className="mono">{s.ingestHost}</dd>
+              <dt className="muted">Browser errors</dt><dd>{s.browserEnabled ? 'on (the web app asks GET /api/config)' : 'off'}</dd>
+            </dl>
+          ) : <p className="small">Monitoring is not configured. See docs/MONITORING.md for the setup steps.</p>}
+          <p className="small muted">Only error type, a scrubbed message, the stack, the route pattern, a request id, a hash of the workspace id and the plan are sent: never request bodies, cookies, headers, emails, names, keys or page content.</p>
+          <div className="row">
+            <button type="button" className="btn primary" disabled={test.isPending || !s.enabled} onClick={() => test.mutate()}>{test.isPending ? 'Sending…' : 'Send test error'}</button>
+          </div>
+          {r ? (
+            <div className={`alert ${r.sent ? '' : 'warn'}`} role="status">
+              {r.sent ? <>Test error sent{r.flushed ? '' : ' (still being delivered)'}. Event id <span className="mono">{r.eventId}</span>: look for &quot;Funnels test error&quot; in Sentry.</> : 'Nothing was sent: monitoring is off.'}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -281,6 +320,7 @@ export function AdminPage() {
       <nav className="tabs" aria-label="Admin sections">{TABS.map((t) => <NavLink key={t} to={`/admin/${t}`}>{LABEL[t]}</NavLink>)}</nav>
       {tab === 'workspaces' ? <Workspaces /> : null}
       {tab === 'queues' ? <Queues /> : null}
+      {tab === 'monitoring' ? <Monitoring /> : null}
       {tab === 'flags' ? <Flags /> : null}
       {tab === 'announcements' ? <Announcements /> : null}
       {tab === 'audit' ? <PlatformAudit /> : null}

@@ -19,6 +19,7 @@ import type { AnalyticsReader } from './services/analytics.js';
 import type { EventStore } from './store/eventstore.js';
 import type { CloudflarePurger } from './edge/purger.js';
 import type { DomainProvider } from './edge/domainProvider.js';
+import type { Monitor } from './monitoring/index.js';
 
 /** Everything with side effects is injected, so tests swap in fakes and never touch the network. */
 export interface Deps {
@@ -53,6 +54,8 @@ export interface Deps {
   outbound: typeof fetch;
   purger: CloudflarePurger;
   domainProvider: DomainProvider;
+  /** Optional Sentry error monitoring (monitoring/index.ts); an inert object when SENTRY_DSN is unset. */
+  monitor: Monitor;
   /** Set only on transaction-scoped deps (see db/scope.ts): queues an effect to run after COMMIT. */
   defer?: (effect: () => void) => void;
 }

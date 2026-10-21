@@ -117,6 +117,8 @@ export class JobWorker {
     private queue: JobQueue,
     private handlers: Record<string, JobHandler>,
     private log: Logger,
+    /** Called when a job has failed for good (attempts exhausted or a permanent failure): error monitoring hook. */
+    private onDead?: (job: Job, error: unknown) => void,
   ) {}
 
   /** Processes everything currently due. Returns the number of jobs attempted. */
@@ -134,6 +136,13 @@ export class JobWorker {
         } catch (e) {
           const outcome = await this.queue.fail(job, e);
           this.log.warn('job failed', { jobId: job.id, type: job.type, attempt: job.attempts, outcome, error: (e as Error).message });
+          if (outcome === 'dead') {
+            try {
+              this.onDead?.(job, e);
+            } catch {
+              /* monitoring never breaks the worker */
+            }
+          }
         }
       }
       return jobs.length;

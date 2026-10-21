@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, tokenStore, UNAUTHORIZED_EVENT } from '../api/client';
 import type { AuthResponse, Session, TwoFactorChallenge } from '../api/types';
+import { setMonitoringWorkspace } from '../monitoring';
 
 interface AuthState {
   session: Session | null;
@@ -28,6 +29,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState<boolean>(() => !!tokenStore.get());
+  // Error reports carry only a hash of the workspace id (no user identity); see monitoring/index.ts.
+  useEffect(() => {
+    void setMonitoringWorkspace(session?.workspace.id ?? null);
+  }, [session?.workspace.id]);
 
   const logout = useCallback(() => {
     if (tokenStore.get()) void api.post('/api/auth/logout').catch(() => undefined); // ends the session on the server; the local state is cleared regardless

@@ -16,6 +16,7 @@
     "baseUrl": ".",
     "paths": {
       "@pagemodel": ["../server/src/pagemodel/shared/index.ts"],
+      "@monitoring-scrub": ["../server/src/monitoring/scrub.ts"],
       "zod": ["./node_modules/zod"]
     }
   },

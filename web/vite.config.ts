@@ -11,6 +11,8 @@ export default defineConfig({
     alias: {
       // The page model (project cleaning, props schemas, component markup, base CSS) is shared source: the builder canvas renders with the very same code the server uses.
       '@pagemodel': r('../server/src/pagemodel/shared/index.ts'),
+      // The allow-list scrubber for error reports is shared source too: one policy for the server and the browser (docs/MONITORING.md).
+      '@monitoring-scrub': r('../server/src/monitoring/scrub.ts'),
       zod: r('./node_modules/zod'),
     },
   },

@@ -136,6 +136,13 @@ Generated from the zod schema in `server/src/config.ts` and the descriptions in 
 | `ATTRIBUTION_RETENTION_DAYS` | `90` | no | `90` | How long the IP address and user agent captured for server-side conversions are kept on a visitor attribution record (they are removed after this many days without a visit). |
 | `ADS_IMPORT_MAX_ROWS` | `20000` | no | `20000` | Maximum rows in one ad spend CSV import. |
 | `ADS_IMPORT_MAX_BYTES` | `2000000` | no | `2000000` | Maximum size of an ad spend CSV import (at most 2,000,000: the API body limit). |
+| `SENTRY_DSN` | (unset) | no | `https://<key>@o0.ingest.sentry.io/0` | Sentry DSN of the project that receives SERVER errors (unhandled errors, 5xx responses, dead jobs). Unset = error monitoring is off: nothing is imported, nothing is sent. An invalid value is logged and monitoring stays off; the app still starts. See docs/MONITORING.md for exactly what is and is not sent. **Security:** A DSN identifies the project and allows sending events to it; treat it like configuration, not a secret you publish. Never commit it. No Sentry auth token is used or needed. |
+| `SENTRY_WEB_DSN` | (unset) | no | `https://<key>@o0.ingest.sentry.io/0` | DSN for BROWSER errors of the web app. Defaults to SENTRY_DSN when unset (one Sentry project for both). Served at runtime from `GET /api/config`, so the same image works everywhere. **Security:** A browser DSN is visible to every visitor of the admin app by design; it can only send events. |
+| `SENTRY_ENVIRONMENT` | (unset) | no | `production` | Sentry environment tag. Defaults to NODE_ENV. |
+| `SENTRY_TRACES_SAMPLE_RATE` | `0.05` | no | `0.05` | Fraction (0 to 1) of requests recorded as performance transactions. 0 disables tracing. Transactions carry route patterns, timings and status only. |
+| `SENTRY_RELEASE` | (unset) | no | `a1b2c3d` | Release name for Sentry. Defaults to RENDER_GIT_COMMIT, then GIT_SHA (a Docker build argument), then unset. |
+| `RENDER_GIT_COMMIT` | (unset) | no | `90e684c1f3...` | Set by Render to the deployed commit; used as the Sentry release when SENTRY_RELEASE is unset. |
+| `GIT_SHA` | (unset) | no | `90e684c1f3...` | Commit id baked into the image with `docker build --build-arg GIT_SHA=$(git rev-parse HEAD)`; used as the Sentry release when neither SENTRY_RELEASE nor RENDER_GIT_COMMIT is set. |
 | `METRICS_TOKEN` | (unset) | no |  | Bearer token required to scrape /metrics. Empty = open. **Security:** Leave /metrics unreachable from the internet when empty. |
 | `ENABLE_WORKER` | `true` | no | `true` | Run the in-process job worker (webhooks, domain checks, purges). With several replicas it is safe on all of them on PostgreSQL (`FOR UPDATE SKIP LOCKED`). |
 | `JOB_POLL_MS` | `1000` | no | `1000` | Job queue poll interval. |

@@ -71,6 +71,11 @@ test('admin: two-factor is required, then suspend a workspace (the customer is l
   await customer.goto('/funnels');
   await expect(customer.getByRole('heading', { name: 'My Funnels' })).toBeVisible();
 
+  // error monitoring is optional: off on this server (no SENTRY_DSN), and the page says how to turn it on
+  await admin.getByRole('link', { name: 'Monitoring' }).click();
+  await expect(admin.getByRole('region', { name: 'Error monitoring' })).toContainText('Monitoring is not configured');
+  await expect(admin.getByRole('button', { name: 'Send test error' })).toBeDisabled();
+
   // an announcement reaches the customer and can be dismissed
   await admin.getByRole('link', { name: 'Announcements' }).click();
   await admin.getByLabel('Title').fill('Planned maintenance');

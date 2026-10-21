@@ -38,3 +38,6 @@ services:
       # Optional. Leave unset and the matching feature uses its offline/test fallback.
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Optional error monitoring (docs/MONITORING.md). Leave unset and nothing is sent. Render provides RENDER_GIT_COMMIT, which becomes the Sentry release.
+      - key: SENTRY_DSN
+        sync: false

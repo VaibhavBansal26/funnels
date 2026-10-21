@@ -5,6 +5,7 @@ import { ApiError } from './api/client';
 import { AuthProvider } from './auth/AuthContext';
 import { Layout, RequireAuth } from './components/Layout';
 import { ToastProvider } from './components/Toasts';
+import { RouteErrorPage } from './components/ErrorBoundary';
 import { Loading } from './components/ui';
 import { AcceptInvitePage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage } from './pages/AuthPages';
 import { FunnelsPage } from './pages/FunnelsPage';
@@ -76,6 +77,6 @@ function Root() {
 }
 
 export function App() {
-  const router = createBrowserRouter([{ element: <Root />, children: routes }]);
+  const router = createBrowserRouter([{ element: <Root />, errorElement: <RouteErrorPage />, children: routes }]);
   return <RouterProvider router={router} />;
 }

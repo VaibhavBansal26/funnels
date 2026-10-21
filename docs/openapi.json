@@ -74,6 +74,32 @@
         "x-rate-limit-exempt": "Scraper; protected by METRICS_TOKEN"
       }
     },
+    "/api/config": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Runtime configuration of the web app: the browser error-monitoring settings (null when monitoring is off)",
+        "description": "Not secret: a browser DSN can only send events. Cacheable for 5 minutes.",
+        "operationId": "get_api_config",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global"
+        ]
+      }
+    },
     "/beacon.js": {
       "get": {
         "tags": [
@@ -9360,6 +9386,83 @@
           "admin.platform",
           "api.workspace"
         ]
+      }
+    },
+    "/api/admin/monitoring": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Error monitoring status: enabled, environment, release, sample rate, ingest host (never the DSN)",
+        "operationId": "get_api_admin_monitoring",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "platform",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "admin.platform",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/admin/monitoring/test": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Send one labelled test error to Sentry to verify the setup (platform administrators only; audited)",
+        "operationId": "post_api_admin_monitoring_test",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "platform",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "admin.platform",
+          "api.workspace"
+        ],
+        "x-rate-limit-cost": 5
       }
     },
     "/api/admin/queues": {

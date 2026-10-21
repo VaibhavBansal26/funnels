@@ -7,6 +7,7 @@ import * as ann from '../services/announcements.js';
 import * as flags from '../services/flags.js';
 import * as gdpr from '../services/gdpr.js';
 import * as queues from '../services/queueadmin.js';
+import * as monitoring from '../services/monitoring.js';
 import { parse } from '../errors.js';
 import { bodyOf, queryOf } from './util.js';
 
@@ -42,6 +43,9 @@ export function platformAdminRoutes(deps: Deps): Hono<AppEnv> {
     const stream = await gdpr.exportWorkspace(deps, authOf(c), c.req.param('id'), ip(c));
     return new Response(stream, { headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'content-disposition': `attachment; filename="workspace-${c.req.param('id')}.ndjson"`, 'cache-control': 'no-store' } });
   });
+
+  r.get('/monitoring', (c) => c.json(monitoring.monitoringStatus(deps)));
+  r.post('/monitoring/test', async (c) => c.json(await monitoring.sendTestError(deps, authOf(c), ip(c))));
 
   r.get('/queues', async (c) => c.json(await queues.overview(deps)));
   r.get('/queues/dead-jobs', async (c) => c.json(await queues.deadJobs(deps)));

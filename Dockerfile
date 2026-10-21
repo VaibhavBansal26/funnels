@@ -7,6 +7,7 @@ RUN npm ci --prefix web
 # (the @pagemodel alias in web/vite.config.ts and web/tsconfig.json). Keep these in step with that alias.
 COPY server/src/blocks server/src/blocks
 COPY server/src/pagemodel/shared server/src/pagemodel/shared
+COPY server/src/monitoring/scrub.ts server/src/monitoring/scrub.ts
 COPY web web
 RUN npm run build --prefix web
 
@@ -18,6 +19,9 @@ COPY server server
 RUN npm run build --prefix server && npm prune --omit=dev --prefix server
 
 FROM node:22-alpine
+# Optional: `--build-arg GIT_SHA=$(git rev-parse HEAD)` names the Sentry release (Render sets RENDER_GIT_COMMIT at runtime by itself).
+ARG GIT_SHA=
+ENV GIT_SHA=$GIT_SHA
 ENV NODE_ENV=production PORT=3000 DATABASE_PATH=/data/funnels.db
 WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app && mkdir /data && chown app:app /data

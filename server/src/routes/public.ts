@@ -3,6 +3,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { AppError, badRequest, parse } from '../errors.js';
 import type { Deps } from '../deps.js';
 import { BEACON_JS } from '../beacon.js';
+import { webMonitoringConfig } from '../monitoring/index.js';
 import { PublicEventInput, recordPublicEvent } from '../services/events.js';
 import { SubmitInput, submitForm } from '../services/leads.js';
 import { CheckoutInput, checkout } from '../services/orders.js';
@@ -40,6 +41,9 @@ async function readBody(c: Context): Promise<unknown> {
 export function publicRoutes(deps: Deps): Hono {
   const r = new Hono();
   const idOf = (v: unknown) => (typeof v === 'object' && v !== null && typeof (v as { funnelId?: unknown }).funnelId === 'string' ? String((v as { funnelId: string }).funnelId).slice(0, 64) : '-');
+
+  // Runtime configuration of the web app (not secrets): the browser DSN is served here so one image works everywhere. `monitoring` is null when no valid DSN is set.
+  r.get('/api/config', (c) => c.json({ monitoring: webMonitoringConfig(deps.config) }, 200, { 'cache-control': 'public, max-age=300' }));
 
   r.get('/beacon.js', (c) => c.body(BEACON_JS, 200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' }));
 

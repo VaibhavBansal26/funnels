@@ -23,6 +23,7 @@
     "@electric-sql/pglite": "^0.5.10",
     "@hono/node-server": "^2.1.5",
     "@noble/hashes": "1.8.0",
+    "@sentry/node": "11.8.0",
     "hono": "^4.13.13",
     "ioredis": "^6.0.0",
     "jose": "^6.2.12",

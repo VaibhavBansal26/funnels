@@ -16,6 +16,8 @@ Scrape `/metrics` (Prometheus; protect with `METRICS_TOKEN`). Build panels and a
 | Readiness | `GET /readyz` (database reachable, migrations applied, buffer depth) | failing for 1 min |
 | Process | default Node metrics (`nodejs_eventloop_lag_seconds`, memory) | loop lag p99 > 200 ms |
 
+Error monitoring (optional): with `SENTRY_DSN` set, unhandled errors, 5xx and dead jobs arrive in Sentry with the request id (`x-request-id` response header, also in the logs) and a hash of the workspace id; Admin > Workspaces shows a workspace's hash as `monitoringId`. Setup, what is sent and the alerts to create: [MONITORING.md](MONITORING.md). Verify after a deploy with Admin > Monitoring > Send test error.
+
 SLO *targets*: public page and event endpoints 99.9% available monthly with p99 < 300 ms at the origin (edge cache hits are not counted); admin API 99.5%; webhook delivery within 5 minutes for 99% of events; no accepted event lost except on a hard kill within the buffer window.
 
 ## Deploy

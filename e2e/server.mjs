@@ -12,6 +12,7 @@ const dist = (f) => import(pathToFileURL(join(import.meta.dirname, '../server/di
 const { createApp } = await dist('app.js');
 const { createDeps, createWorker } = await dist('bootstrap.js');
 const { loadConfig } = await dist('config.js');
+const { createMonitor } = await dist('monitoring/index.js');
 
 // Stripe suite (playwright.stripe.config.ts): a fake Stripe API and its hosted pages, reached through STRIPE_API_BASE.
 if (process.env.E2E_FAKE_STRIPE_PORT) {
@@ -46,7 +47,8 @@ createServer((req, res) => {
 const { FakeCloudflarePages } = await import(pathToFileURL(join(import.meta.dirname, '../server/test/support/fakecf.ts')).href);
 const cf = new FakeCloudflarePages();
 cf.pollsToFinish = 1;
-deps = await createDeps(config, { dns, mailer, outbound: cf.fetch });
+const monitor = await createMonitor(config, {}); // off unless SENTRY_DSN is set, like server/src/index.ts
+deps = await createDeps(config, { dns, mailer, outbound: cf.fetch, monitor });
 // The job worker (deployments to Cloudflare Pages, conversions, webhooks) runs in this process like in production.
 createWorker(deps).start(config.JOB_POLL_MS);
 const server = serve({ fetch: createApp(deps).fetch, port: config.PORT, hostname: config.HOST });

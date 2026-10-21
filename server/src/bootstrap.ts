@@ -25,6 +25,7 @@ import { seedTemplates } from './templates/seed.js';
 import { backfillCatalog } from './services/catalogcheckout.js';
 import { migrateLegacyPages } from './services/pagemigration.js';
 import { EventBus } from './util/bus.js';
+import { NOOP_MONITOR } from './monitoring/index.js';
 import { PageCache } from './util/pagecache.js';
 import { Flights } from './util/flights.js';
 import { RefCache } from './util/refcache.js';
@@ -97,6 +98,7 @@ export async function createDeps(config: Config, overrides: Partial<Deps> = {}):
     events: new EventBuffer(db, log, { flushMs: config.EVENT_BUFFER_MS, maxQueue: config.EVENT_BUFFER_MAX, queue: config.INGEST_QUEUE ? { bus: eventBus, maxLag: config.INGEST_MAX_LAG } : undefined, mirror: !!secondaryStore }),
     purger: createPurger(config),
     domainProvider: createDomainProvider(config),
+    monitor: NOOP_MONITOR,
     ...overrides,
   };
   await migrateLegacyPages(deps);
@@ -120,5 +122,5 @@ export function createWorker(deps: Deps): JobWorker {
     'ai.build': (payload) => runBuildJob(deps, payload),
     'reviews.refresh': (payload) => refreshJob(deps, payload),
   };
-  return new JobWorker(deps.jobs, handlers, deps.log);
+  return new JobWorker(deps.jobs, handlers, deps.log, (job, e) => deps.monitor.captureError(e, { kind: 'job', jobType: job.type }));
 }

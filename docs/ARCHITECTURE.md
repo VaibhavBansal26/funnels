@@ -256,6 +256,10 @@ Product analytics (`services/productanalytics.ts`) reads `orders` (grouped by pr
 
 `GET /s/<workspace slug>/<funnel slug>/<step path>` is handled by `builtinRoutes` (routes/serve.ts) before the web app's fallback. `resolveBuiltin` joins workspace slug, funnel slug and the funnel's domain (kind `builtin`, status live, not trashed), checks suspension and picks the step by `path_key` (or the first step for the funnel root). The stored page HTML was rendered with the prefix (`services/addresses.ts` `mountOf` gives the renderer the prefix, canonical origin and cookie path), so serving is the same page-cache path as on a custom domain plus response headers: `X-Robots-Tag` and a CSP (sandboxed when the page has owner code). The edge endpoint `/internal/edge/resolve` answers the same resolution for `host = APP_PUBLIC_URL host` and returns the cookie path and headers for the worker. See [GO-LIVE.md](GO-LIVE.md) and [ADR 0045](adr/0045-built-in-address-path-prefix.md).
 
+## Error monitoring
+
+`server/src/monitoring/` ([MONITORING.md](MONITORING.md), [ADR 0046](adr/0046-sentry-error-monitoring.md)): `createMonitor` runs in `index.ts` before `createDeps` and is an inert object without `SENTRY_DSN`. `app.onError` and the request middleware report 5xx and unhandled errors, the job worker reports dead jobs, everything passes the allow-list scrubber (`scrub.ts`, also compiled into the web app), and shutdown flushes. The browser gets its settings from `GET /api/config`.
+
 ## Domain state machine
 
 ```mermaid

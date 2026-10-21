@@ -5,6 +5,7 @@ import { startImpersonation as openImpersonation, type SessionMeta } from '../au
 import { PLAN_DEFS } from '../billing/plans.js';
 import { usageOf } from '../billing/limits.js';
 import type { Deps } from '../deps.js';
+import { workspaceTag } from '../monitoring/index.js';
 import { inTx } from '../db/scope.js';
 import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 import { onWorkspaceChanged } from './publishing.js';
@@ -136,7 +137,7 @@ export async function getWorkspace(deps: Deps, id: string) {
   const recent = await deps.db.all<{ id: string; actor_id: string; action: string; target: string | null; detail_json: string; created_at: string }>('SELECT id, actor_id, action, target, detail_json, created_at FROM audit_log WHERE workspace_id = ? ORDER BY created_at DESC, id DESC LIMIT 20', id);
   const flags = await deps.db.all<{ flag_key: string; enabled: number }>('SELECT flag_key, enabled FROM feature_flag_overrides WHERE workspace_id = ? ORDER BY flag_key', id);
   return {
-    id: w.id, name: w.name, createdAt: w.created_at, plan: w.plan, planName: PLAN_DEFS[w.plan].name, planStatus: w.plan_status,
+    id: w.id, name: w.name, monitoringId: workspaceTag(w.id), createdAt: w.created_at, plan: w.plan, planName: PLAN_DEFS[w.plan].name, planStatus: w.plan_status,
     suspended: !!w.suspended_at, suspendedAt: w.suspended_at, suspendedReason: w.suspended_reason, suspendedBy: w.suspended_by,
     hasStripeCustomer: !!w.stripe_customer_id, hasSubscription: !!w.stripe_subscription_id,
     usage: await usageOf(deps, id), limits: Object.fromEntries((['funnels', 'domains', 'members', 'apiKeys'] as const).map((k) => [k, PLAN_DEFS[w.plan][k]])),
