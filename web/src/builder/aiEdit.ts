@@ -47,7 +47,8 @@ export const labelFor = (map: Map<string, Component>) => (id: string): string =>
   if (!c) return 'an element';
   if (c.get('type') === 'wrapper') return 'the page';
   const name = String(c.get('name') ?? c.get('type') ?? 'element');
-  const t = leafText(c) || textOf(c);
+  // Only text elements are quoted: a footer or a section would read as a run of unrelated words.
+  const t = ['fn-heading', 'fn-text', 'fn-button', 'text', 'link'].includes(String(c.get('type'))) ? leafText(c) || textOf(c) : '';
   return t ? `${name.toLowerCase()} “${t.length > 40 ? `${t.slice(0, 40)}…` : t}”` : name.toLowerCase();
 };
 

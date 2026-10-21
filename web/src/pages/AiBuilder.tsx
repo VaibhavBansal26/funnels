@@ -70,7 +70,7 @@ export function BuildResult({ build, onAgain }: { build: Build; onAgain: () => v
       {build.assumptions.length ? (
         <section className="stack" aria-label="Assumptions">
           <h3>Assumptions we made</h3>
-          <ul>{build.assumptions.map((a) => <li key={a}>{a}</li>)}</ul>
+          <ul className="m-0 flex list-disc flex-col gap-1 pl-5">{build.assumptions.map((a) => <li key={a}>{a}</li>)}</ul>
           <p className="small muted">Wrong about something? Edit the pages, or describe it more precisely and generate again.</p>
         </section>
       ) : null}
@@ -78,7 +78,7 @@ export function BuildResult({ build, onAgain }: { build: Build; onAgain: () => v
       {build.products?.length ? (
         <section className="stack" aria-label="Draft products">
           <h3>Draft products in your catalog</h3>
-          <ul>{build.products.map((p) => <li key={p.slot}>{p.name}: {p.amount} {p.currency}</li>)}</ul>
+          <ul className="m-0 flex list-disc flex-col gap-1 pl-5">{build.products.map((p) => <li key={p.slot}>{p.name}: {p.amount} {p.currency}</li>)}</ul>
           <p className="small muted">They are not synced to Stripe. Check names, descriptions and prices in Products before you publish.</p>
         </section>
       ) : null}
@@ -86,7 +86,7 @@ export function BuildResult({ build, onAgain }: { build: Build; onAgain: () => v
       <section className="stack" aria-label="Checks">
         <h3>Checks</h3>
         <p className="small">{checks.filter((c) => c.status === 'pass').length} of {checks.length} checks passed{problems.length ? `, ${problems.length} to review` : ''}.</p>
-        {problems.length ? <ul className="small">{problems.slice(0, 8).map((c, i) => <li key={i}>{c.status === 'warn' ? 'Review: ' : 'Problem: '}{stepName(c.step) ? `${stepName(c.step)}: ` : ''}{c.detail}</li>)}</ul> : null}
+        {problems.length ? <ul className="m-0 flex list-disc flex-col gap-1 pl-5 small">{problems.slice(0, 8).map((c, i) => <li key={i}>{c.status === 'warn' ? 'Review: ' : 'Problem: '}{stepName(c.step) ? `${stepName(c.step)}: ` : ''}{c.detail}</li>)}</ul> : null}
       </section>
 
       {build.steps?.length ? (
@@ -128,7 +128,7 @@ function Progress({ build, onAgain }: { build: Build; onAgain: () => void }) {
       </div>
       {isActive(build) ? <p className="small muted" role="status">You can leave this page: the build continues and shows up here when you come back.</p> : null}
       <StageList stages={build.stages.length ? build.stages : [{ id: 'queued', label: 'Waiting to start', status: 'running' }]} />
-      {build.assumptions.length && isActive(build) ? <div className="small muted"><strong>So far we assume:</strong><ul>{build.assumptions.slice(0, 4).map((a) => <li key={a}>{a}</li>)}</ul></div> : null}
+      {build.assumptions.length && isActive(build) ? <div className="small muted"><strong>So far we assume:</strong><ul className="m-0 flex list-disc flex-col gap-1 pl-5">{build.assumptions.slice(0, 4).map((a) => <li key={a}>{a}</li>)}</ul></div> : null}
       {build.status === 'failed' ? <div className="alert error" role="alert">{build.error?.message ?? 'Something went wrong.'}</div> : null}
       <ErrorBanner error={cancel.error} />
       {failed ? <div><button type="button" className="btn primary" onClick={onAgain}>Change the description and try again</button></div> : null}

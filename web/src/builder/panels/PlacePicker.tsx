@@ -15,7 +15,7 @@ export const useGoogleSettings = () => useQuery({ queryKey: ['google-reviews', '
  * Finds the Google place a block should use (Places API Text Search through the server) or falls back to the workspace default. The block stores only the place id and name;
  * review content is never stored in the page.
  */
-export function PlacePicker({ placeId, placeName, onPick }: { placeId: string; placeName: string; onPick: (p: { placeId: string; placeName: string }) => void }) {
+export function PlacePicker({ placeId, placeName, onPick, clearLabel = 'Use the default place' }: { placeId: string; placeName: string; onPick: (p: { placeId: string; placeName: string }) => void; clearLabel?: string }) {
   const settings = useGoogleSettings();
   const [q, setQ] = useState('');
   const search = useMutate((query: string) => api.post<{ data: PlaceHit[] }>('/api/google-reviews/search', { query }));
@@ -44,7 +44,7 @@ export function PlacePicker({ placeId, placeName, onPick }: { placeId: string; p
           </ul>
         )
       ) : null}
-      {placeId ? <Button size="sm" onClick={() => onPick({ placeId: '', placeName: '' })}>Use the default place</Button> : null}
+      {placeId ? <Button size="sm" onClick={() => onPick({ placeId: '', placeName: '' })}>{clearLabel}</Button> : null}
     </div>
   );
 }

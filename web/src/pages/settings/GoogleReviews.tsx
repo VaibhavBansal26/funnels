@@ -42,7 +42,7 @@ export function GoogleReviewsCard() {
           <div className="stack">
             <h3>Default place</h3>
             <p className="muted small">Blocks that do not name a place use this one.</p>
-            <PlacePicker placeId={s.defaultPlaceId ?? ''} placeName={s.defaultPlaceName ?? ''} onPick={(p) => save.mutate({ defaultPlaceId: p.placeId, defaultPlaceName: p.placeName }, { onSuccess: () => toast.push(p.placeId ? 'Default place saved' : 'Default place cleared', 'ok') })} />
+            <PlacePicker clearLabel="Clear the default place" placeId={s.defaultPlaceId ?? ''} placeName={s.defaultPlaceName ?? ''} onPick={(p) => save.mutate({ defaultPlaceId: p.placeId, defaultPlaceName: p.placeName }, { onSuccess: () => toast.push(p.placeId ? 'Default place saved' : 'Default place cleared', 'ok') })} />
           </div>
           <div className="stack">
             <div className="row">

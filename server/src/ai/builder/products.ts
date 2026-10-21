@@ -61,7 +61,7 @@ export function planProducts(b: Brief, strategy: Strategy, mode: ProductMode, ca
       continue;
     }
     const amount = role === 'main' ? main.amount : role === 'bump' ? nice(clamp(Math.max(5, main.amount * 0.25), null, cap)) : role === 'upsell' ? nice(clamp(Math.max(9, main.amount * 0.5), null, cap)) : nice(clamp(Math.max(5, main.amount * 0.3), null, cap));
-    const offer = name(b.offer || b.business, 'Your offer');
+    const offer = b.offer ? name(b.offer, 'Your offer') : 'Your offer';
     plans.push({
       slot, role, source: 'new', currency: b.currency, amount,
       name: role === 'main' ? name(offer.slice(0, 60), 'Your offer') : role === 'bump' ? 'Bonus add-on' : role === 'upsell' ? 'One-time upgrade' : 'Lighter option',
