@@ -78,6 +78,17 @@ describe('Stripe disputes', () => {
     expect((await list()).data[0]).toMatchObject({ outcome: 'won', status: 'won', lostCents: 0 });
   });
 
+  it.each(['warning_closed', 'prevented'])('closed (%s): no money moves, so the orders go back to their previous state and the dispute stops being open', async (status) => {
+    const { send, dbOrders, analytics, main, list } = await disputed();
+    const before = await analytics();
+    await send('created');
+    expect((await send('closed', { status }, { created: 1_800_000_200 })).status).toBe(200);
+    expect((await dbOrders()).map((o) => [o.status, o.disputed_lost_cents])).toEqual([['paid', 0], ['paid', 0]]);
+    expect(await analytics()).toEqual(before);
+    expect((await list()).data[0]).toMatchObject({ outcome: 'won', status, lostCents: 0 });
+    expect(main.id).toBeTruthy();
+  });
+
   it('closed (lost): orders become charged_back, the amount leaves sales analytics and the analytics API, and nothing is refundable any more', async () => {
     const { h, owner, send, dbOrders, analytics, refund, main, total, t } = await disputed();
     const before = await analytics();

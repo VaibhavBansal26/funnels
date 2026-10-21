@@ -1,5 +1,8 @@
 # Stripe: Connect checkout, refunds, disputes, platform billing and plan limits
 
+> **Status mapping (checked against https://docs.stripe.com/api/disputes/object on 2026-10-21).** `lost` deducts the amount. `won`, `warning_closed` and `prevented` close the dispute with nothing deducted and the order returns to its previous state. Every other status (`needs_response`, `under_review`, `warning_needs_response`, `warning_under_review`) is open.
+
+
 Status: implemented and tested against an in-process fake of the Stripe API (`server/test/support/fakestripe.ts`). **Not verified against the real Stripe API.** Before enabling in production, run the test-mode checklist at the end of this page.
 
 ## Two separate money flows

@@ -55,8 +55,8 @@ type Evt = { id: string; type: string; account?: string; created?: number; livem
 
 const iso = (unixSeconds: unknown): string | null => (typeof unixSeconds === 'number' && Number.isFinite(unixSeconds) ? new Date(unixSeconds * 1000).toISOString() : null);
 
-/** Stripe statuses: warning_needs_response, warning_under_review, warning_closed (an inquiry that never became a dispute), needs_response, under_review, won, lost. */
-const outcomeOf = (status: string): DisputeRow['outcome'] => (status === 'lost' ? 'lost' : status === 'won' || status === 'warning_closed' ? 'won' : 'open');
+/** Stripe statuses (checked against https://docs.stripe.com/api/disputes/object): warning_needs_response, warning_under_review, warning_closed (an inquiry that never became a dispute), needs_response, under_review, won, lost, prevented (stopped before it became a formal chargeback). Only `lost` costs money; the closed ones that did not are 'won' (nothing deducted, the order returns to its previous state). */
+const outcomeOf = (status: string): DisputeRow['outcome'] => (status === 'lost' ? 'lost' : status === 'won' || status === 'warning_closed' || status === 'prevented' ? 'won' : 'open');
 
 export const refundStatus = (amount: number, refunded: number) => (refunded <= 0 ? 'paid' : refunded >= amount ? 'refunded' : 'partially_refunded');
 
