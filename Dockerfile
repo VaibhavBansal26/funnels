@@ -3,8 +3,10 @@ FROM node:22-alpine AS web
 WORKDIR /app
 COPY web/package.json web/package-lock.json web/
 RUN npm ci --prefix web
-# The web app compiles the shared block model from server/src/blocks.
+# The web app compiles shared code from the server: the block model and the page model's browser-safe part
+# (the @pagemodel alias in web/vite.config.ts and web/tsconfig.json). Keep these in step with that alias.
 COPY server/src/blocks server/src/blocks
+COPY server/src/pagemodel/shared server/src/pagemodel/shared
 COPY web web
 RUN npm run build --prefix web
 
