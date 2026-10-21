@@ -1,14 +1,17 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { altTextPrompt, funnelPrompt, headlinesPrompt, insightsPrompt, rewritePrompt, SYSTEM } from './prompts.js';
+import { LlmError, type LlmClient, type LlmRequest, type LlmResponse } from './llm.js';
 import { summaryPrompt, type SummaryEvidence } from './summary.js';
 import type { AiProvider, AltTextInput, GenerateFunnelInput, HeadlineInput, InsightInput, RewriteInput } from './types.js';
 
 /** The small slice of the SDK this provider uses, so tests can inject a fake client. */
 export interface MessagesClient {
   messages: {
-    create(args: { model: string; max_tokens: number; system: string; messages: { role: 'user'; content: string }[] }): Promise<{
+    create(args: { model: string; max_tokens: number; system: string; messages: { role: 'user'; content: string }[] }, opts?: { signal?: AbortSignal; timeout?: number }): Promise<{
       content: { type: string; text?: string }[];
       stop_reason?: string | null;
+      usage?: { input_tokens?: number; output_tokens?: number };
+      model?: string;
     }>;
   };
 }
@@ -31,9 +34,32 @@ export class AnthropicProvider implements AiProvider {
   readonly name = 'anthropic';
   private client: MessagesClient;
 
-  constructor(opts: { apiKey?: string; model: string; client?: MessagesClient }) {
-    this.client = opts.client ?? (new Anthropic({ apiKey: opts.apiKey }) as unknown as MessagesClient);
+  readonly llm: LlmClient;
+
+  constructor(opts: { apiKey?: string; model: string; client?: MessagesClient; timeoutMs?: number }) {
+    this.client = opts.client ?? (new Anthropic({ apiKey: opts.apiKey, maxRetries: 1 }) as unknown as MessagesClient);
     this.model = opts.model;
+    const timeoutMs = opts.timeoutMs ?? 60_000;
+    const client = this.client;
+    const model = this.model;
+    this.llm = {
+      model,
+      async complete(req: LlmRequest, signal?: AbortSignal): Promise<LlmResponse> {
+        let res;
+        try {
+          res = await client.messages.create({ model, max_tokens: req.maxTokens, system: req.system, messages: [{ role: 'user', content: req.user }] }, { signal, timeout: timeoutMs });
+        } catch (e) {
+          const err = e as { name?: string; message?: string; status?: number };
+          if (signal?.aborted || err.name === 'AbortError') throw new LlmError('aborted', 'cancelled');
+          if (err.name === 'APIConnectionTimeoutError' || /timed? ?out/i.test(err.message ?? '')) throw new LlmError('timeout', 'model call timed out');
+          throw new LlmError('provider', `model call failed${err.status ? ` (${err.status})` : ''}`);
+        }
+        if (res.stop_reason === 'refusal') throw new LlmError('refusal', 'model refused');
+        const text = res.content.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
+        if (!text.trim()) throw new LlmError('empty', 'empty model output');
+        return { text, usage: { inputTokens: res.usage?.input_tokens ?? 0, outputTokens: res.usage?.output_tokens ?? 0 }, stopReason: res.stop_reason, model: res.model ?? model };
+      },
+    };
   }
   private model: string;
 

@@ -1,3 +1,4 @@
+import type { LlmClient } from './llm.js';
 import type { SummaryEvidence } from './summary.js';
 export const TONES = ['persuasive', 'concise', 'friendly', 'formal'] as const;
 export type Tone = (typeof TONES)[number];
@@ -59,6 +60,8 @@ export interface AltTextInput {
  */
 export interface AiProvider {
   readonly name: string;
+  /** Raw model access for the multi-stage funnel builder and the builder assistant (ai/builder). Absent on the offline heuristic provider, which makes those features use their deterministic path. */
+  readonly llm?: LlmClient;
   funnelCopy(input: GenerateFunnelInput): Promise<unknown>;
   rewrite(input: RewriteInput): Promise<unknown>;
   headlines(input: HeadlineInput): Promise<unknown>;
