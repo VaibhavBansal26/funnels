@@ -1,6 +1,6 @@
 # Architecture
 
-Funnels is one Node process (Hono + `node:sqlite`) that serves the JSON API, the built React app, published funnel pages (by `Host` header) and signed previews. A small in-process worker drains a SQLite-backed job queue.
+Funnels is one Node process (Hono on SQLite by default, or PostgreSQL) that serves the JSON API, the built React app, published funnel pages (by `Host` header and on built-in `/s/...` addresses) and signed previews. An in-process worker drains a database-backed job queue. Funnels can also be published as static sites to Cloudflare Pages, and an optional Cloudflare Worker can sit in front. The code map, jobs, route groups and the full data model are in [FUNCTIONS.md](FUNCTIONS.md).
 
 ## Context
 
@@ -11,7 +11,10 @@ flowchart LR
   App -->|signed webhooks| Hooks[Customer endpoints]
   App -->|DNS TXT/CNAME lookups| DNS[(DNS)]
   App -.->|optional| LLM[Anthropic API]
-  App -.->|future: PaymentProvider| Pay[Stripe Connect]
+  App -.->|optional| Pay[Stripe Connect]
+  App -.->|optional| CF[Cloudflare Pages API]
+  App -.->|optional| Ads[Meta / GA4 / TikTok APIs]
+  App -.->|optional| GP[Google Places API]
 ```
 
 ## Containers
@@ -68,7 +71,7 @@ erDiagram
   template_categories ||--o{ templates : groups
 ```
 
-Every business table has `workspace_id`; repositories and services always filter by it. `templates`, `template_steps` and `template_categories` are global, workspace-less tables. `jobs`, `notifications`, `ai_usage` back the queue, the feed and the daily AI cap.
+This diagram shows the core only; the complete, current model (about 65 tables, with key columns) is in [FUNCTIONS.md](FUNCTIONS.md#data-model). Every business table has `workspace_id`; repositories and services always filter by it. `templates`, `template_steps` and `template_categories` are global, workspace-less tables. `jobs`, `notifications`, `ai_usage` back the queue, the feed and the daily AI cap.
 
 Rows are portable between SQLite and PostgreSQL by construction: ids are app-generated text (`newId`, time-sortable, so `ORDER BY created_at, id` replaces SQLite's `rowid` tiebreak), timestamps are ISO-8601 text, booleans are 0/1 integers, JSON is text, and epoch-millisecond/version columns are `BIGINT` on PostgreSQL (32-bit `INTEGER` would overflow).
 
