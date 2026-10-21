@@ -38,6 +38,12 @@ test('connect Stripe from Settings, build a checkout with the wizard, and buy wi
   await page.goto('/products');
   await expect(page.getByRole('table', { name: 'Product catalog' }).getByRole('row', { name: /Poster/ })).toContainText('Synced to Stripe');
 
+  // After payment the app redirects to the https address of the domain; the e2e domain is only served over plain http on the test port, so that one hop is rewritten.
+  await page.route('**/api/public/checkout/return**', async (route) => {
+    const r = await route.fetch({ maxRedirects: 0 });
+    const to = (r.headers().location ?? '').replace('https://shop.e2e.test', `http://shop.e2e.test:${PORT}`);
+    await route.fulfill({ status: 302, headers: { location: to } });
+  });
   const checkoutPath = (built.json as { added: { path: string }[] }).added[0]!.path;
   // buyer: declined card first (back on the page, no order), then a successful one
   await page.goto(`http://shop.e2e.test:${PORT}${checkoutPath}`);

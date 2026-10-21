@@ -65,12 +65,16 @@ export function startFakeStripe({ port, appBase, connectSecret }) {
       }
       if (req.method === 'POST' && (m = url.pathname.match(/^\/pay\/(\w+)$/))) {
         const s = sessions.get(m[1]);
-        if (p.card !== '4242424242424242') { res.writeHead(303, { location: s.params.cancel_url }); return res.end(); }
+        // A real Stripe page sends the browser back with a redirect; this one answers with a page that does it, so the browser makes a fresh navigation that a test can intercept
+        // (the e2e domains are only served over plain http on the app port, while the app builds https addresses).
+        const back = (u) => html(res, `<meta http-equiv="refresh" content="0;url=${u}"><p>Returning to the merchant… <a href="${u}">Continue</a></p>`);
+        const plain = (u) => u.replace(/^https:\/\/([^/]+\.e2e\.test)/, `http://$1:${new URL(appBase).port}`);
+        if (p.card !== '4242424242424242') return back(plain(s.params.cancel_url));
         const pi = id('pi');
         intents.set(pi, { id: pi, payment_method: id('pm'), status: 'succeeded' });
         Object.assign(s, { status: 'complete', payment_status: 'paid', payment_intent: pi, customer: id('cus') });
         await send('checkout.session.completed', { id: s.id }, s.account);
-        res.writeHead(303, { location: s.params.success_url.replace('{CHECKOUT_SESSION_ID}', s.id) }); return res.end();
+        return back(s.params.success_url.replace('{CHECKOUT_SESSION_ID}', s.id));
       }
       json(res, 404, { error: { type: 'invalid_request_error', code: 'resource_missing', message: `Unknown ${req.method} ${url.pathname}` } });
     } catch (e) {

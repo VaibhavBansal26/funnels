@@ -18,7 +18,7 @@ export default defineConfig({
   use: { baseURL: BASE, trace: 'retain-on-failure', screenshot: 'only-on-failure', viewport: { width: 1360, height: 900 } },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1360, height: 900 }, launchOptions: { args: ['--host-resolver-rules=MAP *.e2e.test 127.0.0.1'] } } }],
   webServer: {
-    command: 'node server.mjs',
+    command: 'node --import ../server/node_modules/tsx/dist/esm/index.mjs server.mjs',
     url: `${BASE}/readyz`,
     reuseExistingServer: false,
     timeout: 30_000,
