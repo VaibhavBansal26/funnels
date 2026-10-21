@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { safeImageSrc, safeUrl } from '../../blocks/safe.js';
 import type { CheckoutBlock, FormBlock } from '../../blocks/schema.js';
 import {
-  ButtonActionSchema, CodePropsSchema, CountdownPropsSchema, FormPropsSchema, ProductPropsSchema, ProgressPropsSchema, VideoPropsSchema,
+  ButtonActionSchema, CodePropsSchema, CountdownPropsSchema, FormPropsSchema, ProductPropsSchema, ProgressPropsSchema, ReviewCtaPropsSchema, ReviewsPropsSchema, VideoPropsSchema,
 } from './props.js';
 import { CLASS_NAME_RE, ID_RE, cleanDeclarations, isAllowedState, safeMediaText, safeSelectorAdd } from './cssvalues.js';
 
@@ -51,7 +51,7 @@ const CORE_TYPES = new Set(['default', 'text', 'textnode', 'image', 'link', 'lab
 /** Component types the builder defines. Each maps to a fixed tag and, for the dynamic ones, a typed props key. */
 export const FN_TYPES = [
   'fn-section', 'fn-row', 'fn-column', 'fn-heading', 'fn-text', 'fn-button', 'fn-list', 'fn-divider', 'fn-spacer', 'fn-image', 'fn-video', 'fn-faq', 'fn-tabs',
-  'fn-countdown', 'fn-progress', 'fn-form', 'fn-checkout', 'fn-code', 'fn-popup', 'fn-box', 'fn-faq-item', 'fn-tab-nav', 'fn-tab-btn', 'fn-tab-panel', 'fn-popup-dialog',
+  'fn-countdown', 'fn-progress', 'fn-form', 'fn-checkout', 'fn-code', 'fn-reviews', 'fn-review-cta', 'fn-popup', 'fn-box', 'fn-faq-item', 'fn-tab-nav', 'fn-tab-btn', 'fn-tab-panel', 'fn-popup-dialog',
 ] as const;
 export type FnType = (typeof FN_TYPES)[number];
 const FN_SET = new Set<string>(FN_TYPES);
@@ -73,7 +73,7 @@ export function reconcileNode(type: string, node: GjsNode): GjsNode {
   for (; v < COMPONENT_VERSION; v++) out = COMPONENT_MIGRATIONS[`${type}@${v}`]?.(out) ?? out;
   return out;
 }
-const DYNAMIC = new Set(['fn-video', 'fn-countdown', 'fn-progress', 'fn-form', 'fn-checkout', 'fn-code']);
+const DYNAMIC = new Set(['fn-video', 'fn-countdown', 'fn-progress', 'fn-form', 'fn-checkout', 'fn-code', 'fn-reviews', 'fn-review-cta']);
 export const isFnType = (t: unknown): t is FnType => typeof t === 'string' && FN_SET.has(t);
 export const isDynamicType = (t: unknown): boolean => typeof t === 'string' && DYNAMIC.has(t);
 
@@ -193,7 +193,7 @@ function cleanClasses(raw: unknown, attrs: unknown): string[] {
 
 const FN_TAG: Record<string, string> = {
   'fn-section': 'section', 'fn-row': 'div', 'fn-column': 'div', 'fn-list': 'ul', 'fn-divider': 'hr', 'fn-spacer': 'div', 'fn-faq': 'div', 'fn-tabs': 'div', 'fn-popup': 'div', 'fn-box': 'div', 'fn-faq-item': 'details', 'fn-tab-nav': 'div', 'fn-tab-btn': 'button', 'fn-tab-panel': 'div', 'fn-popup-dialog': 'div',
-  'fn-video': 'div', 'fn-countdown': 'div', 'fn-progress': 'div', 'fn-form': 'div', 'fn-checkout': 'div', 'fn-code': 'div', 'fn-button': 'a', 'fn-text': 'p', 'fn-heading': 'h2', 'fn-image': 'img',
+  'fn-video': 'div', 'fn-countdown': 'div', 'fn-progress': 'div', 'fn-form': 'div', 'fn-checkout': 'div', 'fn-code': 'div', 'fn-reviews': 'div', 'fn-review-cta': 'div', 'fn-button': 'a', 'fn-text': 'p', 'fn-heading': 'h2', 'fn-image': 'img',
 };
 
 function propIssue(path: string, label: string, err: z.ZodError, ctx: Ctx): void {
@@ -285,6 +285,14 @@ function cleanNode(input: unknown, depth: number, path: string, ctx: Ctx): GjsNo
       break;
     case 'fn-progress':
       out.fnProgress = need('fnProgress', ProgressPropsSchema);
+      break;
+    case 'fn-reviews':
+      out.fnReviews = need('fnReviews', ReviewsPropsSchema, {});
+      if (out.fnReviews) ensureId(out, ctx, 'rv');
+      break;
+    case 'fn-review-cta':
+      out.fnReviewCta = need('fnReviewCta', ReviewCtaPropsSchema, {});
+      if (out.fnReviewCta) ensureId(out, ctx, 'rc');
       break;
     case 'fn-code':
       out.fnCode = need('fnCode', CodePropsSchema);

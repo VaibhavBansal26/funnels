@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { loadDoc, normalizeDoc, isStoredAsProject, type ProjectDoc } from '../pagemodel/doc.js';
+import { primeSnapshots, reviewsContext, syncReviewBlocks } from './googlereviews.js';
 import { renderProject, type PageRenderContext } from '../pagemodel/render.js';
 import { PROJECT_LIMITS } from '../pagemodel/shared/clean.js';
 import { can, type Auth } from '../auth/context.js';
@@ -63,6 +64,7 @@ export function renderContext(deps: Deps, i: BuildInput): PageRenderContext {
     ...(i.adTags ? { adTags: i.adTags } : {}),
     ...(i.apiBase ? { apiBase: i.apiBase } : {}),
     ...(i.beaconSrc ? { beaconSrc: i.beaconSrc } : {}),
+    reviews: reviewsContext(deps, i.funnel.workspace_id, i.funnel.id, i.step.id),
   };
 }
 
@@ -81,6 +83,7 @@ export async function regenerateFunnel(deps: Deps, ws: string, funnelId: string)
   for (const step of steps) {
     const page = pages.get(step.id);
     if (!page) continue;
+    await primeSnapshots(deps, ws, loadDoc(page.doc_json));
     const adTags = adTagsFor(levels, funnelId, step.id, loadDoc(page.doc_json), 'live')?.html;
     const { html, checksum } = renderStep(deps, { funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'live', adTags });
     if (checksum !== page.checksum) await deps.db.run('UPDATE step_pages SET html = ?, checksum = ? WHERE step_id = ?', html, checksum, step.id);
@@ -98,6 +101,8 @@ export async function regenerateWorkspace(deps: Deps, ws: string): Promise<void>
 export async function insertPage(deps: Deps, ws: string, funnel: FunnelRow, step: StepRow, doc: unknown, scriptsOk: boolean): Promise<void> {
   const docJson = JSON.stringify(await linkCatalog(deps, ws, validateDoc(doc, { scriptsOk: true }), 'system'));
   const steps = await listSteps(deps.db, ws, funnel.id);
+  await syncReviewBlocks(deps, ws, funnel.id, step.id, loadDoc(docJson));
+  await primeSnapshots(deps, ws, loadDoc(docJson));
   const adTags = await adTagsForStep(deps, ws, funnel.id, step.id, loadDoc(docJson));
   const { html, checksum } = renderStep(deps, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(deps, ws), mode: 'live', adTags });
   await deps.db.run(
@@ -185,6 +190,8 @@ export async function savePage(deps: Deps, auth: Auth, funnelId: string, stepId:
     }
     const docJson = JSON.stringify(doc);
     const steps = await listSteps(d.db, ws, funnelId);
+    await syncReviewBlocks(d, ws, funnelId, stepId, doc);
+    await primeSnapshots(d, ws, doc);
     const adTags = await adTagsForStep(d, ws, funnelId, stepId, doc);
     const { html, checksum } = renderStep(d, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(d, ws), mode: 'live', adTags });
     await d.db.run('UPDATE step_pages SET doc_json = ?, html = ?, checksum = ?, scripts_ok = ?, updated_at = ? WHERE step_id = ?', docJson, html, checksum, scriptsOk ? 1 : 0, at, stepId);

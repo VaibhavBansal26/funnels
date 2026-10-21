@@ -1,5 +1,5 @@
 import { esc, formatMoney, parseVideoUrl, safeUrl } from '../../blocks/safe.js';
-import type { CountdownProps, FormProps, ProductProps, ProgressProps, VideoProps } from './props.js';
+import type { CountdownProps, FormProps, ProductProps, ProgressProps, ReviewCtaProps, ReviewsProps, VideoProps } from './props.js';
 
 /**
  * Inner HTML of the dynamic components. One implementation shared by the server renderer (published pages) and the
@@ -18,7 +18,13 @@ export interface MarkupCtx {
   mainCheckoutId?: string | null;
   /** Link of a step by id (one-click offers can accept or decline to a chosen step). */
   stepHref?: (stepId: string) => string | undefined;
+  /** Google reviews: public token of a block, the review snapshot taken when the page was rendered, and the workspace's default place. */
+  reviews?: { token(blockId: string): string; snapshot(placeId: string): ReviewsData | null; defaultPlaceId: string | null };
 }
+
+export interface ReviewItem { author: string; authorUri?: string; photoUri?: string; rating: number; text: string; lang?: string; when?: string }
+/** Review content as shown on a page. Comes from the Places API (New) through the server's cache (source `google`) or from the author's own testimonials (`fallback`). */
+export interface ReviewsData { source: 'google' | 'fallback'; rating: number | null; total: number | null; mapsUri: string | null; placeName?: string; reviews: ReviewItem[]; fetchedAt?: string }
 
 const str = (v: unknown, max: number): string => (typeof v === 'string' ? v.slice(0, max) : '');
 const safeId = (v: unknown): string => str(v, 64).replace(/[^A-Za-z0-9_-]/g, '');
@@ -147,4 +153,85 @@ export function progressInner(p: ProgressProps): string {
   const v = Math.round(Math.min(Math.max(Number.isFinite(p.value) ? p.value : 0, 0), 100));
   const label = p.label ? `<div class="fn-progress-label"><span>${esc(p.label)}</span><span>${v}%</span></div>` : '';
   return `${label}<div class="fn-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${v}"${p.label ? ` aria-label="${esc(p.label)}"` : ''}><div class="fn-progress-bar" style="width:${v}%"></div></div>`;
+}
+
+// ---- Google reviews ---------------------------------------------------------------------------------------------------------------------------------------
+
+const GOOGLE_HOST = /(^|\.)(google\.com|goo\.gl)$/i;
+const PHOTO_HOST = /(^|\.)googleusercontent\.com$/i;
+/** An https link on a Google host (author profile, "view on Google Maps"). Anything else is dropped, not rewritten. */
+export function googleLink(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > 600) return null;
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' && GOOGLE_HOST.test(u.hostname) && !u.username && !u.password ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+export function googlePhoto(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > 600) return null;
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' && PHOTO_HOST.test(u.hostname) && !u.username ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+const LANG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$/;
+
+/** 4.66 -> "4.7"; stars are filled to the nearest whole star (half rounds up): 4.5 shows five. */
+export const ratingLabel = (r: number): string => (Math.round(Math.min(5, Math.max(0, r)) * 10) / 10).toFixed(1);
+export const starCount = (r: number): number => Math.min(5, Math.max(0, Math.floor(r + 0.5)));
+const stars = (r: number): string => `<span class="fn-rv-stars" role="img" aria-label="${esc(ratingLabel(r))} out of 5 stars"><span aria-hidden="true">${'★'.repeat(starCount(r))}${'☆'.repeat(5 - starCount(r))}</span></span>`;
+
+function reviewItem(r: ReviewItem, google: boolean): string {
+  const photo = googlePhoto(r.photoUri);
+  const uri = googleLink(r.authorUri);
+  const avatar = google && photo ? `<img class="fn-rv-avatar" src="${esc(photo)}" alt="" width="40" height="40" loading="lazy">` : '';
+  const name = `<span class="fn-rv-name">${esc(str(r.author, 120) || 'Google user')}</span>`;
+  const who = google && uri ? `<a class="fn-rv-author" href="${esc(uri)}" target="_blank" rel="noopener noreferrer nofollow">${avatar}${name}</a>` : `<span class="fn-rv-author">${avatar}${name}</span>`;
+  const lang = r.lang && LANG.test(r.lang) ? ` lang="${esc(r.lang)}"` : '';
+  const text = r.text ? `<blockquote class="fn-rv-text"${lang} dir="auto">${esc(str(r.text, 4000))}</blockquote>` : '';
+  const when = r.when ? `<span class="fn-rv-when">${esc(str(r.when, 60))}</span>` : '';
+  return `<li class="fn-rv-item">${who}<div class="fn-rv-meta">${stars(r.rating)}${when}</div>${text}</li>`;
+}
+
+/** The items a block shows: Google reviews filtered by the block's minimum rating and count, or the author's own testimonials. */
+export function reviewsToShow(p: ReviewsProps, data: ReviewsData | null): ReviewsData {
+  if (data && data.source === 'google' && (data.reviews.length || data.total)) {
+    return { ...data, reviews: data.reviews.filter((r) => r.rating >= p.minRating).slice(0, p.count) };
+  }
+  return { source: 'fallback', rating: null, total: null, mapsUri: null, reviews: p.fallback.map((f) => ({ author: f.name, rating: f.rating ?? 5, text: f.text })).slice(0, p.count) };
+}
+
+export function reviewsInner(blockId: string, p: ReviewsProps, data: ReviewsData | null, ctx: MarkupCtx): string {
+  const bid = safeId(blockId);
+  const shown = reviewsToShow(p, data);
+  const google = shown.source === 'google';
+  const token = ctx.mode === 'builder' ? '' : ctx.reviews?.token(bid) ?? '';
+  const attrs = ` data-fn-reviews data-variant="${esc(p.variant)}" data-layout="${p.layout}" data-count="${p.count}" data-min="${p.minRating}" data-text="${p.showText ? 1 : 0}"${token ? ` data-token="${esc(token)}" data-api="${esc(ctx.apiBase ?? '')}"` : ''}`;
+  const maps = googleLink(shown.mapsUri);
+  const attribution = google
+    ? `<p class="fn-rv-attr">Reviews from ${maps ? `<a href="${esc(maps)}" target="_blank" rel="noopener noreferrer nofollow">Google Maps</a>` : 'Google Maps'}</p>`
+    : shown.reviews.length ? `<p class="fn-rv-attr">Customer feedback</p>` : ctx.mode === 'builder' ? '<p class="fn-rv-attr">Connect a Google place in the Settings tab to show your Google reviews. Until then your own testimonials are shown.</p>' : '';
+  const aggregate = google && shown.rating !== null ? `<div class="fn-rv-summary">${stars(shown.rating)} <strong>${esc(ratingLabel(shown.rating))}</strong>${shown.total ? ` <span>(${Math.round(shown.total)} Google reviews)</span>` : ''}</div>` : '';
+  if (p.variant === 'badge') {
+    if (!google || shown.rating === null) return `<div class="fn-rv fn-rv-badge-wrap"${attrs}>${attribution}</div>`;
+    return `<div class="fn-rv fn-rv-badge-wrap"${attrs}><div class="fn-rv-badge">${aggregate}</div>${attribution}</div>`;
+  }
+  const items = shown.reviews.map((r) => reviewItem(p.showText ? r : { ...r, text: '' }, google)).join('');
+  const list = items ? `<ul class="fn-rv-list ${p.variant === 'carousel' ? 'fn-rv-carousel' : p.layout === 'stack' ? 'fn-rv-stack' : 'fn-rv-grid'}"${p.variant === 'carousel' ? ' tabindex="0" aria-label="Reviews"' : ''}>${items}</ul>` : '';
+  return `<div class="fn-rv"${attrs}>${aggregate}${list}${attribution}</div>`;
+}
+
+export function reviewCtaInner(blockId: string, p: ReviewCtaProps, ctx: MarkupCtx): string {
+  const place = p.placeId || ctx.reviews?.defaultPlaceId || '';
+  const label = esc(p.label);
+  const prompt = p.prompt ? `<p class="fn-rc-prompt">${esc(p.prompt)}</p>` : '';
+  if (!place || !/^[A-Za-z0-9_-]{10,200}$/.test(place)) {
+    return ctx.mode === 'builder' ? `${prompt}<span class="fn-btn fn-btn-primary fn-rc-btn" aria-disabled="true">${label}</span><p class="fn-note">Choose a Google place in the Settings tab (or set a default in Settings &gt; Integrations).</p>` : '';
+  }
+  const wait = p.delaySeconds > 0 && ctx.mode !== 'builder' ? ` fn-rc-wait fn-rc-d${p.delaySeconds}` : '';
+  return `<div class="fn-rc${wait}" data-fn-review-cta>${prompt}<a class="fn-btn fn-btn-primary fn-rc-btn" href="${esc(ctx.mode === 'builder' ? '#' : `https://search.google.com/local/writereview?placeid=${encodeURIComponent(place)}`)}" target="_blank" rel="noopener noreferrer">${label}</a></div>`;
 }

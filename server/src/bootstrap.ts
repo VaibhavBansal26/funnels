@@ -1,3 +1,4 @@
+import { refreshJob } from './services/googlereviews.js';
 import { runBuildJob } from './ai/builder/service.js';
 import { AnthropicProvider } from './ai/anthropic.js';
 import { HeuristicProvider } from './ai/heuristic.js';
@@ -117,6 +118,7 @@ export function createWorker(deps: Deps): JobWorker {
     'publish.domain': (payload) => domainJob(deps, payload),
     'publish.destroy': (payload) => destroyJob(deps, payload),
     'ai.build': (payload) => runBuildJob(deps, payload),
+    'reviews.refresh': (payload) => refreshJob(deps, payload),
   };
   return new JobWorker(deps.jobs, handlers, deps.log);
 }

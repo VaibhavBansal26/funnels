@@ -20,6 +20,7 @@ import { funnelRoutes } from './routes/funnels.js';
 import { leadRoutes, orderRoutes } from './routes/leads.js';
 import { notificationRoutes, streamRoutes } from './routes/notifications.js';
 import { publicRoutes } from './routes/public.js';
+import { googleReviewsRoutes } from './routes/googlereviews.js';
 import { edgeRoutes } from './routes/edge.js';
 import { hostRouting, messagePage, previewRoutes, staticRoutes } from './routes/serve.js';
 import { tagRoutes } from './routes/tags.js';
@@ -110,6 +111,7 @@ export function createApp(deps: Deps): Hono {
   api.route('/notifications', notificationRoutes(deps));
   api.route('/events', streamRoutes(deps));
   api.route('/ai', aiRoutes(deps));
+  api.route('/google-reviews', googleReviewsRoutes(deps));
   app.route('/api', api);
 
   const web = staticRoutes(deps);

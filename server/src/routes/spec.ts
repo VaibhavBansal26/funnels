@@ -3,6 +3,7 @@ import type { Permission } from '../auth/permissions.js';
 import * as ai from '../ai/service.js';
 import * as aiBuild from '../ai/builder/service.js';
 import * as aiEdit from '../ai/builder/edit.js';
+import * as gReviews from '../services/googlereviews.js';
 import { AnalyticsQuery } from '../services/analytics.js';
 import { DefaultPagesInput, DomainInput } from '../services/domains.js';
 import { PublicEventInput } from '../services/events.js';
@@ -323,6 +324,13 @@ export const OPERATIONS: Operation[] = [
   A('POST', '/api/funnels/:id/publishing/domain/refresh', 'publishing:manage', 'publishing', 'Read the custom domain status from Cloudflare now'),
   A('GET', '/api/funnels/:id/publishing/deployments', 'funnels:read', 'publishing', 'Deployment history, newest first (status, version, time, errors)'),
   A('GET', '/api/funnels/:id/publishing/deployments/:did', 'funnels:read', 'publishing', 'One deployment with its log'),
+  // Google reviews (docs/REVIEWS.md)
+  { method: 'GET', path: '/public/reviews/:token', auth: 'public', tag: 'public', summary: 'Cached Google review data for a reviews block (JSON, CORS for customer domains and Pages hosts; always 200 with source "fallback" when nothing is available)', limits: ['ip.global', 'public.reviews'], inHandler: ['reviews.fetch'], scope: 'token', notes: 'The token is an HMAC of the block address, issued when the page is saved. Content comes from the cache (GOOGLE_REVIEWS_CACHE_TTL_S) or one live Places API call.' },
+  A('GET', '/api/google-reviews/settings', 'integrations:manage', 'integrations', 'Google reviews settings: key source and masked hint, default place, status of the last call'),
+  A('PUT', '/api/google-reviews/settings', 'integrations:manage', 'integrations', 'Store (encrypted) or clear the workspace Places API key and set the default place; the key is never returned', { body: gReviews.SettingsInput }),
+  A('POST', '/api/google-reviews/test', 'integrations:manage', 'integrations', 'Fetch the default (or a given) place live with the configured key and report what came back', { body: gReviews.TestInput, limits: [...WRITE, 'reviews.search'], inHandler: ['reviews.fetch'], notes: 'A real outbound call to the Google Places API; it also counts against `reviews.fetch`.' }),
+  A('POST', '/api/google-reviews/search', 'funnels:write', 'integrations', 'Find a place by name or address (Places API Text Search, up to 5 results) for the builder', { body: gReviews.SearchInput, limits: [...WRITE, 'reviews.search'], inHandler: ['reviews.fetch'] }),
+  A('GET', '/api/google-reviews/places/:placeId', 'funnels:read', 'integrations', 'Rating, review count and reviews of a place for the builder preview (from the cache, or one live call)', { inHandler: ['reviews.fetch'] }),
   // ads: integrations, pixels, spend, reports (docs/ADS.md)
   A('GET', '/api/integrations', 'integrations:manage', 'ads', 'Ad integrations (Meta, GA4, TikTok): pixel, masked token, last delivery status'),
   A('POST', '/api/integrations', 'integrations:manage', 'ads', 'Connect an ad network for server-side conversions; the token is stored encrypted and never returned', { body: IntegrationInput, status: 201 }),

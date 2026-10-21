@@ -10,6 +10,7 @@ import { enforceInHandler } from '../ratelimit/http.js';
 import { clientIp, trustedCountry } from '../ratelimit/ip.js';
 import { AttributionInput, recordAttribution } from '../services/attribution.js';
 import { corsOriginFor } from '../services/cors.js';
+import { publicReviews } from '../services/googlereviews.js';
 
 const tooLarge = () => new AppError(413, 'PAYLOAD_TOO_LARGE', 'The request body is too large');
 const limitTo = (maxSize: number) =>
@@ -49,6 +50,15 @@ export function publicRoutes(deps: Deps): Hono {
     c.header('Access-Control-Allow-Headers', 'content-type');
     if (c.req.method === 'OPTIONS') return c.body(null, 204);
     await next();
+  });
+
+  // Review data for a "Google reviews" block (cached; see docs/REVIEWS.md). Readable cross-origin only by the origins the public API allows (customer domains, Pages hosts).
+  r.get('/public/reviews/:token', async (c) => {
+    const allow = await corsOriginFor(deps, c.req.header('origin'));
+    if (allow) c.header('Access-Control-Allow-Origin', allow);
+    if (allow && allow !== '*') c.header('Vary', 'Origin');
+    c.header('Cache-Control', 'public, max-age=300, s-maxage=300');
+    return c.json(await publicReviews(deps, c.req.param('token')));
   });
 
   r.post('/api/public/events', limitTo(8 * 1024), async (c) => {

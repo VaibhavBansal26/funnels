@@ -12707,6 +12707,328 @@
         ]
       }
     },
+    "/public/reviews/{token}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Cached Google review data for a reviews block (JSON, CORS for customer domains and Pages hosts; always 200 with source \"fallback\" when nothing is available)",
+        "description": "The token is an HMAC of the block address, issued when the page is saved. Content comes from the cache (GOOGLE_REVIEWS_CACHE_TTL_S) or one live Places API call.",
+        "operationId": "get_public_reviews_token",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "public.reviews",
+          "reviews.fetch"
+        ]
+      }
+    },
+    "/api/google-reviews/settings": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Google reviews settings: key source and masked hint, default place, status of the last call",
+        "operationId": "get_api_google_reviews_settings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "integrations:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      },
+      "put": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Store (encrypted) or clear the workspace Places API key and set the default place; the key is never returned",
+        "operationId": "put_api_google_reviews_settings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "apiKey": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{20,200}$"
+                  },
+                  "clearKey": {
+                    "type": "boolean"
+                  },
+                  "defaultPlaceId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_-]{10,200}$"
+                      },
+                      {
+                        "type": "string",
+                        "const": ""
+                      }
+                    ]
+                  },
+                  "defaultPlaceName": {
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "integrations:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/google-reviews/test": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Fetch the default (or a given) place live with the configured key and report what came back",
+        "description": "A real outbound call to the Google Places API; it also counts against `reviews.fetch`.",
+        "operationId": "post_api_google_reviews_test",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "placeId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{10,200}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "integrations:manage",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace",
+          "reviews.search",
+          "reviews.fetch"
+        ]
+      }
+    },
+    "/api/google-reviews/search": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Find a place by name or address (Places API Text Search, up to 5 results) for the builder",
+        "operationId": "post_api_google_reviews_search",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "query"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "funnels:write",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace",
+          "reviews.search",
+          "reviews.fetch"
+        ]
+      }
+    },
+    "/api/google-reviews/places/{placeId}": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Rating, review count and reviews of a place for the builder preview (from the cache, or one live call)",
+        "operationId": "get_api_google_reviews_places_placeId",
+        "parameters": [
+          {
+            "name": "placeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "funnels:read",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace",
+          "reviews.fetch"
+        ]
+      }
+    },
     "/api/integrations": {
       "get": {
         "tags": [

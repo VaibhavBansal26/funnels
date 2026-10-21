@@ -1,4 +1,4 @@
-import type { ButtonActionProps, CountdownProps, FormProps, ProductProps } from './props.js';
+import type { ButtonActionProps, CountdownProps, FormProps, ProductProps, ReviewCtaProps, ReviewsProps } from './props.js';
 import { PROJECT_VERSION, emptyProject, type GjsNode, type GjsProject, type GjsRule } from './clean.js';
 import { FONT_STACKS } from './css.js';
 
@@ -228,6 +228,14 @@ const col = (children: GjsNode[], o: NodeOpts & { grow?: number } = {}): GjsNode
     checkout(id: string, p: Partial<ProductProps> & Pick<ProductProps, 'productName' | 'price'>, o: NodeOpts = {}): GjsNode {
       const props: ProductProps = { currency: 'USD', buttonLabel: 'Buy now', orderBump: false, oneClickUpsell: false, success: { type: 'next_step' }, ...p };
       return fin({ type: 'fn-checkout', tagName: 'div', fnProduct: props }, { ...o, id, name: o.name ?? (props.orderBump ? 'Order bump' : props.oneClickUpsell ? 'One-click upsell' : 'Checkout') });
+    },
+    reviews(id: string, p: Partial<ReviewsProps> = {}, o: NodeOpts = {}): GjsNode {
+      const props: ReviewsProps = { placeId: '', placeName: '', variant: 'list', count: 3, minRating: 4, showText: true, layout: 'grid', fallback: [], ...p };
+      return fin({ type: 'fn-reviews', tagName: 'div', fnReviews: props }, { ...o, id, name: o.name ?? 'Google reviews' });
+    },
+    reviewCta(id: string, p: Partial<ReviewCtaProps> = {}, o: NodeOpts = {}): GjsNode {
+      const props: ReviewCtaProps = { placeId: '', label: 'Leave us a Google review', prompt: '', delaySeconds: 0, ...p };
+      return fin({ type: 'fn-review-cta', tagName: 'div', fnReviewCta: props }, { ...o, id, name: o.name ?? 'Ask for a Google review' });
     },
     code(html: string, css = '', js = '', o: NodeOpts = {}): GjsNode {
       return fin({ type: 'fn-code', tagName: 'div', classes: ['fn-code'], fnCode: { html, css, js } }, { ...o, name: o.name ?? 'Custom code' });

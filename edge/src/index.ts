@@ -3,7 +3,7 @@
  *
  *  - Page requests (GET/HEAD): cache lookup (Cache API, key = the public URL without query, so the origin can purge by URL),
  *    stale-while-revalidate against a SIGNED origin endpoint, ETag/checksum revalidation, stale-if-error, friendly error page.
- *  - /api/public/* and /beacon.js: forwarded to the origin with the real client IP and a shared secret header.
+ *  - /api/public/*, /public/reviews/* and /beacon.js: forwarded to the origin with the real client IP and a shared secret header.
  *  - Visitor, funnel, step and UTM cookies are set per request (never cached with the HTML).
  *
  * Every call to the origin's /internal/edge/resolve is HMAC-signed. Without EDGE_SHARED_SECRET the worker refuses to serve (fail closed).
@@ -86,7 +86,7 @@ interface Resolved {
   notModified?: boolean;
 }
 
-const PROXIED = /^\/(api\/public\/|uploads\/|beacon\.js$)/;
+const PROXIED = /^\/(api\/public\/|public\/reviews\/|uploads\/|beacon\.js$)/;
 
 export const errorPage = (status: number, title: string, message: string): Response =>
   new Response(

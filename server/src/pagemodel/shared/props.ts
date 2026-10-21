@@ -78,3 +78,34 @@ export type CodeProps = z.infer<typeof CodePropsSchema>;
 export const PopupPropsSchema = z.object({ closeOnOverlay: z.boolean().default(true) });
 
 export const accentColor = z.string().max(40).regex(COLOR_RE, 'Invalid color');
+
+/** A Google place id (Places API (New) ids look like "ChIJ..." and are URL-safe; the empty string means "the workspace's default place"). */
+export const placeId = z.string().max(200).regex(/^[A-Za-z0-9_-]{10,200}$|^$/, 'Invalid place id');
+
+/**
+ * "Google reviews" block. Review content is never stored here: the server fetches it (Places API (New)) and shows it with the attribution Google requires. `fallback`
+ * are testimonials the author typed, shown when there is no key, no place or no result; they are labelled as the author's own, never as Google's.
+ */
+export const ReviewsPropsSchema = z.object({
+  placeId: placeId.default(''),
+  placeName: z.string().max(120).default(''),
+  variant: z.enum(['list', 'carousel', 'badge']).default('list'),
+  count: z.number().int().min(1).max(5).default(3),
+  minRating: z.number().int().min(1).max(5).default(4),
+  showText: z.boolean().default(true),
+  layout: z.enum(['grid', 'stack']).default('grid'),
+  fallback: z.array(z.object({ name: z.string().trim().min(1).max(80), text: z.string().trim().min(1).max(400), rating: z.number().int().min(1).max(5).optional() })).max(6).default([]),
+});
+export type ReviewsProps = z.infer<typeof ReviewsPropsSchema>;
+
+/** Delays the review prompt can wait before it appears (a CSS animation, so it works without scripts). */
+export const REVIEW_DELAYS = [0, 5, 10, 15, 30, 60, 90, 120];
+
+/** "Ask for a Google review" button: links to the review form of the place, optionally revealed after a delay. */
+export const ReviewCtaPropsSchema = z.object({
+  placeId: placeId.default(''),
+  label: z.string().trim().min(1).max(60).default('Leave us a Google review'),
+  prompt: z.string().max(200).default(''),
+  delaySeconds: z.number().int().refine((n) => REVIEW_DELAYS.includes(n), 'Choose 0, 5, 10, 15, 30, 60, 90 or 120 seconds').default(0),
+});
+export type ReviewCtaProps = z.infer<typeof ReviewCtaPropsSchema>;

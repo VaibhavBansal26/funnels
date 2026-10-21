@@ -18,6 +18,7 @@ import { assertWithinLimit } from '../billing/limits.js';
 import { audit } from './audit.js';
 import { adTagsFor, effectivePixels, loadPixelLevels } from './adtags.js';
 import { renderStep, workspaceAllowsScripts } from './pages.js';
+import { primeSnapshots, refreshForPublish } from './googlereviews.js';
 
 /**
  * Publishing: where a funnel is served from. `origin` (default) is this server by Host header; `cloudflare-pages` builds the funnel into a static site and deploys it with
@@ -375,6 +376,9 @@ export async function buildFunnelBundle(deps: Deps, funnel: FunnelRow): Promise<
     const page = pages.get(step.id);
     if (!page) continue;
     const tags = adTagsFor(levels, funnel.id, step.id, loadDoc(page.doc_json), 'live');
+    // The bundle carries a snapshot of the review content taken now (fetched if the cache is empty or expired); the page refreshes it from the public endpoint.
+    await refreshForPublish(deps, ws, loadDoc(page.doc_json));
+    await primeSnapshots(deps, ws, loadDoc(page.doc_json));
     const { html } = renderStep(deps, { funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'live', adTags: tags?.html, apiBase, beaconSrc: beaconPath(BEACON_JS) });
     bundleSteps.push({ id: step.id, basePath: step.base_path, html, knownInline: [RUNTIME_JS, ...(tags ? [tags.source] : [])], vendors: cspHosts(effectivePixels(levels, step.id)) });
   }
