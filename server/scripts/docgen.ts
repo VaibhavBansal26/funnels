@@ -37,6 +37,24 @@ export function configDoc(): string {
 
 Generated from the zod schema in \`server/src/config.ts\` and the descriptions in \`server/src/config.docs.ts\` by \`npm run docs:config\`; \`npm test\` fails when this file is stale. Configuration is environment-only and validated at boot (the process refuses to start with an invalid value). Nothing is required in development. Copy \`.env.example\` for a starting point.
 
+**By area** (the table below keeps the schema's order):
+
+| Area | Variables |
+|---|---|
+| Server and URLs | \`NODE_ENV\`, \`PORT\`, \`HOST\`, \`APP_PUBLIC_URL\`, \`API_PUBLIC_URL\`, \`APP_PUBLIC_CNAME_TARGET\`, \`CORS_ORIGINS\`, \`PUBLIC_API_CORS\`, \`TRUST_PROXY\`, \`TRUSTED_PROXY_HOPS\`, \`WEB_DIST\`, \`REQUEST_TIMEOUT_MS\`, \`LOG_LEVEL\`, \`METRICS_TOKEN\`, \`ENABLE_WORKER\`, \`JOB_POLL_MS\` |
+| Databases and Redis | \`DATABASE_URL\`, \`DATABASE_PATH\`, \`DATABASE_POOL_MAX\`, \`DATABASE_REPLICA_URLS\`, \`REPLICA_*\`, \`DATABASE_PREPARED_STATEMENTS\`, \`REDIS_URL\`, \`REDIS_KEY_PREFIX\`, \`REDIS_TIMEOUT_MS\` |
+| Sign-in, sessions, secrets, mail | \`JWT_SECRET\`, \`*_TTL_*\`, \`SESSION_MAX_DAYS\`, \`REFRESH_REUSE_GRACE_SECONDS\`, \`TOTP_ISSUER\`, \`DATA_ENCRYPTION_KEY\`, \`DATA_ENCRYPTION_KEY_PREVIOUS\`, \`MAIL_*\` |
+| Platform administration | \`PLATFORM_ADMIN_EMAILS\`, \`ADMIN_REQUIRE_2FA\`, \`IMPERSONATION_*\`, \`ADMIN_QUEUE_PEEK\`, \`MAX_CUSTOM_ROLES\` |
+| Rate limits | \`RATELIMIT_*\`, \`*_PER_MINUTE\`, \`EXPORT_CONCURRENCY\`, \`TRUST_CLOUDFLARE_RANGES\`, \`CF_IP_RANGES\` |
+| Payments and plans | \`PAYMENTS_PROVIDER\`, \`STRIPE_*\`, \`BILLING_ENFORCE_LIMITS\` |
+| AI and reviews | \`ANTHROPIC_*\`, \`AI_*\`, \`GOOGLE_PLACES_*\`, \`GOOGLE_REVIEWS_*\` |
+| Analytics, events and scale | \`ANALYTICS_*\`, \`EVENT_*\`, \`PARTITION_MONTHS_AHEAD\`, \`MAINTENANCE_INTERVAL_HOURS\`, \`INGEST_*\`, \`OUTBOX_*\`, \`EVENTSTORE_MIRROR\`, \`CLICKHOUSE_*\` |
+| Domains, edge and Cloudflare | \`DOMAIN_PROVIDER\`, \`DOMAIN_VERIFY_TIMEOUT_HOURS\`, \`EDGE_*\`, \`CF_ORIGIN_SECRET\`, \`CF_API_*\`, \`CF_ZONE_ID\`, \`CF_PAGES_*\`, \`PAGES_*\` |
+| Ads and webhooks | \`META_*\`, \`GA4_MP_BASE\`, \`TIKTOK_EVENTS_BASE\`, \`CONVERSIONS_*\`, \`ATTRIBUTION_RETENTION_DAYS\`, \`ADS_IMPORT_*\`, \`WEBHOOK_MAX_ATTEMPTS\` |
+| Error monitoring | \`SENTRY_*\`, \`RENDER_GIT_COMMIT\`, \`GIT_SHA\` |
+
+Minimum for production: \`NODE_ENV=production\`, \`JWT_SECRET\`, \`APP_PUBLIC_URL\`, \`DATA_ENCRYPTION_KEY\`; with PostgreSQL \`DATABASE_URL\`; with more than one replica \`REDIS_URL\`; behind a proxy \`TRUST_PROXY\` and \`TRUSTED_PROXY_HOPS\`. Deployment walk-through: [DEPLOY.md](DEPLOY.md).
+
 | Variable | Default | Required | Example | What it does |
 |---|---|---|---|---|
 ${rows.join('\n')}
