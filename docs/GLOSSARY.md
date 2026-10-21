@@ -62,3 +62,12 @@
 | Global funnel templates | `templates` + `template_steps`, platform-admin managed |
 | `lightning` worker route | Host routing in the origin plus the optional Worker |
 | Analytics "views / unique" documents | Typed events + rollups |
+
+
+## AI and reviews
+
+| Term | Meaning |
+|---|---|
+| Generation | One run of the AI funnel builder, stored in `ai_generations` with prompt, assumptions, stages, token use and report |
+| Edit operation | One validated change the builder assistant proposes (insert, replace, delete, move, setText, restyle) |
+| Block token | Public HMAC handle (`rv...`) of a Google reviews block, used by `GET /public/reviews/{token}` |

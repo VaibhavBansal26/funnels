@@ -59,6 +59,26 @@ curl -s "$BASE/api/funnels/$FUNNEL/analytics?from=2026-03-01&to=2026-03-31&tz=Am
 
 Create with `POST /api/webhooks { url, events: ["funnel.optin","funnel.purchase"] }`; the signing secret is shown once. Deliveries are `POST`s with `x-funnels-event`, `x-funnels-delivery`, `x-funnels-timestamp` and `x-funnels-signature: sha256=HMAC_SHA256(secret, "{timestamp}.{body}")`. Retries: 30 s x 2^n backoff, dead-lettered after `WEBHOOK_MAX_ATTEMPTS`. Redirects are never followed; private addresses are refused (SSRF).
 
+## AI funnel builder and Google reviews
+
+```bash
+# start a build (202), poll it, cancel it, rewrite one page of the result
+curl -s -X POST $BASE/api/ai/builds -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"prompt":"Neighbourhood bakery in Austin, custom cakes from $40 to $120","options":{"products":"create","redactPii":true}}'
+curl -s $BASE/api/ai/builds/$ID -H "authorization: Bearer $TOKEN"          # stages, assumptions, report, funnelId
+curl -s -X POST $BASE/api/ai/builds/$ID/cancel -H "authorization: Bearer $TOKEN"
+curl -s -X POST $BASE/api/ai/builds/$ID/steps/s1/regenerate -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"instruction":"shorter"}'
+# builder assistant: operations for an outline (the builder sends the live page)
+curl -s -X POST $BASE/api/ai/edit -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"instruction":"make the hero shorter","outline":{"id":"root","type":"wrapper","children":[{"id":"h1","type":"fn-heading","tag":"h1","text":"We bake the best cakes in town"}]},"selectedId":"h1"}'
+# Google reviews: settings, place search, public data of a block
+curl -s -X PUT $BASE/api/google-reviews/settings -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"apiKey":"<your Places API key>"}'
+curl -s -X POST $BASE/api/google-reviews/search -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"query":"corner bakery austin"}'
+curl -s $BASE/public/reviews/$BLOCK_TOKEN
+```
+
+Errors: `409 BUILD_IN_PROGRESS`, `429 AI_DAILY_CAP_REACHED`, `422 VALIDATION_FAILED` (regenerate), `409 PLACES_NO_KEY`, `502 PLACES_KEY_REJECTED`, `429 PLACES_QUOTA`. See [AI-BUILDER.md](AI-BUILDER.md) and [REVIEWS.md](REVIEWS.md).
+
 ## Rate limit headers
 
 ```
