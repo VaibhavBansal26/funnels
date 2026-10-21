@@ -2,6 +2,7 @@ import { providerFor } from '../ads/providers/index.js';
 import type { ConversionEvent, ConversionItem, ConversionName, ConversionUser } from '../ads/providers/types.js';
 import type { Auth } from '../auth/context.js';
 import type { Deps } from '../deps.js';
+import { stepUrls } from './addresses.js';
 import { conflict, notFound } from '../errors.js';
 import { PermanentJobError, type Job } from '../jobs/queue.js';
 import { newId } from '../util/ids.js';
@@ -50,13 +51,8 @@ export function userFromLead(lead: { email: string; name?: string | null; phone?
   return { email: lead.email, name: lead.name, phone: lead.phone, zip: pick(LEAD_KEYS.zip), country: pick(LEAD_KEYS.country), city: pick(LEAD_KEYS.city), state: pick(LEAD_KEYS.state) };
 }
 
-async function pageUrl(deps: Pick<Deps, 'db'>, ws: string, funnelId: string, stepId: string | null | undefined): Promise<string | null> {
-  const row = await deps.db.get<{ hostname: string; base_path: string }>(
-    `SELECT d.hostname, s.base_path FROM funnels f JOIN domains d ON d.id = f.domain_id JOIN steps s ON s.funnel_id = f.id
-     WHERE f.workspace_id = ? AND f.id = ? ${stepId ? 'AND s.id = ?' : ''} ORDER BY s.position LIMIT 1`,
-    ws, funnelId, ...(stepId ? [stepId] : []),
-  );
-  return row ? `https://${row.hostname}${row.base_path}` : null;
+async function pageUrl(deps: Pick<Deps, 'db' | 'config'>, ws: string, funnelId: string, stepId: string | null | undefined): Promise<string | null> {
+  return (await stepUrls(deps, ws, funnelId, stepId))[0]?.url ?? null;
 }
 
 /**

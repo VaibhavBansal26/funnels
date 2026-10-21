@@ -49,7 +49,8 @@ docs/    ARCHITECTURE, APPROACH, AI, TESTING, PERFORMANCE, MIGRATION-NOTES, PROV
 ## Try it
 
 1. Register, create a funnel (blank, template or AI), open a step in the builder. Drag blocks from the left panel onto the page, drag elements to reorder or nest them, double-click text to edit it, resize images by their handles, press `?` for the shortcuts, Save (Cmd or Ctrl+S) and View to see the saved page. The builder needs a screen of at least tablet size; see [docs/design/DESIGN.md](docs/design/DESIGN.md).
-2. Add a domain on the Domains page; add the shown CNAME and TXT records and verify. Set a funnel live on it.
-3. Funnels in test mode are viewable through the signed preview (Settings tab > Open signed preview).
+2. **Go live in one minute with no domain:** funnel > Settings > Go live > keep *Built-in address (free)* > Go live. Copy the link ([docs/GO-LIVE.md](docs/GO-LIVE.md)); a free Cloudflare Pages address and your own domain are the alternatives.
+3. Optional: add a domain on the Domains page; add the shown CNAME and TXT records and verify. Set a funnel live on it.
+4. Funnels in test mode are viewable through the signed preview (Settings tab > Open signed preview).
 
 Payments use a built-in test provider. See docs/APPROACH.md for decisions and limits.

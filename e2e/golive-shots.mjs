@@ -34,6 +34,8 @@ const live = await call('POST', '/api/templates/sales-page-bump-upsell/use', und
 const failed = await call('POST', '/api/templates/lead-magnet/use', undefined, T);
 await call('PUT', '/api/publishing/connection', { accountId: 'a'.repeat(32), token: 'cf-test-token-0123456789abcdef' }, T);
 await call('POST', `/api/funnels/${live.id}/go-live`, { address: { kind: 'pages' } }, T);
+const builtinLive = await call('POST', '/api/templates/lead-magnet/use', undefined, T);
+await call('POST', `/api/funnels/${builtinLive.id}/go-live`, { address: { kind: 'builtin' } }, T);
 const dom = await call('POST', '/api/domains', { hostname: 'offers.e2e.test' }, T);
 const hasWebp = spawnSync('cwebp', ['-version']).status === 0;
 async function shot(page, name) {
@@ -47,6 +49,7 @@ const SIZES = [{ id: '1440', width: 1440, height: 900 }, { id: '1024', width: 10
 const SCREENS = [
   { name: 'golive-draft', path: `/funnels/${draft.id}/settings`, wait: 1200 },
   { name: 'golive-live', path: `/funnels/${live.id}/settings`, wait: 1200 },
+  { name: 'golive-builtin-live', path: `/funnels/${builtinLive.id}/settings`, wait: 1200 },
   { name: 'funnel-header-golive', path: `/funnels/${draft.id}/steps`, wait: 800 },
 ];
 const only = process.env.SHOTS_ONLY;

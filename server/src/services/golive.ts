@@ -5,7 +5,7 @@ import { badRequest, conflict, forbidden } from '../errors.js';
 import { listSteps, requireFunnel } from '../repos/funnels.js';
 import type { DomainRow } from '../repos/types.js';
 import { isCloudflareTarget } from '../publish/target.js';
-import { addressFrom, ensurePagesDomain, pagesHostOf, workspaceSlugOf } from './addresses.js';
+import { addressFrom, ensureBuiltinDomain, ensureFunnelSlug, ensurePagesDomain, ensureWorkspaceSlug, pagesHostOf, workspaceSlugOf } from './addresses.js';
 import { getConnection, getSettings, platformAvailable, platformProjectName, schedulePublish, updateSettings } from './publishing.js';
 import { updateFunnel } from './funnels.js';
 
@@ -16,7 +16,7 @@ import { updateFunnel } from './funnels.js';
  * the address is a Cloudflare one. Taking a funnel offline is the normal PATCH with `status: "test"`.
  */
 export const GoLiveInput = z.object({
-  address: z.object({ kind: z.enum(['pages', 'workers', 'custom']), domainId: z.string().max(64).optional() }),
+  address: z.object({ kind: z.enum(['builtin', 'pages', 'workers', 'custom']), domainId: z.string().max(64).optional() }),
   conflicts: z.array(z.object({ path: z.string().max(300), resolved_path: z.string().max(300) })).max(500).optional(),
 });
 
@@ -41,6 +41,16 @@ export async function addressOptions(deps: Deps, ws: string, funnelId: string) {
   const first = steps[0]?.base_path ?? funnel.base_path;
   const wsSlug = await workspaceSlugOf(deps, ws);
   const options: AddressOption[] = [];
+
+  // The free built-in address: always available (no DNS, no account). Its record and the slugs are created here the first time they are needed.
+  const builtin = await ensureBuiltinDomain(deps, ws);
+  const wsSlugB = await ensureWorkspaceSlug(deps, ws);
+  const funSlug = await ensureFunnelSlug(deps, funnel);
+  const bAddr = addressFrom(deps, { public_slug: funSlug }, builtin, { workspaceSlug: wsSlugB, pagesHost: null })!;
+  options.push({
+    kind: 'builtin', domainId: builtin.id, label: 'Built-in address (free)', host: bAddr.host, url: bAddr.base + (first === '/' ? '/' : first),
+    available: true, reason: null, status: 'active', selected: funnel.domain_id === builtin.id,
+  });
 
   // Cloudflare: Pages (default) and Workers static assets (experimental). A funnel uses one of them; the other asks to switch back to this server first.
   const conn = await getConnection(deps, ws);
@@ -72,13 +82,26 @@ export async function addressOptions(deps: Deps, ws: string, funnelId: string) {
     });
   }
   const settings = await getSettings(deps, ws, funnelId);
-  return { options, state: settings.state, funnelStatus: funnel.status, currentDomainId: funnel.domain_id };
+  return {
+    options, state: settings.state, funnelStatus: funnel.status, currentDomainId: funnel.domain_id,
+    builtin: { workspaceSlug: wsSlugB, funnelSlug: funSlug, base: bAddr.base, allowIndexing: funnel.allow_indexing === 1 },
+  };
 }
 
 export async function goLive(deps: Deps, auth: Auth, funnelId: string, input: z.infer<typeof GoLiveInput>, ip: string | null) {
   const ws = auth.workspaceId;
   await requireFunnel(deps.db, ws, funnelId);
   const { kind, domainId } = input.address;
+  if (kind === 'builtin') {
+    // Leaving a Cloudflare target is explicit here: the funnel moves to this server's built-in address and the Cloudflare site is replaced by the paused page.
+    const cur = await deps.db.get<{ target: string }>('SELECT target FROM funnel_publish WHERE funnel_id = ?', funnelId);
+    if (isCloudflareTarget(cur?.target)) {
+      if (!can(auth, 'publishing:manage')) throw forbidden('Leaving Cloudflare publishing requires the "publishing:manage" permission');
+      await updateSettings(deps, auth, funnelId, { target: 'origin', leave: 'pause' }, ip);
+    }
+    const domain = await ensureBuiltinDomain(deps, ws);
+    return { funnel: await updateFunnel(deps, auth, funnelId, { status: 'live', domain_id: domain.id }), publishing: await getSettings(deps, ws, funnelId) };
+  }
   if (kind === 'custom') {
     if (!domainId) throw badRequest('DOMAIN_REQUIRED', 'Choose one of your verified domains');
     return { funnel: await updateFunnel(deps, auth, funnelId, { status: 'live', domain_id: domainId, conflicts: input.conflicts }), publishing: await getSettings(deps, ws, funnelId) };

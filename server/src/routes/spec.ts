@@ -116,6 +116,8 @@ export const OPERATIONS: Operation[] = [
   { method: 'POST', path: '/internal/edge/events', auth: 'edge', tag: 'edge', summary: 'Batch of beacon events forwarded by the edge queue consumer (up to 500)', limits: ['edge.resolve'], inHandler: ['ingest.workspace'], status: 200, notes: 'Events of a workspace over its ingest quota are counted in `limited` and dropped; the rest of the batch is unaffected. Signed like /internal/edge/resolve. Body `{events:[{id,at,ua,body}]}`; each `body` is validated as a public event. Replays of the same `id`/`at` are dropped. 503 INGEST_BACKPRESSURE tells the queue to retry later.' },
   { method: 'GET', path: '/uploads/:id/:name', auth: 'public', tag: 'public', summary: 'An image uploaded in the page builder (immutable, cacheable)', limits: ['ip.global', 'public.page'], notes: 'Also served on customer domains (passthrough and edge worker).' },
   { method: 'GET', path: '/uploads/:id', auth: 'public', tag: 'public', summary: 'An uploaded image without a file name', limits: ['ip.global', 'public.page'] },
+  { method: 'GET', path: '/s/:ws/:funnel', auth: 'public', tag: 'public', summary: 'A live funnel on its free built-in address (redirects to the trailing-slash form)', limits: ['ip.global', 'public.page'], notes: 'Only live funnels of the workspace attached to its built-in address are served; everything else is 404. X-Robots-Tag: noindex unless the funnel allows indexing; pages with custom code are sandboxed by CSP.' },
+  { method: 'GET', path: '/s/:ws/:funnel/*', auth: 'public', tag: 'public', summary: 'A step of a live funnel on its built-in address; the funnel root serves its first step when no step has the path /', limits: ['ip.global', 'public.page'], notes: 'Case and trailing-slash variants of a step path redirect (301) to the stored path under the prefix.' },
   { method: 'GET', path: '/preview/:funnelId', auth: 'public', tag: 'public', summary: 'Signed preview of a funnel (first step)', limits: ['ip.global', 'public.preview'], notes: 'Authorised by a short-lived token in ?token=.' },
   { method: 'GET', path: '/preview/:funnelId/*', auth: 'public', tag: 'public', summary: 'Signed preview of a funnel step', limits: ['ip.global', 'public.preview'] },
   // public ingestion
@@ -145,7 +147,7 @@ export const OPERATIONS: Operation[] = [
   A('POST', '/api/events/ticket', 'any', 'events', 'Short-lived ticket for the SSE stream', { limits: READ }),
   A('GET', '/api/events/stream', 'any', 'events', 'Server-sent events for the workspace', { inHandler: ['api.stream'], notes: 'Bearer header or ?ticket=.' }),
   A('GET', '/api/workspace', 'any', 'workspace', 'Workspace details'),
-  A('PATCH', '/api/workspace', 'workspace:manage', 'workspace', 'Rename the workspace, toggle custom scripts', { body: WorkspacePatch }),
+  A('PATCH', '/api/workspace', 'workspace:manage', 'workspace', 'Rename the workspace, change its address name (the slug of built-in addresses), toggle custom scripts', { body: WorkspacePatch }),
   A('GET', '/api/members', 'members:read', 'workspace', 'List members'),
   A('PATCH', '/api/members/:id', 'members:manage', 'workspace', 'Change a member role (you can only grant permissions you hold; a workspace keeps at least one owner)', { body: MemberPatch }),
   A('POST', '/api/members/:id/reset-2fa', 'members:manage', 'workspace', 'Remove a member second factor and end their sessions (account recovery)'),

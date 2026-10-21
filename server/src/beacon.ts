@@ -9,11 +9,12 @@
  */
 export const BEACON_JS = `(function(){
 var s=document.currentScript||document.querySelector('script[data-funnel]');if(!s)return;
-var funnel=s.getAttribute('data-funnel'),step=s.getAttribute('data-step'),api=s.getAttribute('data-api')||'',preview=s.getAttribute('data-preview')==='1';
-function cookie(n){var m=document.cookie.match(new RegExp('(?:^|; )'+n+'=([^;]*)'));return m?decodeURIComponent(m[1]):null}
-function setCookie(n,v){document.cookie=n+'='+encodeURIComponent(v)+'; path=/; SameSite=Lax'}
+var funnel=s.getAttribute('data-funnel'),step=s.getAttribute('data-step'),api=s.getAttribute('data-api')||'',preview=s.getAttribute('data-preview')==='1',cp=s.getAttribute('data-cookie-path')||'/';
+var mem={};
+function cookie(n){try{var m=document.cookie.match(new RegExp('(?:^|; )'+n+'=([^;]*)'));return m?decodeURIComponent(m[1]):(mem[n]||null)}catch(e){return mem[n]||null}}
+function setCookie(n,v){mem[n]=v;try{document.cookie=n+'='+encodeURIComponent(v)+'; path='+cp+'; SameSite=Lax'}catch(e){}}
 function rid(){var a=new Uint8Array(12),c=window.crypto||window.msCrypto,o='';if(c&&c.getRandomValues)c.getRandomValues(a);else for(var i=0;i<12;i++)a[i]=Math.floor(Math.random()*256);for(var j=0;j<12;j++)o+=('0'+a[j].toString(16)).slice(-2);return o}
-var vid=cookie('visitor_id');if(!vid){vid=rid();setCookie('visitor_id',vid)}
+var vid=cookie('visitor_id');if(!vid){try{var wn=window.name||'';if(wn.indexOf('fnv=')===0)vid=wn.slice(4,40)}catch(e){}}if(!vid){vid=rid()}try{if(!window.name||window.name.indexOf('fnv=')===0)window.name='fnv='+vid}catch(e){}setCookie('visitor_id',vid)
 var utms={};['source','medium','campaign','term','content'].forEach(function(k){var v=cookie('utm_'+k);if(v)utms[k]=v});
 var ref='';try{if(document.referrer){var rh=new URL(document.referrer).hostname;if(rh&&rh!==location.hostname)ref=rh}}catch(e){}
 var seen=funnel+step+vid,unique=!cookie(seen);if(unique)setCookie(seen,'1');

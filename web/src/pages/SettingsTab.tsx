@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { api, ApiError, errorMessage } from '../api/client';
 import { keys, useDomains, useMutate, useTags } from '../api/hooks';
+import { useAddresses } from '../api/golive';
 import type { FunnelDetail, PathConflict } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { ConflictDialog } from '../components/ConflictDialog';
@@ -49,6 +50,8 @@ export function SettingsTab({ funnel }: { funnel: FunnelDetail }) {
   const toast = useToast();
   const { can } = useAuth();
   const domains = useDomains();
+  const addresses = useAddresses(funnel.id);
+  const builtin = addresses.data?.options.find((o) => o.kind === 'builtin' && o.domainId) ?? null;
   const tags = useTags();
   const orig = useMemo(() => fromFunnel(funnel), [funnel]);
   const [f, setF] = useState<Form>(orig);
@@ -95,12 +98,13 @@ export function SettingsTab({ funnel }: { funnel: FunnelDetail }) {
           <Field label="Status" hint="Test funnels are only reachable through signed previews. Setting a funnel to test disconnects its domain.">
             {(p) => <select className="input" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value as Form['status'] })} {...p}><option value="test">Test</option><option value="live">Live</option></select>}
           </Field>
-          <Field label="Domain" error={errors.domainId} hint={domains.data && active.length === 0 ? 'No verified domains yet. Add and verify one on the Domains page.' : 'Only verified domains can be connected.'}>
+          <Field label="Domain" error={errors.domainId} hint={domains.data && active.length === 0 ? 'The built-in address needs nothing. To use your own domain, add and verify it on the Domains page.' : 'The built-in address, or a verified domain.'}>
             {(p) => (
               <select className="input" value={f.domainId} onChange={(e) => setF({ ...f, domainId: e.target.value })} {...p}>
                 <option value="">None</option>
+                {builtin ? <option value={builtin.domainId!}>Built-in address (free)</option> : null}
                 {active.map((d) => <option key={d.id} value={d.id}>{d.hostname}</option>)}
-                {funnel.domain && !active.some((d) => d.id === funnel.domain!.id) ? <option value={funnel.domain.id}>{funnel.domain.hostname}</option> : null}
+                {funnel.domain && !active.some((d) => d.id === funnel.domain!.id) && funnel.domain.id !== builtin?.domainId ? <option value={funnel.domain.id}>{funnel.domain.hostname}</option> : null}
               </select>
             )}
           </Field>

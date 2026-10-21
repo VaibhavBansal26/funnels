@@ -15,6 +15,7 @@ import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 import { linkCatalog } from './catalogcheckout.js';
 import { adTagsFor, adTagsForStep, loadPixelLevels } from './adtags.js';
 import { onFunnelChanged } from './publishing.js';
+import { mountOf, type Mount } from './addresses.js';
 
 export const MAX_BACKUPS = 10;
 /** Size limit of version-1 (block tree) documents, kept from before the GrapesJS builder. */
@@ -39,6 +40,8 @@ interface BuildInput {
   workspaceScripts: boolean;
   mode: 'live' | 'preview';
   hrefFor?: (s: StepRow) => string;
+  /** Built-in address: every internal link, the canonical URL and the cookie scope carry the path prefix. */
+  mount?: Mount | null;
   /** Pixel / consent runtime for the page head (see services/adtags.ts). */
   adTags?: string;
   apiBase?: string;
@@ -59,7 +62,8 @@ export function renderContext(deps: Deps, i: BuildInput): PageRenderContext {
     footerCode: join(i.funnel.footer_tracking_code, i.step.footer_tracking_code),
     allowScripts: i.workspaceScripts && i.scriptsOk,
     allowTrackingCode: i.workspaceScripts,
-    steps: i.steps.map((s) => ({ id: s.id, href: i.hrefFor ? i.hrefFor(s) : s.base_path })),
+    steps: i.steps.map((s) => ({ id: s.id, href: i.hrefFor ? i.hrefFor(s) : (i.mount?.prefix ?? '') + s.base_path })),
+    ...(i.mount ? { cookiePath: i.mount.cookiePath, canonicalUrl: i.mount.origin + i.mount.prefix + i.step.base_path } : {}),
     mode: i.mode,
     ...(i.adTags ? { adTags: i.adTags } : {}),
     ...(i.apiBase ? { apiBase: i.apiBase } : {}),
@@ -80,17 +84,23 @@ export async function regenerateFunnel(deps: Deps, ws: string, funnelId: string)
   const workspaceScripts = await workspaceAllowsScripts(deps, ws);
   const pages = new Map((await deps.db.all<PageRow>('SELECT * FROM step_pages WHERE workspace_id = ? AND funnel_id = ?', ws, funnelId)).map((p) => [p.step_id, p]));
   const levels = await loadPixelLevels(deps, ws, funnelId);
+  const mount = await mountOf(deps, funnel);
   for (const step of steps) {
     const page = pages.get(step.id);
     if (!page) continue;
     await primeSnapshots(deps, ws, loadDoc(page.doc_json));
     const adTags = adTagsFor(levels, funnelId, step.id, loadDoc(page.doc_json), 'live')?.html;
-    const { html, checksum } = renderStep(deps, { funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'live', adTags });
+    const { html, checksum } = renderStep(deps, { funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'live', adTags, mount });
     if (checksum !== page.checksum) await deps.db.run('UPDATE step_pages SET html = ?, checksum = ? WHERE step_id = ?', html, checksum, step.id);
   }
   deps.pageCache.invalidate(steps.map((s) => s.id));
   await schedulePurge(deps, await liveUrlsForFunnel(deps, funnelId));
   await onFunnelChanged(deps, funnelId);
+}
+
+/** Re-renders the funnels of a workspace that are served from its built-in address (after the workspace's address name changed). */
+export async function regenerateBuiltinFunnels(deps: Deps, ws: string): Promise<void> {
+  for (const f of await deps.db.all<{ id: string }>("SELECT f.id FROM funnels f JOIN domains d ON d.id = f.domain_id WHERE f.workspace_id = ? AND d.kind = 'builtin' ORDER BY f.id", ws)) await regenerateFunnel(deps, ws, f.id);
 }
 
 export async function regenerateWorkspace(deps: Deps, ws: string): Promise<void> {
@@ -104,7 +114,7 @@ export async function insertPage(deps: Deps, ws: string, funnel: FunnelRow, step
   await syncReviewBlocks(deps, ws, funnel.id, step.id, loadDoc(docJson));
   await primeSnapshots(deps, ws, loadDoc(docJson));
   const adTags = await adTagsForStep(deps, ws, funnel.id, step.id, loadDoc(docJson));
-  const { html, checksum } = renderStep(deps, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(deps, ws), mode: 'live', adTags });
+  const { html, checksum } = renderStep(deps, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(deps, ws), mode: 'live', adTags, mount: await mountOf(deps, funnel) });
   await deps.db.run(
     'INSERT INTO step_pages (step_id, workspace_id, funnel_id, doc_json, html, checksum, scripts_ok, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     step.id, ws, funnel.id, docJson, html, checksum, scriptsOk ? 1 : 0, iso(deps),
@@ -193,7 +203,7 @@ export async function savePage(deps: Deps, auth: Auth, funnelId: string, stepId:
     await syncReviewBlocks(d, ws, funnelId, stepId, doc);
     await primeSnapshots(d, ws, doc);
     const adTags = await adTagsForStep(d, ws, funnelId, stepId, doc);
-    const { html, checksum } = renderStep(d, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(d, ws), mode: 'live', adTags });
+    const { html, checksum } = renderStep(d, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(d, ws), mode: 'live', adTags, mount: await mountOf(d, funnel) });
     await d.db.run('UPDATE step_pages SET doc_json = ?, html = ?, checksum = ?, scripts_ok = ?, updated_at = ? WHERE step_id = ?', docJson, html, checksum, scriptsOk ? 1 : 0, at, stepId);
     const version = nextVersion(d, step.version);
     // The WHERE on the old version is a second guard behind the row lock: it can only match once.

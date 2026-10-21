@@ -98,7 +98,7 @@ describe('go live on the pages.dev address', () => {
     expect(w.cf.serve(name, '/promo/')!.body).toContain('Version one');
   });
 
-  it('switching the target moves the address: back to this server the funnel returns to test and the pages.dev address is gone; a new project is a new address', async () => {
+  it('switching the target moves the address: back to this server the funnel moves to the built-in address and the pages.dev address is gone; a new project is a new address', async () => {
     const w = await world();
     await w.call('POST', `/api/funnels/${w.f.id}/go-live`, { address: { kind: 'pages' } });
     await w.drain();
@@ -115,8 +115,9 @@ describe('go live on the pages.dev address', () => {
     // back to origin
     const back = await w.call('PUT', `/api/funnels/${w.f.id}/publishing`, { target: 'origin', leave: 'pause' });
     expect(back.json.target).toBe('origin');
+    // a live funnel keeps being reachable: its address moves to the free built-in address of this app
     const d2 = (await w.call('GET', `/api/funnels/${w.f.id}`)).json;
-    expect(d2).toMatchObject({ status: 'test', domain: null });
+    expect(d2).toMatchObject({ status: 'live', domain: { kind: 'builtin', status: 'active' } });
     expect(await w.h.deps.db.get("SELECT 1 FROM domains WHERE kind = 'pages' AND system_funnel_id = ?", w.f.id)).toBeUndefined();
   });
 

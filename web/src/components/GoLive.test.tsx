@@ -79,4 +79,25 @@ describe('GoLivePanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /Take offline/ }));
     await waitFor(() => expect(calls).toEqual([{ method: 'PATCH', path: '/api/funnels/fn_1', body: { status: 'test' } }]));
   });
+
+  it('offers the free built-in address first, lets the name be changed and search engines be allowed', async () => {
+    const builtin = { kind: 'builtin' as const, domainId: 'dom_b', label: 'Built-in address (free)', url: 'https://app.test/s/acme/promo/free-guide', host: 'app.test', available: true, reason: null, status: 'active' as const, selected: false };
+    addresses = { options: [builtin, pages, custom], state: 'draft', funnelStatus: 'test', currentDomainId: null, builtin: { workspaceSlug: 'acme', funnelSlug: 'promo', base: 'https://app.test/s/acme/promo', allowIndexing: false } };
+    view();
+    expect(await screen.findByTestId('final-url')).toHaveTextContent('https://app.test/s/acme/promo/free-guide');
+    expect(screen.getByText(/hidden from search engines by default/)).toBeInTheDocument();
+    const input = screen.getByLabelText('Address name');
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Bad Name');
+    expect(await screen.findByText(/lower-case letters, digits and single hyphens/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save name' })).toBeDisabled();
+    await userEvent.clear(input);
+    await userEvent.type(input, 'free-guide');
+    await userEvent.click(screen.getByRole('button', { name: 'Save name' }));
+    await waitFor(() => expect(calls).toContainEqual({ method: 'PATCH', path: '/api/funnels/fn_1', body: { public_slug: 'free-guide' } }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /Let search engines index/ }));
+    await waitFor(() => expect(calls).toContainEqual({ method: 'PATCH', path: '/api/funnels/fn_1', body: { allow_indexing: true } }));
+    await userEvent.click(screen.getByRole('button', { name: /Go live/ }));
+    await waitFor(() => expect(calls).toContainEqual({ method: 'POST', path: '/api/funnels/fn_1/go-live', body: { address: { kind: 'builtin', domainId: 'dom_b' } } }));
+  });
 });

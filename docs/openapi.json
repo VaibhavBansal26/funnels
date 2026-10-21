@@ -237,6 +237,108 @@
         ]
       }
     },
+    "/s/{ws}/{funnel}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "A live funnel on its free built-in address (redirects to the trailing-slash form)",
+        "description": "Only live funnels of the workspace attached to its built-in address are served; everything else is 404. X-Robots-Tag: noindex unless the funnel allows indexing; pages with custom code are sandboxed by CSP.",
+        "operationId": "get_s_ws_funnel",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "funnel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "public.page"
+        ]
+      }
+    },
+    "/s/{ws}/{funnel}/{rest}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "A step of a live funnel on its built-in address; the funnel root serves its first step when no step has the path /",
+        "description": "Case and trailing-slash variants of a step path redirect (301) to the stored path under the prefix.",
+        "operationId": "get_s_ws_funnel_rest",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "funnel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rest",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "public.page"
+        ]
+      }
+    },
     "/preview/{funnelId}": {
       "get": {
         "tags": [
@@ -1690,7 +1792,7 @@
         "tags": [
           "workspace"
         ],
-        "summary": "Rename the workspace, toggle custom scripts",
+        "summary": "Rename the workspace, change its address name (the slug of built-in addresses), toggle custom scripts",
         "operationId": "patch_api_workspace",
         "parameters": [],
         "requestBody": {
@@ -1707,6 +1809,12 @@
                   },
                   "allowCustomScripts": {
                     "type": "boolean"
+                  },
+                  "slug": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "pattern": "^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,39}$"
                   }
                 }
               }
@@ -3204,6 +3312,15 @@
                         "resolved_path"
                       ]
                     }
+                  },
+                  "public_slug": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "pattern": "^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,39}$"
+                  },
+                  "allow_indexing": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -3350,6 +3467,15 @@
                         "resolved_path"
                       ]
                     }
+                  },
+                  "public_slug": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "pattern": "^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,39}$"
+                  },
+                  "allow_indexing": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -3674,6 +3800,7 @@
                       "kind": {
                         "type": "string",
                         "enum": [
+                          "builtin",
                           "pages",
                           "workers",
                           "custom"

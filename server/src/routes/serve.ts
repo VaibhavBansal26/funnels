@@ -16,6 +16,11 @@ import { pathKey } from '../services/paths.js';
 import { renderStep } from '../services/pages.js';
 import { adTagsForStep } from '../services/adtags.js';
 import { loadDoc } from '../pagemodel/doc.js';
+import { RUNTIME_JS } from '../pagemodel/render.js';
+import { cspFor } from '../publish/bundle.js';
+import { cspHosts } from '../ads/snippets.js';
+import { adTagsFor, effectivePixels, loadPixelLevels } from '../services/adtags.js';
+import { appHost, appOrigin, builtinCookiePath, builtinPrefix, SLUG_RE } from '../services/addresses.js';
 
 export function messagePage(status: number, title: string, message: string): Response {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title><style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;color:#1f2937;background:#f9fafb}main{text-align:center;padding:24px}h1{font-size:1.6rem;margin:0 0 8px}p{color:#6b7280;margin:0}</style></head><body><main><h1>${esc(title)}</h1><p>${esc(message)}</p></main></body></html>`;
@@ -31,20 +36,46 @@ const hostOf = (c: Context, trustProxy: boolean): string => {
 const PASSTHROUGH = /^\/(api\/public\/|public\/reviews\/|uploads\/|beacon\.js$|healthz$|readyz$)/;
 
 /** Cache miss path, coalesced: a burst of requests for one page costs one database read per process (one per cluster with Redis). */
-async function pageFor(deps: Deps, step: StepRow): Promise<{ html: string; checksum: string } | null> {
+async function pageFor(deps: Deps, step: StepRow, builtin = false): Promise<{ html: string; checksum: string; csp?: PageCsp } | null> {
   const cached = deps.pageCache.get(step.id);
-  if (cached) return cached;
+  if (cached && (!builtin || cached.csp)) return cached;
   const page = await deps.flights.run('page', `page:${step.id}`, async () => {
     const row = await deps.db.get<PageRow>('SELECT html, checksum FROM step_pages WHERE step_id = ?', step.id);
     return row ? { html: row.html, checksum: row.checksum } : null;
   });
-  if (page) deps.pageCache.set(step.id, page);
-  return page;
+  if (!page) return null;
+  const full = builtin ? { ...page, csp: await builtinCsp(deps, step, page.html) } : page;
+  deps.pageCache.set(step.id, full);
+  return full;
 }
 
-function trackingCookies(deps: Deps, c: Context, funnelId: string, stepId: string): void {
+export interface PageCsp {
+  policy: string;
+  /** The page carries code the platform did not write: it is served in a sandbox (opaque origin) so it can never act as the app. */
+  sandboxed: boolean;
+}
+
+/**
+ * The Content-Security-Policy of a page served from this app's own origin (a built-in address). Same policy as the Cloudflare Pages bundle (exact for the platform's scripts,
+ * relaxed for owner code), plus `sandbox` for pages with owner-authored code: those scripts run on the app's host, so without the sandbox they could call the app's API
+ * with the visitor's session (an admin opening a tenant's page) or read other tenants' cookies. Sandboxed pages keep working: forms and the beacon talk to the public API
+ * cross-origin (`Origin: null` is allowed), and the beacon falls back to in-memory ids when cookies are not readable.
+ */
+async function builtinCsp(deps: Deps, step: StepRow, html: string): Promise<PageCsp> {
+  const docRow = await deps.db.get<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE step_id = ?', step.id);
+  const levels = await loadPixelLevels(deps, step.workspace_id, step.funnel_id);
+  const tags = adTagsFor(levels, step.funnel_id, step.id, docRow ? loadDoc(docRow.doc_json) : null, 'live');
+  const origin = appOrigin(deps);
+  const { policy, relaxed } = cspFor(
+    { id: step.id, basePath: step.base_path, html, knownInline: [RUNTIME_JS, ...(tags ? [tags.source] : [])], vendors: cspHosts(effectivePixels(levels, step.id)) },
+    origin, new Set([origin]),
+  );
+  return { policy: relaxed ? `${policy}; sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads` : policy, sandboxed: relaxed };
+}
+
+function trackingCookies(deps: Deps, c: Context, funnelId: string, stepId: string, path = '/'): void {
   const secure = new URL(c.req.url).protocol === 'https:' || c.req.header('x-forwarded-proto') === 'https';
-  const base = { path: '/', sameSite: 'Lax' as const, secure };
+  const base = { path, sameSite: 'Lax' as const, secure };
   const cookies = c.req.header('cookie') ?? '';
   if (!/(?:^|; )visitor_id=/.test(cookies)) setCookie(c, 'visitor_id', randomBytes(12).toString('hex'), base);
   setCookie(c, 'funnel_id', funnelId, base);
@@ -54,14 +85,21 @@ function trackingCookies(deps: Deps, c: Context, funnelId: string, stepId: strin
   for (const [k, v] of Object.entries(utms ?? {})) setCookie(c, `utm_${k}`, encodeURIComponent(v), base);
 }
 
-async function sendPage(deps: Deps, c: Context, step: StepRow, status = 200): Promise<Response> {
-  const page = await pageFor(deps, step);
+async function sendPage(deps: Deps, c: Context, step: StepRow, status = 200, opts: { cookiePath?: string; headers?: Record<string, string> } = {}): Promise<Response> {
+  const page = await pageFor(deps, step, !!opts.cookiePath);
   if (!page) return messagePage(404, 'Page not found', 'This page has no content yet.');
-  trackingCookies(deps, c, step.funnel_id, step.id);
+  trackingCookies(deps, c, step.funnel_id, step.id, opts.cookiePath);
   const etag = `"${page.checksum}"`;
-  const headers: Record<string, string> = { etag, 'cache-control': 'private, max-age=0, must-revalidate', 'x-content-type-options': 'nosniff', 'referrer-policy': 'strict-origin-when-cross-origin' };
+  const headers: Record<string, string> = { etag, 'cache-control': 'private, max-age=0, must-revalidate', 'x-content-type-options': 'nosniff', 'referrer-policy': 'strict-origin-when-cross-origin', ...(opts.headers ?? {}) };
   if (status === 200 && c.req.header('if-none-match') === etag) return c.body(null, 304, headers);
   return c.html(page.html, status as 200, headers);
+}
+
+/** What a built-in address adds to serving a page: the cookie scope, whether search engines may index it, and the prefix of its URLs. */
+export interface BuiltinInfo {
+  prefix: string;
+  cookiePath: string;
+  indexable: boolean;
 }
 
 export type Resolution =
@@ -69,7 +107,7 @@ export type Resolution =
   | { kind: 'inactive' }
   | { kind: 'suspended' }
   | { kind: 'redirect'; location: string }
-  | { kind: 'page'; status: 200 | 404; step: StepRow }
+  | { kind: 'page'; status: 200 | 404; step: StepRow; builtin?: BuiltinInfo }
   | { kind: 'missing' };
 
 /** Maps (hostname, path, query) to what a visitor should get. Shared by the in-process host router and the signed edge endpoint. */
@@ -79,6 +117,10 @@ export function resolveLive(deps: Deps, host: string, pathname: string, search: 
 }
 
 async function resolveUncached(deps: Deps, host: string, pathname: string): Promise<Resolution> {
+  if (host && host === appHost(deps) && pathname.startsWith('/s/')) {
+    const parts = pathname.split('/');
+    return resolveBuiltinUncached(deps, parts[2] ?? '', parts[3] ?? '', parts.length > 4 ? '/' + parts.slice(4).join('/') : parts.length === 4 && pathname.endsWith('/') ? '/' : '');
+  }
   const search = '';
   const domain = host ? await deps.db.get<DomainRow>("SELECT * FROM domains WHERE hostname = ? AND kind = 'custom'", host) : undefined;
   if (!domain) return { kind: 'none' };
@@ -103,6 +145,82 @@ async function resolveUncached(deps: Deps, host: string, pathname: string): Prom
   }
   const notFound = await liveStep(domain.default_404_step_id);
   return notFound ? { kind: 'page', status: 404, step: notFound } : { kind: 'missing' };
+}
+
+// ---- built-in addresses: <APP_PUBLIC_URL>/s/<workspace slug>/<funnel slug>/<step path> ------------------------------------------------------------------------
+
+async function resolveBuiltinUncached(deps: Deps, wsSlug: string, funSlug: string, rest: string): Promise<Resolution> {
+  if (!SLUG_RE.test(wsSlug) || !SLUG_RE.test(funSlug)) return { kind: 'missing' };
+  // Only a LIVE funnel of this workspace that is attached to the workspace's own built-in address is ever served here; anything else is the same "missing" (no existence leak).
+  const f = await deps.db.get<FunnelRow>(
+    `SELECT f.* FROM funnels f JOIN workspaces w ON w.id = f.workspace_id JOIN domains d ON d.id = f.domain_id AND d.workspace_id = f.workspace_id
+     WHERE w.slug = ? AND f.public_slug = ? AND d.kind = 'builtin' AND f.status = 'live' AND f.deleted_at IS NULL`,
+    wsSlug, funSlug,
+  );
+  if (!f) return { kind: 'missing' };
+  if (await isSuspended(deps, f.workspace_id)) return { kind: 'suspended' };
+  const prefix = builtinPrefix(wsSlug, funSlug);
+  if (rest === '') return { kind: 'redirect', location: `${prefix}/` };
+  const key = pathKey(rest);
+  let step = await deps.db.get<StepRow>('SELECT * FROM steps WHERE workspace_id = ? AND funnel_id = ? AND path_key = ?', f.workspace_id, f.id, key);
+  const info: BuiltinInfo = { prefix, cookiePath: builtinCookiePath(wsSlug), indexable: f.allow_indexing === 1 };
+  if (step) return rest !== step.base_path ? { kind: 'redirect', location: prefix + step.base_path } : { kind: 'page', status: 200, step, builtin: info };
+  // The funnel's own root: its first step answers when no step has the path "/".
+  if (key === '/') {
+    step = await deps.db.get<StepRow>('SELECT * FROM steps WHERE workspace_id = ? AND funnel_id = ? ORDER BY position, created_at, id LIMIT 1', f.workspace_id, f.id);
+    if (step) return { kind: 'page', status: 200, step, builtin: info };
+  }
+  return { kind: 'missing' };
+}
+
+export function resolveBuiltin(deps: Deps, wsSlug: string, funSlug: string, rest: string, search: string): Promise<Resolution> {
+  return deps.flights.run('resolve', `builtin:${wsSlug}/${funSlug}${rest}`, () => resolveBuiltinUncached(deps, wsSlug, funSlug, rest), { shareMs: 300 }).then((r) => (r.kind === 'redirect' ? { ...r, location: r.location + search } : r));
+}
+
+/** The response headers a built-in page needs on top of the common ones: search engine policy and CSP. Shared by the origin route and the signed edge endpoint. */
+export async function builtinHeaders(deps: Deps, step: StepRow, info: BuiltinInfo, https: boolean): Promise<Record<string, string>> {
+  const page = await pageFor(deps, step, true);
+  const out: Record<string, string> = {};
+  if (!info.indexable) out['x-robots-tag'] = 'noindex, nofollow';
+  if (page?.csp) out['content-security-policy'] = https ? page.csp.policy : page.csp.policy.replace('; upgrade-insecure-requests', '').replace('upgrade-insecure-requests; ', '');
+  return out;
+}
+
+/** GET /s/<workspace>/<funnel>[/<step path>]: the free built-in address of a live funnel. Everything runs under the same limits as pages on customer domains. */
+export function builtinRoutes(deps: Deps): Hono {
+  const r = new Hono();
+  const handle = async (c: Context): Promise<Response> => {
+    const url = new URL(c.req.url);
+    const parts = url.pathname.split('/'); // ['', 's', workspace, funnel, ...step path]
+    let ws: string;
+    let fun: string;
+    try {
+      ws = decodeURIComponent(parts[2] ?? '');
+      fun = decodeURIComponent(parts[3] ?? '');
+    } catch {
+      return messagePage(404, 'Page not found', 'The page you are looking for does not exist.');
+    }
+    const rest = parts.length > 4 ? '/' + parts.slice(4).join('/') : parts.length === 4 && url.pathname.endsWith('/') ? '/' : '';
+    // Slugs are lower case: another case is a permanent redirect to the canonical spelling.
+    if (ws !== ws.toLowerCase() || fun !== fun.toLowerCase()) return c.redirect(`/s/${ws.toLowerCase()}/${fun.toLowerCase()}${rest}${url.search}`, 301);
+    const res = await resolveBuiltin(deps, ws, fun, rest, url.search);
+    switch (res.kind) {
+      case 'redirect':
+        return c.redirect(res.location, 301);
+      case 'page': {
+        const https = url.protocol === 'https:' || c.req.header('x-forwarded-proto') === 'https';
+        const extra = await builtinHeaders(deps, res.step, res.builtin!, https);
+        return sendPage(deps, c, res.step, res.status, { cookiePath: res.builtin!.cookiePath, headers: extra });
+      }
+      case 'suspended':
+        return messagePage(503, 'Site unavailable', 'This site is currently unavailable.');
+      default:
+        return messagePage(404, 'Page not found', 'The page you are looking for does not exist.');
+    }
+  };
+  r.get('/s/:ws/:funnel', handle);
+  r.get('/s/:ws/:funnel/*', handle);
+  return r;
 }
 
 /** Resolves the Host header to an active domain and serves its live funnels' steps. Everything else falls through to the app. */

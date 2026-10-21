@@ -356,3 +356,52 @@ describe('event queue at the edge', () => {
     expect(bad.retried).toHaveLength(0);
   });
 });
+
+describe('built-in addresses (the app host under /s/<workspace>/<funnel>)', () => {
+  const app = (w: ReturnType<typeof world>) => {
+    const built = { cookiePath: '/s/acme', headers: { 'x-robots-tag': 'noindex, nofollow', 'content-security-policy': "default-src 'self'", 'set-cookie': 'evil=1', 'x-other': 'no' } };
+    w.origin.pages.set('app.example.com/s/acme/promo/landing', { ...w.page('b1', '<html>built-in</html>'), ...built });
+    w.origin.pages.set('app.example.com/s/acme/promo/other', { ...w.page('b2', '<html>other</html>'), ...built });
+    const pending: Promise<unknown>[] = [];
+    return async (path: string, headers: Record<string, string> = {}) => {
+      const res = await handle(new Request(`https://app.example.com${path}`, { headers }), w.env, { waitUntil: (p) => void pending.push(p) }, w.rt);
+      await Promise.all(pending.splice(0));
+      return res;
+    };
+  };
+
+  it('scopes cookies to the workspace prefix, applies only the allow-listed origin headers, and keeps them on a cache hit', async () => {
+    const w = world();
+    const get = app(w);
+    const miss = await get('/s/acme/promo/landing');
+    expect(miss.headers.get('x-edge-cache')).toBe('miss');
+    expect(miss.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(miss.headers.get('content-security-policy')).toBe("default-src 'self'");
+    expect(miss.headers.get('x-other')).toBeNull(); // not on the allow-list
+    const cookies = miss.headers.getSetCookie();
+    expect(cookies.some((c) => c.startsWith('evil='))).toBe(false);
+    expect(cookies.length).toBeGreaterThan(2);
+    expect(cookies.every((c) => c.includes('Path=/s/acme;') && c.includes('SameSite=Lax'))).toBe(true);
+    const hit = await get('/s/acme/promo/landing');
+    expect(hit.headers.get('x-edge-cache')).toBe('hit');
+    expect(hit.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(hit.headers.getSetCookie().every((c) => c.includes('Path=/s/acme;'))).toBe(true);
+    // revalidation by checksum keeps the built-in metadata too
+    w.clock.t += 61_000;
+    expect((await get('/s/acme/promo/landing')).headers.get('x-edge-cache')).toBe('stale');
+    expect((await get('/s/acme/promo/landing')).headers.get('content-security-policy')).toBe("default-src 'self'");
+  });
+
+  it('cache keys include the whole prefix: two steps and two workspaces never share an entry; custom-domain pages keep Path=/', async () => {
+    const w = world();
+    const get = app(w);
+    await get('/s/acme/promo/landing?utm_source=a');
+    await get('/s/acme/promo/other');
+    expect([...w.cache.store.keys()].sort()).toEqual(['https://app.example.com/s/acme/promo/landing', 'https://app.example.com/s/acme/promo/other']);
+    expect(await (await get('/s/acme/promo/other')).text()).toBe('<html>other</html>');
+    expect((await get('/s/other-ws/promo/landing')).status).toBe(404); // a different workspace name is a different key and a different origin answer
+    const custom = await w.get('/promo');
+    expect(custom.headers.getSetCookie().every((c) => c.includes('Path=/;'))).toBe(true);
+    expect(custom.headers.get('x-robots-tag')).toBeNull();
+  });
+});

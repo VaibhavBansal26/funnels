@@ -1,6 +1,8 @@
 export interface CachedPage {
   html: string;
   checksum: string;
+  /** Content-Security-Policy of a page served from the app's own origin (built-in addresses); filled on first use. */
+  csp?: { policy: string; sandboxed: boolean };
 }
 
 /** Tiny in-memory cache of rendered step HTML. Writers invalidate explicitly, so serving never returns stale content. */

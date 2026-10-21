@@ -252,6 +252,10 @@ sequenceDiagram
 
 Product analytics (`services/productanalytics.ts`) reads `orders` (grouped by product, currency, role, funnel, step and 15-minute bucket, folded to local intervals in the requested zone) and the sales rollups (unique visitors of checkout steps); the AI summary (`services/analyticssummary.ts`) builds an evidence object from the same engine ([ADR 0025](adr/0025-grounded-analytics-summary.md)).
 
+### Serve a live page on a built-in address
+
+`GET /s/<workspace slug>/<funnel slug>/<step path>` is handled by `builtinRoutes` (routes/serve.ts) before the web app's fallback. `resolveBuiltin` joins workspace slug, funnel slug and the funnel's domain (kind `builtin`, status live, not trashed), checks suspension and picks the step by `path_key` (or the first step for the funnel root). The stored page HTML was rendered with the prefix (`services/addresses.ts` `mountOf` gives the renderer the prefix, canonical origin and cookie path), so serving is the same page-cache path as on a custom domain plus response headers: `X-Robots-Tag` and a CSP (sandboxed when the page has owner code). The edge endpoint `/internal/edge/resolve` answers the same resolution for `host = APP_PUBLIC_URL host` and returns the cookie path and headers for the worker. See [GO-LIVE.md](GO-LIVE.md) and [ADR 0045](adr/0045-built-in-address-path-prefix.md).
+
 ## Domain state machine
 
 ```mermaid
@@ -265,7 +269,9 @@ stateDiagram-v2
   note right of failed: funnels on the domain -> test + detached, same transaction
 ```
 
-Funnel rules: `live` needs an attached **active** domain; `status: test` detaches the domain; attaching runs the cross-funnel path conflict check and accepts a resolution payload that must be a subset of the server's own conflicts.
+A `domains` row has a `kind`: `custom` (above), `builtin` (one per workspace, always active, served by this app under a path prefix) or `pages` (one per funnel published to Cloudflare, pending until the first deployment succeeds; also used for workers.dev). System domains have synthetic `.invalid` hostnames and are excluded from every host lookup, the Domains API and plan limits ([ADR 0043](adr/0043-system-domains-free-addresses.md)).
+
+Funnel rules: `live` needs an attached **active** domain (a builtin one is always active; the funnel's own Cloudflare address may still be pending); `status: test` detaches the domain; attaching runs the cross-funnel path conflict check and accepts a resolution payload that must be a subset of the server's own conflicts.
 
 ## Deployment
 

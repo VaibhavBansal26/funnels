@@ -21,6 +21,8 @@ export interface AddressOptions {
   state: PublishState;
   funnelStatus: 'live' | 'test';
   currentDomainId: string | null;
+  /** The names inside the built-in address and the search engine setting. */
+  builtin?: { workspaceSlug: string; funnelSlug: string; base: string; allowIndexing: boolean };
 }
 
 export const goLiveKey = (funnelId: string) => ['addresses', funnelId] as const;

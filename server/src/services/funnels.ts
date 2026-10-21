@@ -20,7 +20,7 @@ import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 import { insertStep, assertValidPath, serializeStep } from './steps.js';
 import { onFunnelChanged, onFunnelPurge } from './publishing.js';
 import { CF_TARGETS_SQL } from '../publish/target.js';
-import { addressFrom, mountKey, mountOf, pagesHostOf, workspaceSlugOf, type Address } from './addresses.js';
+import { addressFrom, SlugInput, setFunnelSlug, mountKey, mountOf, pagesHostOf, workspaceSlugOf, type Address } from './addresses.js';
 
 const iso = (deps: Deps) => deps.now().toISOString();
 
@@ -50,6 +50,10 @@ export const UpdateFunnelInput = z.object({
   header_tracking_code: code.optional(),
   footer_tracking_code: code.optional(),
   conflicts: ConflictResolution.optional(),
+  /** Name of the funnel in its built-in address (`/s/<workspace>/<name>/...`). Stable when the funnel is renamed; changing it changes the address. */
+  public_slug: SlugInput.optional(),
+  /** Let search engines index the built-in address (default: noindex). */
+  allow_indexing: z.boolean().optional(),
 });
 
 export const ListQuery = z.object({
@@ -345,12 +349,17 @@ export async function updateFunnel(deps: Deps, auth: Auth, id: string, input: z.
       // A funnel's own *.pages.dev address is attachable while it is still "pending" (it turns active with the first successful deployment).
       const pagesPending = domain.kind === 'pages' && domain.system_funnel_id === funnel.id && !!(await d.db.get(`SELECT 1 FROM funnel_publish WHERE funnel_id = ? AND target IN ${CF_TARGETS_SQL}`, funnel.id));
       if (domain.kind === 'pages' && domain.system_funnel_id !== funnel.id) throw notFound('Domain');
+      if (domain.kind === 'builtin' && (await d.db.get(`SELECT 1 FROM funnel_publish WHERE funnel_id = ? AND target IN ${CF_TARGETS_SQL}`, funnel.id))) {
+        throw conflict('SWITCH_TARGET_FIRST', 'This funnel is published to Cloudflare. Use Go live > Built-in address, which switches it back to this server and pauses the Cloudflare site.');
+      }
       if (domain.status !== 'active' && !pagesPending) throw conflict('DOMAIN_NOT_ACTIVE', 'The domain is not verified yet');
       // Only customer domains share one path space between funnels; system addresses are per funnel.
       if (domain.kind === 'custom' && domainId !== funnel.domain_id) pathsChanged = await resolveDomainConflicts(d, ws, funnel, domainId, input.conflicts);
     }
 
+    if (input.public_slug !== undefined) await setFunnelSlug(d, ws, id, input.public_slug);
     const fields: Record<string, string | number | null> = { status, domain_id: domainId, updated_at: iso(d) };
+    if (input.allow_indexing !== undefined) fields.allow_indexing = input.allow_indexing ? 1 : 0;
     if (input.name !== undefined) fields.name = input.name;
     if (input.favicon !== undefined) fields.favicon = input.favicon;
     if (input.header_tracking_code !== undefined) fields.header_tracking_code = input.header_tracking_code || null;

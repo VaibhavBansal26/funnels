@@ -9,7 +9,7 @@ import type { FunnelDetail } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { Badge } from '../ui';
 import { useToast } from './Toasts';
-import { CopyButton, ErrorBanner, Loading } from './ui';
+import { CopyButton, ErrorBanner, Loading, TextField } from './ui';
 
 const STATE: Record<PublishState, { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'info' }> = {
   draft: { label: 'Test mode', tone: 'neutral' },
@@ -19,6 +19,7 @@ const STATE: Record<PublishState, { label: string; tone: 'ok' | 'warn' | 'danger
   paused: { label: 'Paused', tone: 'warn' },
 };
 
+const SLUG = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,39}$/;
 export const optionKey = (o: AddressOption) => `${o.kind}:${o.domainId ?? ''}`;
 
 /** The one place to publish a funnel: pick where it lives, see the final URL, go live, copy, open. */
@@ -31,6 +32,8 @@ export function GoLivePanel({ funnel, onDone }: { funnel: FunnelDetail; onDone?:
   const live = useMutate((o: AddressOption) => api.post(`/api/funnels/${funnel.id}/go-live`, { address: { kind: o.kind, ...(o.domainId ? { domainId: o.domainId } : {}) } }), refresh);
   const offline = useMutate(() => api.patch(`/api/funnels/${funnel.id}`, { status: 'test' }), refresh);
   const retry = useMutate(() => api.post(`/api/funnels/${funnel.id}/publishing/redeploy`), refresh);
+  const tweak = useMutate((body: Record<string, unknown>) => api.patch(`/api/funnels/${funnel.id}`, body), refresh);
+  const [slug, setSlug] = useState<string | null>(null);
 
   const data = q.data;
   useEffect(() => {
@@ -84,12 +87,23 @@ export function GoLivePanel({ funnel, onDone }: { funnel: FunnelDetail; onDone?:
         {noOptions ? <p className="small muted">No address is ready yet. <Link to="/settings">Connect Cloudflare</Link> (free) or <Link to="/domains">add a domain</Link>.</p> : null}
       </fieldset>
 
+      {picked?.kind === 'builtin' && data.builtin ? (
+        <div className="stack" aria-label="Built-in address settings">
+          <TextField label="Address name" value={slug ?? data.builtin.funnelSlug} hint={`The last part of ${data.builtin.base.replace(data.builtin.funnelSlug, '<name>')}. Renaming the funnel does not change it; changing it moves the address (the old one stops working).`} error={slug !== null && !SLUG.test(slug) ? 'Use 1 to 40 lower-case letters, digits and single hyphens' : undefined} onChange={(v) => setSlug(v.toLowerCase())} />
+          <div className="row">
+            <button type="button" className="btn sm" disabled={slug === null || slug === data.builtin.funnelSlug || !SLUG.test(slug) || tweak.isPending} onClick={() => tweak.mutate({ public_slug: slug }, { onSuccess: () => { setSlug(null); toast.push('Address name changed', 'ok'); }, onError: () => undefined })}>Save name</button>
+            <label className="check"><input type="checkbox" checked={data.builtin.allowIndexing} disabled={tweak.isPending} onChange={(e) => tweak.mutate({ allow_indexing: e.target.checked }, { onError: () => undefined })} />Let search engines index this address</label>
+          </div>
+          <p className="muted small">Built-in addresses are hidden from search engines by default. They are free and need no DNS; a custom domain looks more professional.</p>
+        </div>
+      ) : null}
+
       {state === 'failed' ? (
         <div className="alert error" role="alert"><strong>Publishing failed.</strong> The funnel is set live but Cloudflare did not finish the deployment. See the log under Publishing below, then try again.</div>
       ) : null}
       {state === 'paused' ? <div className="alert warn" role="status">The site shows a paused page. Redeploy it from Publishing below to bring it back.</div> : null}
       {state === 'publishing' ? <div className="alert" role="status" aria-live="polite">Publishing to Cloudflare. This page updates by itself when the address is reachable.</div> : null}
-      <ErrorBanner error={live.error ?? offline.error ?? retry.error} />
+      <ErrorBanner error={live.error ?? offline.error ?? retry.error ?? tweak.error} />
 
       {finalUrl && (state === 'live' || state === 'draft' || state === 'publishing') ? (
         <div className="dns-box" aria-label="Final address">

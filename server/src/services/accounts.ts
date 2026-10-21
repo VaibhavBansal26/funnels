@@ -13,7 +13,8 @@ import { denyError } from '../ratelimit/response.js';
 import { hashId } from '../ratelimit/subject.js';
 import { isPlatformAdmin, platformRoleOf } from '../auth/platform.js';
 import { audit } from './audit.js';
-import { regenerateWorkspace } from './pages.js';
+import { regenerateBuiltinFunnels, regenerateWorkspace } from './pages.js';
+import { setWorkspaceSlug, SlugInput } from './addresses.js';
 import { assertCanGrant, findRole } from './roles.js';
 
 const email = z.string().trim().toLowerCase().email().max(254);
@@ -22,7 +23,7 @@ export const password = z.string().min(8, 'Password must be at least 8 character
 export const RegisterInput = z.object({ email, password, name: z.string().trim().min(1).max(100), workspaceName: z.string().trim().min(1).max(100).optional() });
 export const LoginInput = z.object({ email, password: z.string().min(1).max(200) });
 export const MemberPatch = z.object({ roleId: z.string().min(1).max(64) });
-export const WorkspacePatch = z.object({ name: z.string().trim().min(1).max(100).optional(), allowCustomScripts: z.boolean().optional() });
+export const WorkspacePatch = z.object({ name: z.string().trim().min(1).max(100).optional(), allowCustomScripts: z.boolean().optional(), slug: SlugInput.optional() });
 export const PasswordChange = z.object({ currentPassword: z.string().min(1).max(200), newPassword: password });
 
 export interface UserRow {
@@ -52,9 +53,9 @@ async function publicUser(deps: Deps, u: Pick<UserRow, 'id' | 'email' | 'name' |
 }
 
 export async function workspaceOf(deps: Deps, ws: string) {
-  const w = await deps.db.get<{ id: string; name: string; allow_custom_scripts: number; created_at: string }>('SELECT * FROM workspaces WHERE id = ?', ws);
+  const w = await deps.db.get<{ id: string; name: string; allow_custom_scripts: number; created_at: string; slug: string | null }>('SELECT * FROM workspaces WHERE id = ?', ws);
   if (!w) throw notFound('Workspace');
-  return { id: w.id, name: w.name, allowCustomScripts: w.allow_custom_scripts === 1, createdAt: w.created_at };
+  return { id: w.id, name: w.name, slug: w.slug, allowCustomScripts: w.allow_custom_scripts === 1, createdAt: w.created_at };
 }
 
 async function sessionResponse(deps: Deps, u: UserRow, tokens: Tokens) {
@@ -165,8 +166,12 @@ export async function updateWorkspace(deps: Deps, auth: Auth, input: z.infer<typ
     if (input.name !== undefined) await d.db.run('UPDATE workspaces SET name = ? WHERE id = ?', input.name, ws);
     if (input.allowCustomScripts !== undefined) await d.db.run('UPDATE workspaces SET allow_custom_scripts = ? WHERE id = ?', input.allowCustomScripts ? 1 : 0, ws);
     if (input.allowCustomScripts !== undefined && input.allowCustomScripts !== before.allowCustomScripts) await regenerateWorkspace(d, ws);
+    if (input.slug !== undefined && input.slug !== before.slug) {
+      await setWorkspaceSlug(d, ws, input.slug);
+      await regenerateBuiltinFunnels(d, ws); // every internal link and canonical URL of built-in funnels carries the workspace name
+    }
   });
-  await audit(deps, { workspaceId: ws, actorId: auth.userId, action: 'workspace.updated', detail: { ...(input.name !== undefined ? { name: input.name } : {}), ...(input.allowCustomScripts !== undefined ? { allowCustomScripts: input.allowCustomScripts } : {}) } });
+  await audit(deps, { workspaceId: ws, actorId: auth.userId, action: 'workspace.updated', detail: { ...(input.slug !== undefined ? { slug: input.slug } : {}), ...(input.name !== undefined ? { name: input.name } : {}), ...(input.allowCustomScripts !== undefined ? { allowCustomScripts: input.allowCustomScripts } : {}) } });
   return workspaceOf(deps, ws);
 }
 

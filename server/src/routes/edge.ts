@@ -4,7 +4,7 @@ import { NonceCache, verifyEdge } from '../edge/signing.js';
 import type { PageRow } from '../repos/types.js';
 import { AppError } from '../errors.js';
 import { PublicEventInput, recordPublicEvent } from '../services/events.js';
-import { resolveLive } from './serve.js';
+import { builtinHeaders, resolveLive } from './serve.js';
 
 /**
  * Internal endpoint for the Cloudflare edge worker: GET /internal/edge/resolve?host=&path=&search=
@@ -28,7 +28,9 @@ export function edgeRoutes(deps: Deps): Hono {
     if (res.kind !== 'page') return c.json({ kind: 'missing', status: 404 });
     const page = await deps.db.get<PageRow>('SELECT html, checksum FROM step_pages WHERE step_id = ?', res.step.id);
     if (!page) return c.json({ kind: 'missing', status: 404 });
-    const base = { kind: 'page', status: res.status, funnelId: res.step.funnel_id, stepId: res.step.id, checksum: page.checksum };
+    // A built-in address (the app's own host under /s/...): the worker also needs the cookie scope and the response headers (search engine policy, CSP).
+    const extra = res.builtin ? { cookiePath: res.builtin.cookiePath, headers: await builtinHeaders(deps, res.step, res.builtin, true) } : {};
+    const base = { kind: 'page', status: res.status, funnelId: res.step.funnel_id, stepId: res.step.id, checksum: page.checksum, ...extra };
     return c.json(c.req.header('x-edge-checksum') === page.checksum ? { ...base, notModified: true } : { ...base, html: page.html });
   });
   // POST /internal/edge/events: the queue consumer in the worker forwards batches of beacons that the edge already answered 202 for.

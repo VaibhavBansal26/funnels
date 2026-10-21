@@ -44,6 +44,10 @@ PII policy: collect only what forms ask for; exports (CSV) are workspace-scoped 
 | Forged cross-origin reads of the public API | CORS allow-list (customer domains, Pages hosts, this app); rate limits unchanged | any client can still POST; the endpoints validate everything |
 | Redis outage | policies fail open or closed deliberately | a fail-open outage removes limiter protection (edge layer remains) |
 
+## Built-in addresses
+
+Pages on `<APP_PUBLIC_URL>/s/...` run on the app's own origin, next to the admin app. Consequences and controls: (1) only live funnels of the workspace attached to its own built-in domain are served, every other case is the same 404, suspended workspaces are 503; (2) pages with owner-authored code (custom scripts, tracking snippets, event handlers) are served under a CSP `sandbox` (opaque origin, no `allow-same-origin`): they can not read the app's cookies or storage, can not call the API as the signed-in user, and can not read other tenants' cookies; (3) cookies are scoped to `Path=/s/<workspace>`; (4) the sanitised pages without owner code get an exact CSP (platform scripts by hash); (5) `X-Robots-Tag: noindex` by default; (6) the app host is not registrable as a customer domain and system domains can not match a `Host` header; (7) rate limits as for any public page. Residual risk: a sanitiser bypass in the page cleaner would run unsandboxed on the app's origin for pages that look code-free; the cleaner is the same one that protects customer domains, which are separate origins, so the built-in address raises the stakes of that code. A custom domain remains the recommended production address. Tests: `server/test/builtin.address.test.ts`, `e2e/tests/golive.spec.ts`.
+
 ## Page builder and published pages
 
 The builder stores GrapesJS project data and the server publishes HTML rendered from it. Legacy pages were client-rendered HTML that the server trusted; **it does not trust the client any more**: the browser sends project JSON only, never HTML or CSS, and a hostile client can send anything it likes without changing what is allowed to reach a visitor.

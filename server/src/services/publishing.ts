@@ -18,9 +18,9 @@ import { newId } from '../util/ids.js';
 import { assertWithinLimit } from '../billing/limits.js';
 import { audit } from './audit.js';
 import { adTagsFor, effectivePixels, loadPixelLevels } from './adtags.js';
-import { renderStep, workspaceAllowsScripts } from './pages.js';
+import { regenerateFunnel, renderStep, workspaceAllowsScripts } from './pages.js';
 import { primeSnapshots, refreshForPublish } from './googlereviews.js';
-import { addressFrom, ensurePagesDomain, workspaceSlugOf, type Address } from './addresses.js';
+import { addressFrom, ensureBuiltinDomain, ensurePagesDomain, workspaceSlugOf, type Address } from './addresses.js';
 
 /**
  * Publishing: where a funnel is served from. `origin` (default) is this server by Host header; `cloudflare-pages` builds the funnel into a static site and deploys it with
@@ -377,9 +377,18 @@ async function activatePagesAddress(deps: Deps, ws: string, funnelId: string): P
  * The funnel stops using Cloudflare Pages (target switched back, connection removed, project deleted): its pages.dev address no longer exists. A funnel that was attached to it
  * goes back to test (the owner picks a new address in Go live), and the system domain record is removed.
  */
-export async function releasePagesAddress(deps: Deps, ws: string, funnelId: string): Promise<void> {
+export async function releasePagesAddress(deps: Deps, ws: string, funnelId: string, fallback: 'builtin' | 'test' = 'builtin'): Promise<void> {
   const d = await deps.db.get<DomainRow>("SELECT * FROM domains WHERE workspace_id = ? AND kind = 'pages' AND system_funnel_id = ?", ws, funnelId);
   if (!d) return;
+  const attached = await deps.db.get<{ status: string }>('SELECT status FROM funnels WHERE workspace_id = ? AND id = ? AND domain_id = ? AND deleted_at IS NULL', ws, funnelId, d.id);
+  if (attached?.status === 'live' && fallback === 'builtin') {
+    // "Switching the target moves the address": a live funnel keeps being reachable, now on the free built-in address of this app.
+    const builtin = await ensureBuiltinDomain(deps, ws);
+    await deps.db.run('UPDATE funnels SET domain_id = ?, updated_at = ? WHERE workspace_id = ? AND id = ?', builtin.id, iso(deps), ws, funnelId);
+    await deps.db.run('DELETE FROM domains WHERE id = ?', d.id);
+    await regenerateFunnel(deps, ws, funnelId);
+    return;
+  }
   await deps.db.run("UPDATE funnels SET status = 'test', domain_id = NULL, updated_at = ? WHERE workspace_id = ? AND id = ? AND domain_id = ?", iso(deps), ws, funnelId, d.id);
   await deps.db.run('DELETE FROM domains WHERE id = ?', d.id);
 }
@@ -762,7 +771,7 @@ async function unpublishNow(deps: Deps, auth: Auth, funnel: FunnelRow, row: Publ
       if (!(e instanceof CloudflareApiError && e.notFound)) throw new AppError(422, 'CLOUDFLARE_REJECTED', explain(e));
     });
     await deps.db.run("UPDATE funnel_publish SET active_deployment_id = NULL, active_version = NULL, custom_domain = NULL, custom_domain_status = NULL, custom_domain_error = NULL, project_name = NULL, pages_host = NULL, project_created = 0, paused = 0, hold = 0, updated_at = ? WHERE funnel_id = ?", iso(deps), funnel.id);
-    await releasePagesAddress(deps, funnel.workspace_id, funnel.id); // the project and its *.pages.dev address are gone
+    await releasePagesAddress(deps, funnel.workspace_id, funnel.id, 'test'); // the project and its free address are gone: the funnel goes back to test
     return;
   }
   // pause (or a project we do not own): replace the site with the paused page, synchronously, so the person sees the result.

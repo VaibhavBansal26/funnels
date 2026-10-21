@@ -117,7 +117,7 @@ export function PublishingCard({ funnel }: { funnel: FunnelDetail }) {
 
       {!onPages ? (
         <>
-          <p className="small">The funnel is served by this app on its domain{funnel.domain ? <> (<strong>{funnel.domain.hostname}</strong>)</> : null}. Publish it to <strong>Cloudflare Pages</strong> to serve static copies from Cloudflare&apos;s network: pages keep loading while this server is down, and forms, checkout and tracking still talk to this app.</p>
+          <p className="small">The funnel is served by this app{funnel.domain ? <> at <strong>{funnel.domain.hostname}</strong></> : null}. Publish it to <strong>Cloudflare Pages</strong> to serve static copies from Cloudflare&apos;s network: pages keep loading while this server is down, and forms, checkout and tracking still talk to this app.</p>
           {!canManage ? <p className="muted small">Changing where a funnel is published needs the publishing:manage permission.</p> : null}
           {canManage && conn.data && !canChoosePages ? <div className="alert">Connect your Cloudflare account first in <Link to="/settings">Settings &gt; Publishing</Link>.</div> : null}
           {canManage && canChoosePages ? (
@@ -130,7 +130,7 @@ export function PublishingCard({ funnel }: { funnel: FunnelDetail }) {
                   <label className="check" style={{ marginTop: 8 }}><input type="checkbox" checked={adopt} onChange={(e) => setAdopt(e.target.checked)} />Yes, this funnel may overwrite the existing project&apos;s content</label>
                 </div>
               ) : null}
-              {s.funnelStatus !== 'live' ? <p className="small muted">The funnel is in test mode: the project is created now and the first deployment happens when you set it live on a verified domain.</p> : null}
+              {s.funnelStatus !== 'live' ? <p className="small muted">The funnel is in test mode: the project is created now and the first deployment happens when you go live (Go live card above) on its free address or a verified domain.</p> : null}
               <div className="row"><button className="btn primary" type="submit" disabled={choose.isPending || !!nameError || (needsConfirm && !adopt)}>{choose.isPending ? 'Connecting…' : 'Publish with Cloudflare Pages'}</button></div>
             </form>
           ) : null}

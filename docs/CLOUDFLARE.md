@@ -52,6 +52,10 @@ Known gap: when a step path is *renamed*, the old URL is not purged (only curren
 
 Local: `docker compose --profile edge up` runs `wrangler dev` against the compose app. The worker's unit tests (`npm test --prefix edge`) run in plain Node with fake Cache/KV and verify every signed call with the origin's real `verifyEdge`; they do not run inside workerd/miniflare, so Cache API and KV semantics are modelled, not exercised.
 
+### Putting the app host behind the worker (built-in addresses)
+
+Built-in addresses (`/s/<workspace>/<funnel>/...`, see [GO-LIVE.md](GO-LIVE.md)) are served by the origin without any worker. To cache them at the edge too, route **only** `app.example.com/s/*` (the app's own host, path prefix `/s/`) to the worker, plus the public API routes it already forwards; never the whole host, or the admin app would be resolved as a customer page. The worker then calls `/internal/edge/resolve` with `host = the app host`; the origin answers for `/s/...` only, and returns the cookie path (`/s/<workspace>`) and the response headers (`X-Robots-Tag`, `Content-Security-Policy`) that the worker applies from a closed allow-list. The cache key is the full URL without the query, so it includes workspace and funnel names; changing a slug or the workspace name re-renders the funnel and purges the old URLs.
+
 ## Failure modes
 
 | Failure | Behaviour |

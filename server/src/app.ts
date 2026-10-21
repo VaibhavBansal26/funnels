@@ -22,7 +22,7 @@ import { notificationRoutes, streamRoutes } from './routes/notifications.js';
 import { publicRoutes } from './routes/public.js';
 import { googleReviewsRoutes } from './routes/googlereviews.js';
 import { edgeRoutes } from './routes/edge.js';
-import { hostRouting, messagePage, previewRoutes, staticRoutes } from './routes/serve.js';
+import { builtinRoutes, hostRouting, messagePage, previewRoutes, staticRoutes } from './routes/serve.js';
 import { tagRoutes } from './routes/tags.js';
 import { adminTemplateRoutes, blockRoutes, templateRoutes } from './routes/templates.js';
 import { webhookRoutes } from './routes/webhooks.js';
@@ -77,6 +77,7 @@ export function createApp(deps: Deps): Hono {
   app.route('/', edgeRoutes(deps));
   app.route('/', publicRoutes(deps));
   app.route('/', previewRoutes(deps));
+  app.route('/', builtinRoutes(deps)); // free built-in addresses: /s/<workspace>/<funnel>/<step path>
   app.route('/', uploadRoutes(deps));
 
   const api = new Hono();

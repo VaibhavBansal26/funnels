@@ -5,6 +5,7 @@ import { PLAN_DEFS } from '../billing/plans.js';
 import type { CheckoutBlock } from '../blocks/index.js';
 import { isUniqueViolation } from '../db/index.js';
 import { inTx } from '../db/scope.js';
+import { stepUrls } from './addresses.js';
 import type { Deps } from '../deps.js';
 import { AppError, badRequest, conflict, notFound } from '../errors.js';
 import type { ChargeRequest, ChargeResult } from '../payments/provider.js';
@@ -87,8 +88,10 @@ export async function startHostedCheckout(deps: Deps, c: StartCtx): Promise<Chec
   const stripe = requireStripe(deps);
   const account = await accountOf(deps, c.ws);
   if (!account || !account.charges_enabled) throw conflict('STRIPE_NOT_CONNECTED', 'This store cannot take payments yet: the owner has not finished connecting Stripe');
-  const domain = c.funnel.domain_id && c.funnel.status === 'live' ? await deps.db.get<{ hostname: string }>("SELECT hostname FROM domains WHERE id = ? AND status = 'active'", c.funnel.domain_id) : undefined;
-  if (!domain) throw conflict('FUNNEL_NOT_LIVE', 'Payments are only taken on live funnels');
+  // The address the visitor came from (custom domain, built-in address under its path prefix, or the Cloudflare host): success and cancel URLs return to it.
+  const domain = c.funnel.domain_id && c.funnel.status === 'live' ? await deps.db.get<{ id: string }>("SELECT id FROM domains WHERE id = ? AND (status = 'active' OR kind = 'pages')", c.funnel.domain_id) : undefined;
+  const address = domain ? (await stepUrls(deps, c.ws, c.funnel.id, c.step.id))[0]?.address : undefined;
+  if (!domain || !address) throw conflict('FUNNEL_NOT_LIVE', 'Payments are only taken on live funnels');
   const items: Item[] = c.offers.map((o) => ({ blockId: o.blockId, productName: o.name, description: o.description, amountCents: o.unitAmount * o.quantity, unitAmount: o.unitAmount, quantity: o.quantity, currency: o.currency, bump: o.role === 'bump', role: o.role, productId: o.productId, priceId: o.priceId, recurring: o.recurring }));
   if (items.some((i) => i.amountCents <= 0)) throw badRequest('NOT_PURCHASABLE', 'A free offer cannot be paid for');
   const subscription = items.some((i) => i.recurring);
@@ -96,7 +99,7 @@ export async function startHostedCheckout(deps: Deps, c: StartCtx): Promise<Chec
   const feeBps = PLAN_DEFS[await workspacePlan(deps, c.ws)].feeBps;
   const fee = Math.floor((total * feeBps) / 10_000);
   const settings = await paymentSettings(deps, c.ws);
-  const base = `https://${domain.hostname}`;
+  const base = address.base;
   const next = await deps.db.get<{ base_path: string }>('SELECT base_path FROM steps WHERE funnel_id = ? AND position > ? ORDER BY position LIMIT 1', c.funnel.id, c.step.position);
   const success = c.block.success;
   const nextUrl = success?.type === 'url' ? success.url : success?.type === 'message' || !next ? `${base}${c.step.base_path}?purchase=success` : `${base}${next.base_path}`;

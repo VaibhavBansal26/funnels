@@ -243,4 +243,31 @@ export async function mountOf(deps: Deps, funnel: FunnelRow): Promise<Mount | nu
 /** Stable string for "did the way this funnel is rendered change?" comparisons. */
 export const mountKey = (m: Mount | null): string => (m ? `${m.origin}${m.prefix}` : '');
 
+export interface StepAddressRow {
+  kind: DomainRow['kind'];
+  hostname: string;
+  ws_slug: string | null;
+  public_slug: string | null;
+  pages_host: string | null;
+  base_path: string;
+  step_id: string;
+}
+
+/** The public URL of each step of a funnel on the address it is attached to (`stepId` narrows it to one step). Reads only; empty when the funnel has no usable address. */
+export async function stepUrls(deps: Pick<Deps, 'db' | 'config'>, ws: string, funnelId: string, stepId?: string | null): Promise<{ stepId: string; url: string; address: Address }[]> {
+  const rows = await deps.db.all<StepAddressRow>(
+    `SELECT d.kind, d.hostname, w.slug AS ws_slug, f.public_slug, fp.pages_host, s.base_path, s.id AS step_id
+     FROM funnels f JOIN domains d ON d.id = f.domain_id JOIN workspaces w ON w.id = f.workspace_id JOIN steps s ON s.funnel_id = f.id
+     LEFT JOIN funnel_publish fp ON fp.funnel_id = f.id
+     WHERE f.workspace_id = ? AND f.id = ? ${stepId ? 'AND s.id = ?' : ''} ORDER BY s.position, s.id`,
+    ws, funnelId, ...(stepId ? [stepId] : []),
+  );
+  const out: { stepId: string; url: string; address: Address }[] = [];
+  for (const r of rows) {
+    const a = addressFrom(deps, { public_slug: r.public_slug }, { kind: r.kind, hostname: r.hostname }, { workspaceSlug: r.ws_slug, pagesHost: r.pages_host });
+    if (a) out.push({ stepId: r.step_id, url: stepUrl(a, r.base_path), address: a });
+  }
+  return out;
+}
+
 export { hostOfOrigin };

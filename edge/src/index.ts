@@ -84,6 +84,9 @@ interface Resolved {
   stepId?: string;
   location?: string;
   notModified?: boolean;
+  /** Built-in address (the app's own host under /s/<workspace>/...): the cookie scope and the response headers the origin decided (robots policy, CSP). */
+  cookiePath?: string;
+  headers?: Record<string, string>;
 }
 
 const PROXIED = /^\/(api\/public\/|public\/reviews\/|uploads\/|beacon\.js$)/;
@@ -96,9 +99,9 @@ export const errorPage = (status: number, title: string, message: string): Respo
 
 const clean = (v: string | null) => (v ? v.replace(/[\u0000-\u001f\u007f;,\s]/g, '').slice(0, 100) : '');
 
-function cookieHeaders(request: Request, funnelId: string, stepId: string, rt: Runtime): string[] {
+function cookieHeaders(request: Request, funnelId: string, stepId: string, rt: Runtime, path = '/'): string[] {
   const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
-  const base = `; Path=/; SameSite=Lax${secure}`;
+  const base = `; Path=${path}; SameSite=Lax${secure}`;
   const out: string[] = [];
   if (!/(?:^|; )visitor_id=/.test(request.headers.get('cookie') ?? '')) out.push(`visitor_id=${rt.randomHex(12)}${base}`);
   out.push(`funnel_id=${funnelId}${base}`, `step_id=${stepId}${base}`);
@@ -110,9 +113,13 @@ function cookieHeaders(request: Request, funnelId: string, stepId: string, rt: R
   return out;
 }
 
-function pageResponse(request: Request, html: string, status: number, checksum: string, funnelId: string, stepId: string, rt: Runtime, extra: Record<string, string> = {}): Response {
+/** Only these origin-decided headers are copied onto a page response (the origin is trusted, but the list stays closed). */
+const ORIGIN_HEADERS = ['x-robots-tag', 'content-security-policy'];
+
+function pageResponse(request: Request, html: string, status: number, checksum: string, funnelId: string, stepId: string, rt: Runtime, extra: Record<string, string> = {}, built?: { cookiePath?: string; headers?: Record<string, string> }): Response {
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8', etag: `"${checksum}"`, 'cache-control': 'public, max-age=0, must-revalidate', 'x-content-type-options': 'nosniff', ...extra });
-  for (const c of cookieHeaders(request, funnelId, stepId, rt)) headers.append('set-cookie', c);
+  for (const [k, v] of Object.entries(built?.headers ?? {})) if (ORIGIN_HEADERS.includes(k.toLowerCase())) headers.set(k, v);
+  for (const c of cookieHeaders(request, funnelId, stepId, rt, built?.cookiePath)) headers.append('set-cookie', c);
   if (status === 200 && request.headers.get('if-none-match') === `"${checksum}"`) return new Response(null, { status: 304, headers });
   return new Response(request.method === 'HEAD' ? null : html, { status, headers });
 }
@@ -135,16 +142,28 @@ async function callOrigin(env: Env, request: Request, checksum: string | null, r
 async function storeCached(request: Request, r: Resolved, rt: Runtime): Promise<void> {
   const res = new Response(r.html ?? '', {
     status: 200,
-    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=86400', 'x-edge-fetched': String(rt.now()), 'x-edge-checksum': r.checksum!, 'x-edge-status': String(r.status ?? 200), 'x-edge-funnel': r.funnelId!, 'x-edge-step': r.stepId! },
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=86400', 'x-edge-fetched': String(rt.now()), 'x-edge-checksum': r.checksum!, 'x-edge-status': String(r.status ?? 200), 'x-edge-funnel': r.funnelId!, 'x-edge-step': r.stepId!, ...(r.cookiePath ? { 'x-edge-cookie-path': r.cookiePath } : {}), ...(r.headers ? { 'x-edge-headers': JSON.stringify(r.headers) } : {}) },
   });
   await rt.cache.put(cacheKey(request), res);
+}
+
+/** What a built-in page remembers from the origin: cookie scope and response headers. */
+function builtOf(c: Response): { cookiePath?: string; headers?: Record<string, string> } {
+  const raw = c.headers.get('x-edge-headers');
+  let headers: Record<string, string> | undefined;
+  try {
+    headers = raw ? (JSON.parse(raw) as Record<string, string>) : undefined;
+  } catch {
+    headers = undefined;
+  }
+  return { cookiePath: c.headers.get('x-edge-cookie-path') ?? undefined, headers };
 }
 
 async function revalidate(env: Env, request: Request, cached: Response, rt: Runtime): Promise<void> {
   const r = await callOrigin(env, request, cached.headers.get('x-edge-checksum'), rt);
   if (r.kind === 'page' && r.notModified) {
     const html = await cached.clone().text();
-    await storeCached(request, { ...r, html, status: Number(cached.headers.get('x-edge-status')), funnelId: cached.headers.get('x-edge-funnel')!, stepId: cached.headers.get('x-edge-step')! }, rt);
+    await storeCached(request, { ...r, html, status: Number(cached.headers.get('x-edge-status')), funnelId: cached.headers.get('x-edge-funnel')!, stepId: cached.headers.get('x-edge-step')!, ...builtOf(cached) }, rt);
   } else if (r.kind === 'page') await storeCached(request, r, rt);
 }
 
@@ -200,7 +219,7 @@ export async function handle(request: Request, env: Env, ctx: Ctx, rt: Runtime):
   const cached = await rt.cache.match(key);
   const age = cached ? rt.now() - Number(cached.headers.get('x-edge-fetched') ?? 0) : Infinity;
   const fromCache = (c: Response, extra: Record<string, string> = {}) =>
-    c.clone().text().then((html) => pageResponse(request, html, Number(c.headers.get('x-edge-status')), c.headers.get('x-edge-checksum')!, c.headers.get('x-edge-funnel')!, c.headers.get('x-edge-step')!, rt, extra));
+    c.clone().text().then((html) => pageResponse(request, html, Number(c.headers.get('x-edge-status')), c.headers.get('x-edge-checksum')!, c.headers.get('x-edge-funnel')!, c.headers.get('x-edge-step')!, rt, extra, builtOf(c)));
 
   if (cached && age < ttl) return fromCache(cached, { 'x-edge-cache': 'hit' });
   if (cached && age < staleMax) {
@@ -231,7 +250,7 @@ export async function handle(request: Request, env: Env, ctx: Ctx, rt: Runtime):
       return fromCache(cached, { 'x-edge-cache': 'revalidated' });
     }
     ctx.waitUntil(storeCached(request, r, rt));
-    return pageResponse(request, r.html!, r.status ?? 200, r.checksum!, r.funnelId!, r.stepId!, rt, { 'x-edge-cache': 'miss' });
+    return pageResponse(request, r.html!, r.status ?? 200, r.checksum!, r.funnelId!, r.stepId!, rt, { 'x-edge-cache': 'miss' }, { cookiePath: r.cookiePath, headers: r.headers });
   } catch {
     // Origin down or misbehaving: serve whatever we have, however old, before showing an error.
     if (cached) return fromCache(cached, { 'x-edge-cache': 'stale-if-error' });
