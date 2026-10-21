@@ -53,8 +53,9 @@ export function serializeDomain(deps: Deps, d: DomainRow, funnelCount = 0) {
   };
 }
 
+/** A customer-owned domain. System domains (built-in and Cloudflare Pages addresses) are not managed through the Domains API and look like "not found" here. */
 export async function requireDomain(deps: Deps, ws: string, id: string): Promise<DomainRow> {
-  const d = await deps.db.get<DomainRow>('SELECT * FROM domains WHERE workspace_id = ? AND id = ?', ws, id);
+  const d = await deps.db.get<DomainRow>("SELECT * FROM domains WHERE workspace_id = ? AND id = ? AND kind = 'custom'", ws, id);
   if (!d) throw notFound('Domain');
   return d;
 }
@@ -62,7 +63,7 @@ export async function requireDomain(deps: Deps, ws: string, id: string): Promise
 const countFor = async (deps: Deps, id: string) => (await deps.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM funnels WHERE domain_id = ? AND deleted_at IS NULL', id))!.n;
 
 export async function listDomains(deps: Deps, ws: string) {
-  const rows = await deps.db.all<DomainRow>('SELECT * FROM domains WHERE workspace_id = ? ORDER BY created_at DESC, id DESC', ws);
+  const rows = await deps.db.all<DomainRow>("SELECT * FROM domains WHERE workspace_id = ? AND kind = 'custom' ORDER BY created_at DESC, id DESC", ws);
   const data = [];
   for (const d of rows) data.push(serializeDomain(deps, d, await countFor(deps, d.id)));
   return { data };
@@ -84,6 +85,8 @@ export async function createDomain(deps: Deps, ws: string, input: z.infer<typeof
   const reserved = new Set([hostOf(deps.config.APP_PUBLIC_URL), deps.config.APP_PUBLIC_CNAME_TARGET.toLowerCase(), 'localhost']);
   if (!HOST_RE.test(hostname)) throw badRequest('INVALID_HOSTNAME', 'Enter a valid hostname such as offers.example.com (no protocol, path or port)');
   if (reserved.has(hostname)) throw badRequest('HOSTNAME_RESERVED', 'This hostname is reserved');
+  // Free addresses of Cloudflare (<project>.pages.dev, <worker>.workers.dev) and the synthetic names of system domains can never be a customer's own domain.
+  if (/\.(pages\.dev|workers\.dev|invalid)$/.test(hostname)) throw badRequest('HOSTNAME_RESERVED', 'Addresses ending in pages.dev or workers.dev are free addresses from Cloudflare. They are created when you publish to Cloudflare; add your own domain here instead.');
   const id = newId('dom');
   const at = deps.now().toISOString();
   if (await deps.db.get('SELECT 1 FROM domains WHERE hostname = ?', hostname)) throw conflict('DOMAIN_TAKEN', 'This hostname is already registered');

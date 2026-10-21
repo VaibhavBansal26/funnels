@@ -8,6 +8,7 @@ import { ConflictDialog } from '../components/ConflictDialog';
 import { useToast } from '../components/Toasts';
 import { FunnelTracking } from './growth/TrackingCards';
 import { PublishingCard } from './growth/PublishingCard';
+import { GoLivePanel } from '../components/GoLive';
 import { ConfirmDialog, ErrorBanner, Field, StatusBadge, TextField } from '../components/ui';
 
 interface Form {
@@ -85,6 +86,7 @@ export function SettingsTab({ funnel }: { funnel: FunnelDetail }) {
 
   return (
     <div className="stack" style={{ maxWidth: 760 }}>
+      <div className="card" id="go-live"><GoLivePanel funnel={funnel} /></div>
       <form className="card" noValidate onSubmit={(e) => { e.preventDefault(); if (!Object.keys(errors).length && dirty) submit(); }}>
         <h2>General</h2>
         <ErrorBanner error={save.error && !(save.error instanceof ApiError && save.error.code === 'PATH_CONFLICT') ? save.error : null} />
@@ -103,7 +105,7 @@ export function SettingsTab({ funnel }: { funnel: FunnelDetail }) {
             )}
           </Field>
         </div>
-        {funnel.domain ? <p className="small">Connected to <strong>{funnel.domain.hostname}</strong> <StatusBadge status={funnel.domain.status} /> {funnel.status === 'live' ? <a href={`https://${funnel.domain.hostname}${funnel.basePath}`} target="_blank" rel="noopener noreferrer">Open live page</a> : null}</p> : null}
+        {funnel.domain ? <p className="small">Connected to <strong>{funnel.domain.hostname}</strong> <StatusBadge status={funnel.domain.status} /> {funnel.status === 'live' ? <a href={funnel.address?.url ?? `https://${funnel.domain.hostname}${funnel.basePath}`} target="_blank" rel="noopener noreferrer">Open live page</a> : null}</p> : null}
 
         <fieldset style={{ border: 0, padding: 0, margin: '0 0 12px' }}>
           <legend className="label">Tags</legend>

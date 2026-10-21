@@ -3593,6 +3593,164 @@
         "x-rate-limit-cost": 3
       }
     },
+    "/api/funnels/{id}/addresses": {
+      "get": {
+        "tags": [
+          "funnels"
+        ],
+        "summary": "The addresses a funnel can go live on (Cloudflare Pages address, your verified domains), what is missing for each, and the publish state",
+        "operationId": "get_api_funnels_id_addresses",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "funnels:read",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/funnels/{id}/go-live": {
+      "post": {
+        "tags": [
+          "funnels"
+        ],
+        "summary": "Go live on a chosen address in one step: attaches it and sets the funnel live; a Cloudflare Pages address also creates the project and starts the first deployment (needs publishing:manage)",
+        "operationId": "post_api_funnels_id_go_live",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "address": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "pages",
+                          "custom"
+                        ]
+                      },
+                      "domainId": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "conflicts": {
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "maxLength": 300
+                        },
+                        "resolved_path": {
+                          "type": "string",
+                          "maxLength": 300
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "resolved_path"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "address"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "funnels:write",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ],
+        "x-rate-limit-cost": 3
+      }
+    },
     "/api/funnels/{id}/preview-token": {
       "post": {
         "tags": [

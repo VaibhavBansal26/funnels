@@ -13,7 +13,7 @@ export async function requireFunnel(db: Db, ws: string, id: string, includeDelet
   return f;
 }
 
-export async function insertFunnel(db: Db, f: Omit<FunnelRow, 'deleted_at'>): Promise<void> {
+export async function insertFunnel(db: Db, f: Omit<FunnelRow, 'deleted_at' | 'public_slug' | 'allow_indexing'>): Promise<void> {
   await db.run(
     `INSERT INTO funnels (id, workspace_id, name, base_path, domain_id, status, favicon, header_tracking_code, footer_tracking_code, created_by, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

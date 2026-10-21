@@ -19,6 +19,7 @@ import { audit } from './audit.js';
 import { adTagsFor, effectivePixels, loadPixelLevels } from './adtags.js';
 import { renderStep, workspaceAllowsScripts } from './pages.js';
 import { primeSnapshots, refreshForPublish } from './googlereviews.js';
+import { addressFrom, ensurePagesDomain, workspaceSlugOf, type Address } from './addresses.js';
 
 /**
  * Publishing: where a funnel is served from. `origin` (default) is this server by Host header; `cloudflare-pages` builds the funnel into a static site and deploys it with
@@ -31,6 +32,8 @@ import { primeSnapshots, refreshForPublish } from './googlereviews.js';
  * change always wins and intermediate states may be skipped. A rollback holds automatic deployments until someone redeploys, otherwise the next autosave would undo it.
  * Not exercised against real Cloudflare (docs/CLOUDFLARE-PAGES.md).
  */
+/** Cloudflare Pages allows 100 projects per account and this app creates one per funnel: https://developers.cloudflare.com/pages/platform/limits/ (checked 2026-10-21). */
+export const PAGES_PROJECT_LIMIT = 100;
 export const PROJECT_NAME = /^[a-z0-9][a-z0-9-]{0,56}[a-z0-9]$/;
 const MAX_LOG = 60;
 const DOMAIN_POLL_LIMIT = 2 * 3_600_000;
@@ -125,6 +128,8 @@ export async function getConnection(deps: Deps, ws: string) {
 /** Explains a refused Cloudflare call in terms of what the person can fix. Never includes the token. */
 function explain(e: unknown): string {
   if (e instanceof CloudflareApiError) {
+    if (e.projectLimit) return `This Cloudflare account has reached its limit of ${PAGES_PROJECT_LIMIT} Pages projects (this app creates one per funnel). Delete projects you do not need in the Cloudflare dashboard (Workers & Pages), or connect another Cloudflare account.`;
+    if (e.newAccountLimit) return 'Cloudflare limits how many Pages projects a new account can create in its first 48 hours. Try again later, or publish this funnel from this server for now.';
     if (e.permission) return 'Cloudflare refused the token. Check the account id and give the API token the permission "Cloudflare Pages: Edit" on that account.';
     if (e.rateLimited) return 'Cloudflare is rate limiting this account. The app will try again shortly.';
     if (e.status === 0) return e.message;
@@ -178,6 +183,7 @@ export async function disconnect(deps: Deps, auth: Auth, force: boolean, ip: str
     throw conflict('CONNECTION_IN_USE', `${using.length} funnel${using.length > 1 ? 's are' : ' is'} published with this connection. Disconnecting stops updates (the sites stay online on Cloudflare). Disconnect anyway to switch them back to this server.`, { funnels: using.map((u) => u.funnel_id) });
   }
   await deps.db.run("UPDATE funnel_publish SET target = 'origin', updated_at = ? WHERE workspace_id = ? AND owner = 'workspace' AND target = 'cloudflare-pages'", iso(deps), ws);
+  for (const u of using) await releasePagesAddress(deps, ws, u.funnel_id);
   await deps.db.run('DELETE FROM publish_credentials WHERE workspace_id = ?', ws);
   await audit(deps, { workspaceId: ws, actorId: auth.userId, action: 'publishing.disconnected', detail: { funnelsSwitched: using.length }, ip });
 }
@@ -220,6 +226,25 @@ const summarize = (d: DeploymentRow | undefined | null, activeId: string | null)
     ? { id: d.id, versionId: d.version_id, status: d.status, reason: d.reason, fileCount: d.file_count, bytes: Number(d.bytes), url: d.url, error: d.error, cloudflareDeploymentId: d.cf_deployment_id, createdAt: d.created_at, startedAt: d.started_at, finishedAt: d.finished_at, active: d.id === activeId, canRollback: d.status === 'succeeded' && d.id !== activeId && !!d.cf_deployment_id }
     : null;
 
+export type PublishState = 'draft' | 'publishing' | 'live' | 'failed' | 'paused';
+
+/**
+ * What the person should see for this funnel, in one word.
+ *  draft       not live (test mode)
+ *  publishing  live on a Cloudflare address, the first deployment has not finished (or is being retried)
+ *  failed      live on a Cloudflare address, nothing is deployed and the last deployment failed
+ *  paused      unpublished or rolled back by hand: the funnel is live but the site shows the paused page
+ *  live        reachable (a funnel on this server, or a deployment is online; a later failed deployment keeps the previous one online)
+ */
+export function publishState(funnel: Pick<FunnelRow, 'status'>, row: PublishRow | undefined, latest: DeploymentRow | undefined | null, active: DeploymentRow | undefined | null, domain: DomainRow | undefined | null): PublishState {
+  if (funnel.status !== 'live' || !domain) return 'draft';
+  if (!row || row.target !== 'cloudflare-pages') return 'live';
+  if (row.paused === 1) return 'paused';
+  if (active) return 'live';
+  if (latest?.status === 'failed') return 'failed';
+  return 'publishing';
+}
+
 export async function getSettings(deps: Deps, ws: string, funnelId: string) {
   const funnel = await requireFunnel(deps.db, ws, funnelId, true);
   const row = await getRow(deps, funnelId);
@@ -228,7 +253,14 @@ export async function getSettings(deps: Deps, ws: string, funnelId: string) {
   const latest = row ? await deps.db.get<DeploymentRow>('SELECT * FROM publish_deployments WHERE funnel_id = ? ORDER BY created_at DESC, id DESC LIMIT 1', funnelId) : undefined;
   const active = row?.active_deployment_id ? await deps.db.get<DeploymentRow>('SELECT * FROM publish_deployments WHERE id = ?', row.active_deployment_id) : undefined;
   const conn = await getConnection(deps, ws);
+  const pagesDomain = await deps.db.get<DomainRow>("SELECT * FROM domains WHERE workspace_id = ? AND kind = 'pages' AND system_funnel_id = ?", ws, funnelId);
+  const onPagesAddress = !!domain && domain.kind === 'pages';
+  const address = domain ? addressFrom(deps, funnel, domain, { workspaceSlug: domain.kind === 'builtin' ? await workspaceSlugOf(deps, ws) : null, pagesHost: row?.pages_host ?? null }) : null;
   return {
+    state: publishState(funnel, row, latest, active, domain),
+    address: address ? { kind: address.kind, host: address.host, base: address.base } : null,
+    pagesAddress: row?.target === 'cloudflare-pages' && row.pages_host ? { host: row.pages_host, url: pagesUrl(row.pages_host), domainId: pagesDomain?.id ?? null, status: pagesDomain?.status ?? null, selected: onPagesAddress } : null,
+    projectLimit: PAGES_PROJECT_LIMIT,
     target: row?.target ?? 'origin',
     owner: row?.owner ?? null,
     project: row?.project_name ? { name: row.project_name, host: row.pages_host, url: pagesUrl(row.pages_host), created: row.project_created === 1 } : null,
@@ -261,6 +293,7 @@ export async function updateSettings(deps: Deps, auth: Auth, funnelId: string, i
       const leave = input.leave ?? 'pause';
       if (leave !== 'keep' && row.active_deployment_id) await unpublishNow(deps, auth, funnel, row, leave === 'delete' ? 'delete' : 'pause');
       await deps.db.run("UPDATE funnel_publish SET target = 'origin', updated_at = ? WHERE funnel_id = ?", at, funnelId);
+      await releasePagesAddress(deps, ws, funnelId);
       await audit(deps, { workspaceId: ws, actorId: auth.userId, action: 'publishing.target_changed', target: funnelId, detail: { target: 'origin', leave }, ip });
     }
     return getSettings(deps, ws, funnelId);
@@ -287,11 +320,21 @@ export async function updateSettings(deps: Deps, auth: Auth, funnelId: string, i
     }
   } catch (e) {
     if (e instanceof CloudflareApiError && e.notFound) {
+      // Refuse the 101st project BEFORE asking Cloudflare to create it: the limit error of the real API is not documented in detail.
+      let used = 0;
+      try {
+        used = await client.countProjects();
+      } catch (e3) {
+        throw new AppError(422, 'CLOUDFLARE_REJECTED', explain(e3));
+      }
+      if (used >= PAGES_PROJECT_LIMIT) {
+        throw conflict('PAGES_PROJECT_LIMIT', `This Cloudflare account already has ${used} Pages projects, the maximum is ${PAGES_PROJECT_LIMIT} (this app creates one per funnel). Delete projects you no longer need in the Cloudflare dashboard (Workers & Pages), or connect another Cloudflare account.`, { limit: PAGES_PROJECT_LIMIT, used });
+      }
       try {
         project = await client.createProject(name);
         created = true;
       } catch (e2) {
-        throw new AppError(422, 'CLOUDFLARE_REJECTED', explain(e2));
+        throw new AppError(e2 instanceof CloudflareApiError && (e2.projectLimit || e2.newAccountLimit) ? 409 : 422, e2 instanceof CloudflareApiError && e2.projectLimit ? 'PAGES_PROJECT_LIMIT' : e2 instanceof CloudflareApiError && e2.newAccountLimit ? 'PAGES_NEW_ACCOUNT_LIMIT' : 'CLOUDFLARE_REJECTED', explain(e2));
       }
     } else if (e instanceof AppError) throw e;
     else throw new AppError(422, 'CLOUDFLARE_REJECTED', explain(e));
@@ -303,9 +346,31 @@ export async function updateSettings(deps: Deps, auth: Auth, funnelId: string, i
        ${sameProject ? '' : 'active_deployment_id = NULL, active_version = NULL, custom_domain = NULL, custom_domain_status = NULL, custom_domain_error = NULL,'} paused = 0, last_error = NULL, updated_at = excluded.updated_at`,
     funnelId, ws, owner, name, host, created ? 1 : 0, at, at,
   );
+  // The project's *.pages.dev address is the funnel's free system domain: pending until the first deployment succeeds. A different project means a different address.
+  const pagesDomain = await ensurePagesDomain(deps, ws, funnelId);
+  if (!sameProject && pagesDomain.status !== 'pending') await deps.db.run("UPDATE domains SET status = 'pending', verified_at = NULL, updated_at = ? WHERE id = ?", at, pagesDomain.id);
   await audit(deps, { workspaceId: ws, actorId: auth.userId, action: 'publishing.target_changed', target: funnelId, detail: { target: 'cloudflare-pages', owner, project: name, adopted: !!input.adopt && !created }, ip });
   if (funnel.status === 'live') await schedulePublish(deps, ws, funnelId, 'publish', auth.userId, true);
   return getSettings(deps, ws, funnelId);
+}
+
+// ---- the *.pages.dev system domain --------------------------------------------------------------------------------------------------------------------
+
+/** First successful (non-paused) deployment: the funnel's pages.dev address is reachable, so its system domain turns active. */
+async function activatePagesAddress(deps: Deps, ws: string, funnelId: string): Promise<void> {
+  const at = iso(deps);
+  await deps.db.run("UPDATE domains SET status = 'active', failure_reason = NULL, verified_at = COALESCE(verified_at, ?), updated_at = ? WHERE workspace_id = ? AND kind = 'pages' AND system_funnel_id = ? AND status <> 'active'", at, at, ws, funnelId);
+}
+
+/**
+ * The funnel stops using Cloudflare Pages (target switched back, connection removed, project deleted): its pages.dev address no longer exists. A funnel that was attached to it
+ * goes back to test (the owner picks a new address in Go live), and the system domain record is removed.
+ */
+export async function releasePagesAddress(deps: Deps, ws: string, funnelId: string): Promise<void> {
+  const d = await deps.db.get<DomainRow>("SELECT * FROM domains WHERE workspace_id = ? AND kind = 'pages' AND system_funnel_id = ?", ws, funnelId);
+  if (!d) return;
+  await deps.db.run("UPDATE funnels SET status = 'test', domain_id = NULL, updated_at = ? WHERE workspace_id = ? AND id = ? AND domain_id = ?", iso(deps), ws, funnelId, d.id);
+  await deps.db.run('DELETE FROM domains WHERE id = ?', d.id);
 }
 
 // ---- scheduling ------------------------------------------------------------------------------------------------------------------------------------------
@@ -391,7 +456,8 @@ export async function buildFunnelBundle(deps: Deps, funnel: FunnelRow): Promise<
   const own = new Set(steps.map((s) => s.id));
   return buildBundle({
     steps: bundleSteps,
-    homeStepId: domain?.default_home_step_id && own.has(domain.default_home_step_id) ? domain.default_home_step_id : null,
+    // The pages.dev address has no home setting: when no step is at "/", the first step answers there.
+    homeStepId: domain?.default_home_step_id && own.has(domain.default_home_step_id) ? domain.default_home_step_id : domain?.kind === 'pages' ? (steps[0]?.id ?? null) : null,
     notFoundStepId: domain?.default_404_step_id && own.has(domain.default_404_step_id) ? domain.default_404_step_id : null,
     assets, beaconJs: BEACON_JS, apiOrigin: apiBase,
     limits: { maxFiles: deps.config.PAGES_MAX_FILES, maxFileBytes: deps.config.PAGES_MAX_FILE_BYTES },
@@ -435,7 +501,9 @@ async function failDeployment(deps: Deps, dep: DeploymentRow, row: PublishRow, r
 async function wantsLive(deps: Deps, funnel: FunnelRow): Promise<{ live: boolean; domain: DomainRow | undefined }> {
   const domain = funnel.domain_id ? await deps.db.get<DomainRow>('SELECT * FROM domains WHERE workspace_id = ? AND id = ?', funnel.workspace_id, funnel.domain_id) : undefined;
   const suspended = !!(await deps.db.get<{ suspended_at: string | null }>('SELECT suspended_at FROM workspaces WHERE id = ?', funnel.workspace_id))?.suspended_at;
-  return { live: funnel.status === 'live' && !funnel.deleted_at && domain?.status === 'active' && !suspended, domain };
+  // The funnel's own pages.dev address counts as soon as it is chosen: the deployment that makes it reachable is what turns it active.
+  const usable = domain?.status === 'active' || (domain?.kind === 'pages' && domain.system_funnel_id === funnel.id);
+  return { live: funnel.status === 'live' && !funnel.deleted_at && !!usable && !suspended, domain };
 }
 
 export async function deployJob(deps: Deps, payload: { funnelId: string; deploymentId: string; force?: boolean; rateRetries?: number }, job: Pick<Job, 'attempts' | 'maxAttempts'>): Promise<void> {
@@ -461,7 +529,7 @@ export async function deployJob(deps: Deps, payload: { funnelId: string; deploym
     const { live, domain } = await wantsLive(deps, funnel);
     let bundle: Bundle;
     if (live) {
-      const others = Number((await deps.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM funnels WHERE domain_id = ? AND id <> ? AND status = 'live' AND deleted_at IS NULL", domain!.id, funnel.id))!.n);
+      const others = domain!.kind !== 'custom' ? 0 : Number((await deps.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM funnels WHERE domain_id = ? AND id <> ? AND status = 'live' AND deleted_at IS NULL", domain!.id, funnel.id))!.n);
       if (others > 0) throw new BundleError('EMPTY', `The domain ${domain!.hostname} also serves ${others} other live funnel${others > 1 ? 's' : ''}. A Pages project serves one funnel per domain: give each funnel its own domain, or publish this one from this server.`);
       bundle = await buildFunnelBundle(deps, funnel);
     } else bundle = buildPausedBundle();
@@ -549,6 +617,7 @@ export async function pollJob(deps: Deps, payload: { deploymentId: string; error
     await deps.db.run('UPDATE funnel_publish SET active_deployment_id = ?, active_version = ?, paused = ?, last_error = NULL, updated_at = ? WHERE funnel_id = ?', dep.id, dep.version_id, paused ? 1 : 0, at, row.funnel_id);
     await releaseLease(deps, row.funnel_id);
     await pruneHistory(deps, row.funnel_id, row.active_deployment_id);
+    if (!paused) await activatePagesAddress(deps, row.workspace_id, row.funnel_id);
     if (!paused) await syncCustomDomain(deps, row.funnel_id).catch((e) => deps.log.warn('pages domain sync failed', { funnel: row.funnel_id, error: String((e as Error).message).slice(0, 200) }));
   } catch (e) {
     if (e instanceof CloudflareApiError && e.retryable && (payload.errors ?? 0) < 6) {
@@ -575,7 +644,7 @@ export async function syncCustomDomain(deps: Deps, funnelId: string): Promise<vo
   if (!row || row.target !== 'cloudflare-pages' || !row.project_name) return;
   const funnel = await requireFunnel(deps.db, row.workspace_id, funnelId, true);
   const { live, domain } = await wantsLive(deps, funnel);
-  const want = live && domain ? domain.hostname : null;
+  const want = live && domain && domain.kind === 'custom' ? domain.hostname : null;
   if (want === row.custom_domain && (row.custom_domain_status === 'active' || !want)) return;
   const client = clientFrom(deps, await credentialsFor(deps, row));
   if (row.custom_domain && row.custom_domain !== want) {
@@ -690,6 +759,7 @@ async function unpublishNow(deps: Deps, auth: Auth, funnel: FunnelRow, row: Publ
       if (!(e instanceof CloudflareApiError && e.notFound)) throw new AppError(422, 'CLOUDFLARE_REJECTED', explain(e));
     });
     await deps.db.run("UPDATE funnel_publish SET active_deployment_id = NULL, active_version = NULL, custom_domain = NULL, custom_domain_status = NULL, custom_domain_error = NULL, project_name = NULL, pages_host = NULL, project_created = 0, paused = 0, hold = 0, updated_at = ? WHERE funnel_id = ?", iso(deps), funnel.id);
+    await releasePagesAddress(deps, funnel.workspace_id, funnel.id); // the project and its *.pages.dev address are gone
     return;
   }
   // pause (or a project we do not own): replace the site with the paused page, synchronously, so the person sees the result.

@@ -80,7 +80,7 @@ export function resolveLive(deps: Deps, host: string, pathname: string, search: 
 
 async function resolveUncached(deps: Deps, host: string, pathname: string): Promise<Resolution> {
   const search = '';
-  const domain = host ? await deps.db.get<DomainRow>('SELECT * FROM domains WHERE hostname = ?', host) : undefined;
+  const domain = host ? await deps.db.get<DomainRow>("SELECT * FROM domains WHERE hostname = ? AND kind = 'custom'", host) : undefined;
   if (!domain) return { kind: 'none' };
   // A registered hostname never falls through to the app (which would serve the admin UI on a customer's domain).
   if (domain.status !== 'active') return { kind: 'inactive' };
@@ -109,7 +109,7 @@ async function resolveUncached(deps: Deps, host: string, pathname: string): Prom
 export function hostRouting(deps: Deps): MiddlewareHandler {
   return async (c, next) => {
     const host = hostOf(c, deps.config.TRUST_PROXY);
-    if (!host || !(await deps.flights.run('host', `host:${host}`, async () => !!(await deps.db.get('SELECT 1 FROM domains WHERE hostname = ?', host)), { shareMs: 300 }))) return next();
+    if (!host || !(await deps.flights.run('host', `host:${host}`, async () => !!(await deps.db.get("SELECT 1 FROM domains WHERE hostname = ? AND kind = 'custom'", host)), { shareMs: 300 }))) return next();
     const url = new URL(c.req.url);
     if (PASSTHROUGH.test(url.pathname)) return next();
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD') return messagePage(405, 'Method not allowed', 'This page only accepts GET requests.');

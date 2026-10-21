@@ -46,6 +46,7 @@ import { DeliveryQuery, IntegrationInput, IntegrationPatch } from '../services/i
 import { PixelSettings } from '../ads/pixelConfig.js';
 import { ApiAdsQuery, ApiAttributionQuery } from '../services/analyticsapi.js';
 import { ConnectInput, SettingsInput, UnpublishInput } from '../services/publishing.js';
+import { GoLiveInput } from '../services/golive.js';
 import { DisconnectQuery } from './publishing.js';
 
 /**
@@ -173,6 +174,8 @@ export const OPERATIONS: Operation[] = [
   A('POST', '/api/funnels/:id/restore', 'funnels:delete', 'funnels', 'Restore from the trash'),
   A('DELETE', '/api/funnels/:id/purge', 'funnels:purge', 'funnels', 'Permanently delete a trashed funnel', { status: 204 }),
   A('POST', '/api/funnels/:id/duplicate', 'funnels:write', 'funnels', 'Duplicate a funnel', { status: 201, cost: 3 }),
+  A('GET', '/api/funnels/:id/addresses', 'funnels:read', 'funnels', 'The addresses a funnel can go live on (Cloudflare Pages address, your verified domains), what is missing for each, and the publish state'),
+  A('POST', '/api/funnels/:id/go-live', 'funnels:write', 'funnels', 'Go live on a chosen address in one step: attaches it and sets the funnel live; a Cloudflare Pages address also creates the project and starts the first deployment (needs publishing:manage)', { body: GoLiveInput, cost: 3 }),
   A('POST', '/api/funnels/:id/preview-token', 'funnels:read', 'funnels', 'Mint a signed preview token'),
   A('GET', '/api/funnels/:id/analytics', 'analytics:read', 'analytics', 'Funnel analytics for a date range and time zone', { query: AnalyticsQuery }),
   A('GET', '/api/funnels/:id/steps', 'funnels:read', 'steps', 'Steps of a funnel'),

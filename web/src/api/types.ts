@@ -11,11 +11,13 @@ export interface Pagination { page: number; limit: number; total: number; totalP
 export interface Paged<T> { data: T[]; pagination: Pagination }
 
 export interface Tag { id: string; name: string; count?: number }
-export interface DomainRef { id: string; hostname: string; status: string }
+export interface DomainRef { id: string; hostname: string; status: string; kind?: 'custom' | 'builtin' | 'pages' }
+/** Where a live funnel is reachable: `url` is the address of its first step. */
+export interface FunnelAddress { kind: 'custom' | 'builtin' | 'pages'; host: string; base: string; url: string }
 export interface FunnelSummary {
   id: string; name: string; basePath: string; status: 'live' | 'test'; favicon: string | null;
   headerTrackingCode: string | null; footerTrackingCode: string | null;
-  domain: DomainRef | null; tags: Tag[]; stepCount: number;
+  domain: DomainRef | null; address: FunnelAddress | null; publicSlug: string | null; allowIndexing: boolean; tags: Tag[]; stepCount: number;
   stats: { visits: number; optins: number; orders: number; sales: number };
   thumbnail: { heading: string; from: string; to: string; stepId: string | null };
   createdAt: string; updatedAt: string; deletedAt: string | null;

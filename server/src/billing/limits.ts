@@ -9,7 +9,7 @@ export async function usageOf(deps: Deps, ws: string): Promise<Record<Limited, n
   const now = deps.now().toISOString();
   return {
     funnels: await count(deps, 'SELECT COUNT(*) AS n FROM funnels WHERE workspace_id = ? AND deleted_at IS NULL', ws),
-    domains: await count(deps, 'SELECT COUNT(*) AS n FROM domains WHERE workspace_id = ?', ws),
+    domains: await count(deps, "SELECT COUNT(*) AS n FROM domains WHERE workspace_id = ? AND kind = 'custom'", ws),
     members: (await count(deps, 'SELECT COUNT(*) AS n FROM users WHERE workspace_id = ?', ws)) + (await count(deps, 'SELECT COUNT(*) AS n FROM invitations WHERE workspace_id = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?', ws, now)),
     apiKeys: await count(deps, 'SELECT COUNT(*) AS n FROM api_keys WHERE workspace_id = ? AND revoked_at IS NULL', ws),
     pagesProjects: await count(deps, "SELECT COUNT(*) AS n FROM funnel_publish WHERE workspace_id = ? AND owner = 'platform' AND target = 'cloudflare-pages'", ws),

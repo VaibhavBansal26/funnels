@@ -108,7 +108,15 @@ export class FakeCloudflarePages {
     if (readOnly && !this.canRead && !this.canWrite) return reply(403, undefined, [{ code: 10000, message: 'Authentication error' }]);
     if (!readOnly && !this.canWrite) return reply(403, undefined, [{ code: 10000, message: 'Authentication error' }]);
 
-    if (rest === '/projects' && method === 'GET') return reply(200, [...this.projects.values()].slice(0, 1).map((p) => this.pjson(p)));
+    if (rest === '/projects' && method === 'GET') {
+      // Paged like the real list: ?per_page=&page=, with result_info.total_count.
+      const per = Math.max(1, Number(url.searchParams.get('per_page') ?? 10));
+      const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
+      const all = [...this.projects.values()];
+      const result = all.slice((page - 1) * per, page * per).map((p) => this.pjson(p));
+      this.calls.push({ method, path, status: 200 });
+      return new Response(JSON.stringify({ success: true, errors: [], messages: [], result, result_info: { page, per_page: per, count: result.length, total_count: all.length } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
     if (rest === '/projects' && method === 'POST') {
       const b = body() as { name?: string; production_branch?: string } | null;
       if (!b?.name || !/^[a-z0-9][a-z0-9-]{0,56}[a-z0-9]$/.test(b.name)) return reply(400, undefined, [{ code: 8000011, message: 'Invalid project name' }]);

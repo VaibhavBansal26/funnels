@@ -12,6 +12,10 @@ export interface FunnelRow {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  /** URL-safe name of the funnel inside its workspace, used by the built-in address. Created lazily. */
+  public_slug: string | null;
+  /** 1 = built-in address pages may be indexed by search engines (default: noindex). */
+  allow_indexing: number;
 }
 
 export interface StepRow {
@@ -69,6 +73,9 @@ export interface DomainRow {
   provider: 'manual' | 'cloudflare';
   provider_ref: string | null;
   provider_records: string | null;
+  /** custom: a hostname the customer owns. builtin: the workspace's free address on this app. pages: a funnel's <project>.pages.dev address. */
+  kind: 'custom' | 'builtin' | 'pages';
+  system_funnel_id: string | null;
   verified_at: string | null;
   last_checked_at: string | null;
   created_at: string;

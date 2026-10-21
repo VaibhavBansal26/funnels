@@ -19,6 +19,7 @@ import { regenerateFunnel, scriptsAllowedFor, validateDoc } from './pages.js';
 import { liveUrlsForFunnel, schedulePurge } from '../edge/purger.js';
 import { insertStep, assertValidPath, serializeStep } from './steps.js';
 import { onFunnelChanged, onFunnelPurge } from './publishing.js';
+import { addressFrom, mountKey, mountOf, pagesHostOf, workspaceSlugOf, type Address } from './addresses.js';
 
 const iso = (deps: Deps) => deps.now().toISOString();
 
@@ -87,23 +88,23 @@ async function statsFor(deps: Deps, ws: string, ids: string[]): Promise<Map<stri
   return map;
 }
 
-async function thumbnails(deps: Deps, ids: string[]): Promise<Map<string, { heading: string | null; stepId: string }>> {
-  const map = new Map<string, { heading: string | null; stepId: string }>();
+async function thumbnails(deps: Deps, ids: string[]): Promise<Map<string, { heading: string | null; stepId: string; path: string }>> {
+  const map = new Map<string, { heading: string | null; stepId: string; path: string }>();
   if (ids.length === 0) return map;
-  const rows = await deps.db.all<{ funnel_id: string; step_id: string; doc_json: string }>(
-    `SELECT s.funnel_id, s.id AS step_id, p.doc_json FROM steps s JOIN step_pages p ON p.step_id = s.id
+  const rows = await deps.db.all<{ funnel_id: string; step_id: string; doc_json: string; base_path: string }>(
+    `SELECT s.funnel_id, s.id AS step_id, s.base_path, p.doc_json FROM steps s JOIN step_pages p ON p.step_id = s.id
      WHERE s.funnel_id IN (${placeholders(ids.length)}) AND s.position = (SELECT MIN(position) FROM steps WHERE funnel_id = s.funnel_id)`,
     ...ids,
   );
   for (const r of rows) {
-    map.set(r.funnel_id, { heading: headingOfJson(r.doc_json), stepId: r.step_id });
+    map.set(r.funnel_id, { heading: headingOfJson(r.doc_json), stepId: r.step_id, path: r.base_path });
   }
   return map;
 }
 
 type Summary = ReturnType<typeof summarize>;
 
-function summarize(f: FunnelRow, extra: { domain: Pick<DomainRow, 'id' | 'hostname' | 'status'> | null; tags: { id: string; name: string }[]; stepCount: number; stats: FunnelStats; heading: string | null; firstStepId?: string | null }) {
+function summarize(f: FunnelRow, extra: { domain: (Pick<DomainRow, 'id' | 'hostname' | 'status'> & { kind?: DomainRow['kind'] }) | null; address?: (Address & { url: string }) | null; tags: { id: string; name: string }[]; stepCount: number; stats: FunnelStats; heading: string | null; firstStepId?: string | null }) {
   return {
     id: f.id,
     name: f.name,
@@ -112,7 +113,10 @@ function summarize(f: FunnelRow, extra: { domain: Pick<DomainRow, 'id' | 'hostna
     favicon: f.favicon,
     headerTrackingCode: f.header_tracking_code,
     footerTrackingCode: f.footer_tracking_code,
-    domain: extra.domain ? { id: extra.domain.id, hostname: extra.domain.hostname, status: extra.domain.status } : null,
+    domain: extra.domain ? { id: extra.domain.id, hostname: extra.address?.host ?? extra.domain.hostname, status: extra.domain.status, kind: extra.domain.kind ?? 'custom' } : null,
+    address: extra.address ? { kind: extra.address.kind, host: extra.address.host, base: extra.address.base, url: extra.address.url } : null,
+    publicSlug: f.public_slug,
+    allowIndexing: f.allow_indexing === 1,
     tags: extra.tags,
     stepCount: extra.stepCount,
     stats: extra.stats,
@@ -139,16 +143,23 @@ async function summaries(deps: Deps, ws: string, rows: FunnelRow[]): Promise<Sum
       ? (await deps.db.all<DomainRow>(`SELECT * FROM domains WHERE workspace_id = ? AND id IN (${placeholders(domainIds.length)})`, ws, ...domainIds)).map((d) => [d.id, d] as const)
       : [],
   );
-  return rows.map((f) =>
-    summarize(f, {
-      domain: f.domain_id ? (domains.get(f.domain_id) ?? null) : null,
+  const wsSlug = domainIds.length ? await workspaceSlugOf(deps, ws) : null;
+  const pagesHosts = new Map<string, string | null>();
+  for (const f of rows) if (f.domain_id && domains.get(f.domain_id)?.kind === 'pages') pagesHosts.set(f.id, await pagesHostOf(deps, f.id));
+  return rows.map((f) => {
+    const domain = f.domain_id ? (domains.get(f.domain_id) ?? null) : null;
+    const base = domain ? addressFrom(deps, f, domain, { workspaceSlug: wsSlug, pagesHost: pagesHosts.get(f.id) ?? null }) : null;
+    const address = base ? { ...base, url: base.base + (headings.get(f.id)?.path ?? f.base_path) } : null;
+    return summarize(f, {
+      domain,
+      address,
       tags: tags.get(f.id) ?? [],
       stepCount: counts.get(f.id) ?? 0,
       stats: stats.get(f.id) ?? EMPTY_STATS,
       heading: headings.get(f.id)?.heading ?? null,
       firstStepId: headings.get(f.id)?.stepId ?? null,
-    }),
-  );
+    });
+  });
 }
 
 export async function listFunnels(deps: Deps, ws: string, q: z.infer<typeof ListQuery>) {
@@ -324,13 +335,18 @@ export async function updateFunnel(deps: Deps, auth: Auth, id: string, input: z.
     let status = input.status ?? funnel.status;
     if (input.status === 'test') domainId = null;
     if (input.domain_id === null && input.status === undefined && status === 'live') status = 'test';
-    if (status === 'live' && !domainId) throw conflict('DOMAIN_NOT_ADDED', 'Publishing needs an active domain');
+    if (status === 'live' && !domainId) throw conflict('DOMAIN_NOT_ADDED', 'Publishing needs an address: choose the Cloudflare Pages address, a built-in address or a verified domain');
 
+    const mountBefore = mountKey(await mountOf(d, funnel));
     let pathsChanged = false;
     if (domainId) {
       const domain = await requireDomain(d, ws, domainId);
-      if (domain.status !== 'active') throw conflict('DOMAIN_NOT_ACTIVE', 'The domain is not verified yet');
-      if (domainId !== funnel.domain_id) pathsChanged = await resolveDomainConflicts(d, ws, funnel, domainId, input.conflicts);
+      // A funnel's own *.pages.dev address is attachable while it is still "pending" (it turns active with the first successful deployment).
+      const pagesPending = domain.kind === 'pages' && domain.system_funnel_id === funnel.id && !!(await d.db.get("SELECT 1 FROM funnel_publish WHERE funnel_id = ? AND target = 'cloudflare-pages'", funnel.id));
+      if (domain.kind === 'pages' && domain.system_funnel_id !== funnel.id) throw notFound('Domain');
+      if (domain.status !== 'active' && !pagesPending) throw conflict('DOMAIN_NOT_ACTIVE', 'The domain is not verified yet');
+      // Only customer domains share one path space between funnels; system addresses are per funnel.
+      if (domain.kind === 'custom' && domainId !== funnel.domain_id) pathsChanged = await resolveDomainConflicts(d, ws, funnel, domainId, input.conflicts);
     }
 
     const fields: Record<string, string | number | null> = { status, domain_id: domainId, updated_at: iso(d) };
@@ -340,7 +356,8 @@ export async function updateFunnel(deps: Deps, auth: Auth, id: string, input: z.
     if (input.footer_tracking_code !== undefined) fields.footer_tracking_code = input.footer_tracking_code || null;
     await patchFunnel(d.db, ws, id, fields);
     if (input.tags) await setFunnelTags(d.db, ws, id, input.tags);
-    if (pathsChanged || input.favicon !== undefined || input.header_tracking_code !== undefined || input.footer_tracking_code !== undefined) await regenerateFunnel(d, ws, id);
+    const mountChanged = mountBefore !== mountKey(await mountOf(d, await requireFunnel(d.db, ws, id)));
+    if (pathsChanged || mountChanged || input.favicon !== undefined || input.header_tracking_code !== undefined || input.footer_tracking_code !== undefined) await regenerateFunnel(d, ws, id);
     await schedulePurge(d, [...urlsBefore, ...(await liveUrlsForFunnel(d, id))]);
     await onFunnelChanged(d, id);
   });
@@ -452,6 +469,7 @@ export async function purgeFunnel(deps: Deps, auth: Auth, id: string): Promise<v
     await d.db.run('UPDATE domains SET default_home_step_id = NULL WHERE workspace_id = ? AND default_home_step_id IN (SELECT id FROM steps WHERE funnel_id = ?)', ws, id);
     await d.db.run('UPDATE domains SET default_404_step_id = NULL WHERE workspace_id = ? AND default_404_step_id IN (SELECT id FROM steps WHERE funnel_id = ?)', ws, id);
     await d.db.run('DELETE FROM funnels WHERE workspace_id = ? AND id = ?', ws, id);
+    await d.db.run("DELETE FROM domains WHERE workspace_id = ? AND kind = 'pages' AND system_funnel_id = ?", ws, id);
     d.pageCache.invalidate(stepIds);
   });
 }

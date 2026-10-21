@@ -45,7 +45,7 @@ async function allowed(deps: Deps, u: URL): Promise<boolean> {
   if (deps.config.NODE_ENV !== 'production' && (u.hostname === 'localhost' || u.hostname === '127.0.0.1')) return true;
   if (u.protocol !== 'https:') return false;
   const host = u.hostname.toLowerCase();
-  if (await deps.db.get('SELECT 1 FROM domains WHERE hostname = ?', host)) return true;
+  if (await deps.db.get("SELECT 1 FROM domains WHERE hostname = ? AND kind = 'custom'", host)) return true;
   if (host.endsWith('.pages.dev')) {
     // name.pages.dev, or <deployment>.name.pages.dev / <branch>.name.pages.dev
     const labels = host.split('.');

@@ -1,7 +1,7 @@
 // Checks publish/cfclient.ts against REAL Cloudflare with your own API token. It is the only thing that can turn "verified against the documented shapes with a fake"
 // into "verified". Nothing here runs in CI and the repository has never run it.
 //
-//   CF_ACCOUNT_ID=<32 hex> CF_API_TOKEN=<token with Cloudflare Pages: Edit> npx tsx scripts/cf-pages-smoke.ts
+//   CF_ACCOUNT_ID=<32 hex> CF_API_TOKEN=<token with Cloudflare Pages: Edit> npx tsx scripts/cf-pages-smoke.ts   (CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN are accepted as aliases)
 //   optional: CF_SMOKE_DOMAIN=smoke.example.com   (a hostname on a zone in this account: also tests custom domains)
 //             KEEP=1                              (do not delete the project afterwards)
 //
@@ -12,12 +12,15 @@ import { randomBytes } from 'node:crypto';
 import { buildBundle, beaconPath } from '../src/publish/bundle.js';
 import { batches, CloudflareApiError, CloudflarePagesClient, deploymentState, domainState, type PagesDeployment } from '../src/publish/cfclient.js';
 
-const accountId = process.env.CF_ACCOUNT_ID ?? '';
-const token = process.env.CF_API_TOKEN ?? '';
+const accountVar = process.env.CF_ACCOUNT_ID ? 'CF_ACCOUNT_ID' : 'CLOUDFLARE_ACCOUNT_ID';
+const tokenVar = process.env.CF_API_TOKEN ? 'CF_API_TOKEN' : 'CLOUDFLARE_API_TOKEN';
+const accountId = process.env[accountVar] ?? '';
+const token = process.env[tokenVar] ?? '';
 if (!/^[a-f0-9]{32}$/i.test(accountId) || token.length < 20) {
-  console.error('Set CF_ACCOUNT_ID (32 hex characters) and CF_API_TOKEN (a token with "Cloudflare Pages: Edit").');
+  console.error('Set CF_ACCOUNT_ID (32 hex characters) and CF_API_TOKEN (a token with "Cloudflare Pages: Edit"). Never paste a token into a chat, a file or a commit.');
   process.exit(2);
 }
+console.log(`Using ${accountVar} and ${tokenVar} from the environment (the token is never printed).`);
 const base = process.env.CF_API_BASE ?? 'https://api.cloudflare.com/client/v4';
 const client = new CloudflarePagesClient({ accountId, token, base }, fetch, 60_000);
 const name = `fn-smoke-${randomBytes(4).toString('hex')}`;
@@ -75,6 +78,7 @@ const until = async (label: string, check: () => Promise<boolean>) => {
 
 console.log(`Cloudflare Pages smoke test, project ${name}`);
 await step('token can read Pages (verify)', () => client.verify());
+await step('count projects (the app refuses to create the 101st)', async () => console.log(`       ${await client.countProjects()} of 100 projects used`));
 const project = await step('create project', () => client.createProject(name));
 if (project) {
   console.log(`  project host: ${project.subdomain}`);

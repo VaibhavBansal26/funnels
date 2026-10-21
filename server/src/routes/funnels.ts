@@ -5,6 +5,8 @@ import type { Deps } from '../deps.js';
 import { requireFunnel } from '../repos/funnels.js';
 import * as analytics from '../services/analytics.js';
 import * as funnels from '../services/funnels.js';
+import * as golive from '../services/golive.js';
+import { clientIp } from '../ratelimit/ip.js';
 import * as pages from '../services/pages.js';
 import * as steps from '../services/steps.js';
 import { bodyOf, queryOf } from './util.js';
@@ -42,6 +44,9 @@ export function funnelRoutes(deps: Deps): Hono<AppEnv> {
     const token = await signPreviewToken(deps.config, ws(c), f.id, deps.now());
     return c.json({ token, url: `/preview/${f.id}?token=${token}`, expiresInSeconds: deps.config.PREVIEW_TOKEN_TTL_SECONDS });
   });
+
+  r.get('/:id/addresses', async (c) => c.json(await golive.addressOptions(deps, ws(c), c.req.param('id'))));
+  r.post('/:id/go-live', async (c) => c.json(await golive.goLive(deps, authOf(c), c.req.param('id'), await bodyOf(c, golive.GoLiveInput), clientIp(c, deps.config))));
 
   r.get('/:id/analytics', async (c) => c.json(await analytics.funnelAnalytics(deps, ws(c), c.req.param('id'), queryOf(c, analytics.AnalyticsQuery))));
 

@@ -36,9 +36,12 @@ export function FunnelDetailPage() {
         <div className="min-w-0">
           <Link to="/funnels" className="small mb-1 inline-flex items-center gap-1 text-muted no-underline hover:text-fg"><ArrowLeft className="size-3.5" aria-hidden="true" /> My Funnels</Link>
           <h1 className="!mb-1">{f.name}</h1>
-          <span className="row"><StatusBadge status={f.status} />{f.domain ? <span className="muted small">{f.domain.hostname}{f.basePath}</span> : <span className="muted small">No domain connected</span>}</span>
+          <span className="row"><StatusBadge status={f.status} />{f.address ? <span className="muted small">{f.address.url.replace(/^https?:\/\//, '')}</span> : <span className="muted small">No address yet</span>}</span>
         </div>
-        {f.steps[0] ? <Link className="btn primary" to={`/funnels/${f.id}/builder/${f.steps[0].id}`}><Pencil className="size-4" aria-hidden="true" /> Open builder</Link> : null}
+        <div className="row">
+          {f.status === 'test' ? <Link className="btn" to={`/funnels/${f.id}/settings#go-live`}>Go live</Link> : null}
+          {f.steps[0] ? <Link className="btn primary" to={`/funnels/${f.id}/builder/${f.steps[0].id}`}><Pencil className="size-4" aria-hidden="true" /> Open builder</Link> : null}
+        </div>
       </div>
       <nav className="tabs" aria-label="Funnel sections">
         {TABS.map((t) => <NavLink key={t} to={`/funnels/${id}/${t}`}>{t[0]!.toUpperCase() + t.slice(1)}</NavLink>)}

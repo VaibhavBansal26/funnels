@@ -2,6 +2,26 @@
 
 **Status: verified against the documented API shapes with a fake; not exercised against real Cloudflare.** The client (`server/src/publish/cfclient.ts`) and the deployment state machine are tested against an in-memory implementation of the documented endpoints (`server/test/support/fakecf.ts`). No Cloudflare account or token was used to build this. `server/scripts/cf-pages-smoke.ts` is the check you run once with your own token (below); until someone has, treat the feature as unproven. Decision record: [ADR 0030](adr/0030-publish-targets-cloudflare-pages.md).
 
+## The free address: you do not need a domain
+
+Every Pages funnel has a free address, `https://<project>.pages.dev`, and it counts as the funnel's **domain**: it is stored as a *system domain* record (`domains.kind = 'pages'`, one per funnel; its name is a synthetic `<funnel id>.pages.invalid`, the real host is `funnel_publish.pages_host`). It never appears in the Domains page, cannot be deleted or verified by hand, and `*.pages.dev` / `*.workers.dev` can not be registered as customer domains.
+
+State machine (see also [GO-LIVE.md](GO-LIVE.md)):
+
+| Event | Funnel | System domain | Visible state |
+|---|---|---|---|
+| Go live > Cloudflare Pages address (`POST /api/funnels/{id}/go-live`) | `live`, `domain_id` = the pages domain | `pending` | **publishing** |
+| First deployment succeeds | unchanged | `active` | **live** |
+| Deployment fails and nothing is online yet | stays `live` (the intent is kept) | stays `pending` | **publishing failed**: fix the cause, then *Try again* (Redeploy) |
+| A later deployment fails | stays `live` | `active` | **live** (the previous version stays online; the failure is in the history) |
+| Unpublish (pause) | `live` | `active` | **paused** until Redeploy |
+| Funnel set to `test` | `test`, domain detached | unchanged | **test mode**; the site shows the paused page; Go live again re-attaches |
+| Target switched to *This server*, connection removed, or project deleted | `test`, domain detached | **removed** | pick a new address in Go live |
+| Target switched to another project name | unchanged | back to `pending` (new host) | **publishing** |
+| A custom domain is chosen in Go live | `live`, `domain_id` = the custom domain | kept | the project is served at both addresses |
+
+A custom domain stays an optional upgrade: DNS, one funnel per domain, `syncCustomDomain` and everything below are unchanged.
+
 ## What it does
 
 A funnel has a **publish target**: `origin` (default, the funnel is served by this app by Host header, optionally behind the edge Worker, see [CLOUDFLARE.md](CLOUDFLARE.md)) or `cloudflare-pages`. With Pages, the app builds the funnel into a static site and deploys it with the Direct Upload API into one Pages project per funnel (`fn-<8 hex>` by default). Visitors are then served by Cloudflare's network without touching this server; forms, checkout, events, attribution and the consent-gated server conversions keep calling this app's public API at an absolute `API_PUBLIC_URL`.
@@ -23,7 +43,7 @@ flowchart LR
 
 1. **Connect** (Settings > Publishing): your Cloudflare account id (32 hex characters, Workers & Pages > account details) and an API token with the account permission **Cloudflare Pages: Edit** and nothing else. The app verifies it with a read call (`GET /accounts/{id}/pages/projects`), stores it encrypted (`DATA_ENCRYPTION_KEY`, AES-256-GCM bound to the workspace), shows only `••••` + the last four characters, and never logs it. *Verify* repeats the read call. A read call cannot prove write access: a read-only token connects and then fails at the first deployment with an explanation.
 2. **Choose the target** in the funnel's Settings > Publishing: *This server* or *Cloudflare Pages*. The app creates the project (`POST /accounts/{id}/pages/projects`). If a project with that name already exists it **refuses** unless you confirm that this funnel may overwrite it; a project it did not create is never deleted. Hosted installations can offer a **platform account** (`CF_PAGES_ACCOUNT_ID`, `CF_PAGES_API_TOKEN`): projects are then named `fn-<id>` in that account and limited per plan (`pagesProjects`: 1 on Free, 10 on Pro, 100 on Business, enforced with `BILLING_ENFORCE_LIMITS`).
-3. **Go live.** Publishing needs the funnel `live` on an **active domain**, as ever. The first deployment is queued at once; the page shows the `*.pages.dev` URL when it succeeds.
+3. **Go live** (funnel > Settings > Go live, or `POST /api/funnels/{id}/go-live`). Choose *Cloudflare Pages address (free)*: no domain is needed. The project is created, the funnel is set live on its `pages.dev` address and the first deployment starts at once. A verified custom domain is the optional upgrade: choose it in Go live (or in Settings > Domain).
 4. **Point DNS** at the project: `CNAME <your hostname> -> <project>.pages.dev` (the domain screen shows it; an apex domain needs Cloudflare DNS for the zone). The app attaches the hostname to the project (`POST .../domains`), polls its status until Cloudflare reports `active` or an error (shown with Cloudflare's message), and **domain verification accepts a CNAME to the Pages project** as well as to `APP_PUBLIC_CNAME_TARGET`. Set `API_PUBLIC_URL` to the public origin of this app.
 
 A Pages project serves **one funnel per domain**: if another live funnel is attached to the same domain, deployment fails with that explanation (the origin server can serve many funnels on one host; a static project cannot).
@@ -76,7 +96,7 @@ From [Cloudflare's limits page](https://developers.cloudflare.com/pages/platform
 |---|---|---|
 | Files per site | 20,000 (Free); 100,000 on paid plans with Wrangler 4 | `PAGES_MAX_FILES` (default 20,000) fails the build early |
 | Size per file | 25 MiB | `PAGES_MAX_FILE_BYTES`; uploaded images are limited to 1.5 MB anyway |
-| Projects per account | 100 | a project create fails with Cloudflare's message |
+| Projects per account | **100, not routinely increased** | the app creates **one project per funnel**, so one Cloudflare account holds at most 100 Pages funnels. The app counts the account's projects through the API (`GET .../pages/projects?per_page=100`, `result_info.total_count`) **before** creating the next one and refuses the 101st with `PAGES_PROJECT_LIMIT` and a message in the UI; the error codes Cloudflare itself uses for this are not documented, so a refusal from Cloudflare is matched by code 8000027 / wording (unverified). |
 | Custom domains per project | 100 (Free) | one per funnel |
 | `_headers` rules | 100 | per-page CSP up to 97 pages, then one rule set |
 | `_redirects` | 2,000 static | only case redirects |
@@ -84,7 +104,13 @@ From [Cloudflare's limits page](https://developers.cloudflare.com/pages/platform
 | Deployments per day or month via Direct Upload | **no documented cap** (searched 2026-10-20) | the app debounces saves, runs one deployment per funnel at a time, limits manual actions with `publishing.deploy` (30 per hour per workspace) |
 | Cloudflare API rate limit | 1,200 requests per 5 minutes per user | a deployment is about 8 calls plus polling; 429 is retried after `Retry-After` |
 
-New accounts may not create projects in their first 48 hours (documented by Cloudflare).
+Cloudflare also restricts **how many projects a new account can create in its first 48 hours** (documented, with no number). The app recognises a refusal that mentions it (matching is by wording, unverified) and answers `PAGES_NEW_ACCOUNT_LIMIT` with an explanation.
+
+### The 100-project limit, plainly
+
+* One funnel = one Pages project = one `pages.dev` address; there is no way to serve several funnels from one project under path prefixes with the current design (a Pages project is one static site; this app's rule is one funnel per domain, and the bundle builder emits one funnel at the site root). Reconsidered 2026-10-21 and **not changed**: sharing a project would need a combined site (several funnels under `/<slug>/...`, one deployment for all of them, so one funnel's failure blocks the others and rollbacks stop being per funnel) and the link rewriting for it is exactly what the app's built-in address already does for pages served from this server (see [GO-LIVE.md](GO-LIVE.md)).
+* What to do at 100: delete projects of retired funnels (Unpublish > *Delete the Pages project*, or the Cloudflare dashboard), use the built-in address for funnels that do not need Cloudflare, connect a second Cloudflare account for other workspaces, or use Workers for Platforms (no project limit, a different product; not implemented).
+* On a hosted installation with the platform account, `pagesProjects` plan limits (1 / 10 / 100) keep one workspace from using them all.
 
 ## When to use which
 
@@ -105,11 +131,16 @@ New accounts may not create projects in their first 48 hours (documented by Clou
 
 **Latency of a change.** The app's part is the debounce (`PAGES_DEBOUNCE_SECONDS`), the build and the upload of changed files only; then Cloudflare's own deployment and propagation, then up to 60 s of HTML cache. The tests run against a fake and say nothing about Cloudflare's timings: measure with the smoke test; the repository has no real number.
 
+## Cloudflare's direction (read 2026-10-21)
+
+Cloudflare's own guidance now steers new projects to Workers: the Workers best-practices page says to "use Workers Static Assets for new projects" and that Pages "continues to work, but new features and optimizations are focused on Workers" (<https://developers.cloudflare.com/workers/best-practices/workers-best-practices/>); the Pages home page says to start new projects with Workers (<https://developers.cloudflare.com/pages/>). Pages Direct Upload remains documented and supported, which is why it is the verified-by-fake default here. A second publish target on Workers Static Assets with the free `workers.dev` address is described in [CLOUDFLARE-SETUP.md](CLOUDFLARE-SETUP.md) and ADR 0030. Limits for Workers static assets (<https://developers.cloudflare.com/workers/platform/limits/>, read 2026-10-21): 100 Workers per account on Free, 500 on Paid, 20,000 files per Worker version on Free (100,000 Paid), 25 MiB per file.
+
 ## Verify it with your own token
 
 ```bash
 cd server
 CF_ACCOUNT_ID=<32 hex> CF_API_TOKEN=<Cloudflare Pages: Edit> npx tsx scripts/cf-pages-smoke.ts
+# CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN are accepted as aliases
 # optional: CF_SMOKE_DOMAIN=smoke.example.com  KEEP=1
 ```
 

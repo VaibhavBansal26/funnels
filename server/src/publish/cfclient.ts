@@ -50,6 +50,14 @@ export class CloudflareApiError extends Error {
   get rateLimited(): boolean {
     return this.status === 429;
   }
+  /** Cloudflare refused to create another Pages project: the 100-projects-per-account limit (https://developers.cloudflare.com/pages/platform/limits/). The exact code and wording are not documented; this matches what is known and is UNVERIFIED against the real API. */
+  get projectLimit(): boolean {
+    return (this.status === 400 || this.status === 403 || this.status === 422 || this.status === 429) && (this.code === 8000027 || /project(s)? (limit|quota)|maximum (number )?of (pages )?projects|too many projects|limit of \d+ projects|reached .*projects/i.test(this.message));
+  }
+  /** New accounts may only create a few Pages projects in their first 48 hours (documented, with no number or error code). UNVERIFIED matching. */
+  get newAccountLimit(): boolean {
+    return /48 ?h(ou)?rs?|first 48|recently (created|registered)|new account|anti-?abuse/i.test(this.message);
+  }
   /** The token is missing a permission or is not valid. */
   get permission(): boolean {
     return this.status === 401 || this.status === 403;
@@ -155,6 +163,11 @@ export class CloudflarePagesClient {
   private acct = (p: string) => `${this.base()}/accounts/${encodeURIComponent(this.creds.accountId)}/pages${p}`;
 
   private async call<T>(method: string, url: string, opts: { token?: string; json?: unknown; form?: FormData } = {}): Promise<T> {
+    const env = await this.callRaw<T>(method, url, opts);
+    return (env?.result ?? (env as unknown as T)) as T;
+  }
+
+  private async callRaw<T>(method: string, url: string, opts: { token?: string; json?: unknown; form?: FormData } = {}): Promise<Envelope<T>> {
     const headers: Record<string, string> = { authorization: `Bearer ${opts.token ?? this.creds.token}` };
     let body: BodyInit | undefined;
     if (opts.json !== undefined) {
@@ -180,13 +193,31 @@ export class CloudflarePagesClient {
       const retry = Number(res.headers.get('retry-after'));
       throw new CloudflareApiError(res.status || 502, first?.code ?? null, first?.message ?? `Cloudflare answered HTTP ${res.status}`, Number.isFinite(retry) && retry > 0 ? retry : null);
     }
-    return (env?.result ?? (env as unknown as T)) as T;
+    return (env ?? ({ success: true } as Envelope<T>));
   }
 
   /** A read call that needs the "Cloudflare Pages: Read" (or Edit) permission: proves the token and account id are valid. It cannot prove write access; the first deployment does. */
   async verify(): Promise<{ projects: number }> {
     const r = await this.call<PagesProject[]>('GET', `${this.acct('/projects')}?per_page=1`);
     return { projects: Array.isArray(r) ? r.length : 0 };
+  }
+
+  /**
+   * How many Pages projects the account has, counted through the API (the limit is 100 per account). Reads `result_info.total_count` when the answer carries it and
+   * otherwise pages through the list. A cheap call; it runs before every project creation so the 101st project is refused with a clear message instead of a vague 400.
+   */
+  async countProjects(): Promise<number> {
+    const perPage = 100;
+    let total = 0;
+    for (let page = 1; page <= 20; page++) {
+      const env = await this.callRaw<PagesProject[]>('GET', `${this.acct('/projects')}?per_page=${perPage}&page=${page}`);
+      const n = Array.isArray(env.result) ? env.result.length : 0;
+      const info = (env as Envelope<unknown> & { result_info?: { total_count?: number } }).result_info;
+      if (typeof info?.total_count === 'number') return info.total_count;
+      total += n;
+      if (n < perPage) return total;
+    }
+    return total;
   }
 
   getProject(name: string): Promise<PagesProject> {

@@ -62,7 +62,7 @@ const TABLES: Table[] = [
   { name: 'workspace', sql: 'SELECT id, name, allow_custom_scripts, created_at, plan, plan_status, plan_period_end, suspended_at, suspended_reason FROM workspaces WHERE id = ?' },
   { name: 'users', sql: 'SELECT id, email, name, role, role_id, created_at, last_login_at FROM users WHERE workspace_id = ?' },
   { name: 'roles', sql: 'SELECT id, name, description, permissions_json, created_at FROM roles WHERE workspace_id = ?' },
-  { name: 'domains', sql: 'SELECT id, hostname, status, verified_at, created_at FROM domains WHERE workspace_id = ?' },
+  { name: 'domains', sql: 'SELECT id, hostname, status, verified_at, created_at FROM domains WHERE workspace_id = ? AND kind = \'custom\'' },
   { name: 'funnels', sql: 'SELECT id, name, base_path, domain_id, status, created_by, created_at, updated_at, deleted_at FROM funnels WHERE workspace_id = ?' },
   { name: 'steps', sql: 'SELECT * FROM steps WHERE workspace_id = ?' },
   { name: 'step_pages', sql: 'SELECT p.step_id AS id, p.doc_json FROM step_pages p JOIN steps s ON s.id = p.step_id WHERE s.workspace_id = ?', keyOf: 'p.step_id' },
