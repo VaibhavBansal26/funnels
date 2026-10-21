@@ -112,6 +112,9 @@ All are WebP; names are `<screen>-<width>-<theme>`.
 | Funnel detail (steps) | [light](funnel-steps-1440-light.webp), [dark](funnel-steps-1440-dark.webp) | [light](funnel-steps-1024-light.webp), [dark](funnel-steps-1024-dark.webp) | [light](funnel-steps-390-light.webp), [dark](funnel-steps-390-dark.webp) |
 | Templates | [light](templates-1440-light.webp), [dark](templates-1440-dark.webp) | [light](templates-1024-light.webp), [dark](templates-1024-dark.webp) | [light](templates-390-light.webp), [dark](templates-390-dark.webp) |
 | Analytics | [light](analytics-1440-light.webp), [dark](analytics-1440-dark.webp) | [light](analytics-1024-light.webp), [dark](analytics-1024-dark.webp) | [light](analytics-390-light.webp), [dark](analytics-390-dark.webp) |
+| Products (catalog) | [light](products-1440-light.webp), [dark](products-1440-dark.webp) | | |
+| Products (performance) | [dark](products-performance-1440-dark.webp) | [light](products-performance-1024-light.webp) | [light](products-performance-390-light.webp) |
+| Templates (library gallery) | [light](templates-1440-light.webp) | | |
 | Domains | [light](domains-1440-light.webp), [dark](domains-1440-dark.webp) | [light](domains-1024-light.webp), [dark](domains-1024-dark.webp) | [light](domains-390-light.webp), [dark](domains-390-dark.webp) |
 | Settings | [light](settings-1440-light.webp), [dark](settings-1440-dark.webp) | [light](settings-1024-light.webp), [dark](settings-1024-dark.webp) | [light](settings-390-light.webp), [dark](settings-390-dark.webp) |
 | Sign in | [light](login-1440-light.webp), [dark](login-1440-dark.webp) | | |

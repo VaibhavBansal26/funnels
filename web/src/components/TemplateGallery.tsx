@@ -123,7 +123,7 @@ export function TemplateGallery({ onCreated }: { onCreated?: (f: FunnelDetail) =
         {q.data?.data.map((t) => (
           <article key={t.id} className="card flex flex-col gap-3 transition-shadow hover:shadow-pop" aria-label={t.name}>
             <TemplateThumb t={t} />
-            <div className="row between"><h3>{t.name}</h3><Badge><Layers className="size-3" aria-hidden="true" />{t.stepCount} step{t.stepCount === 1 ? '' : 's'}</Badge></div>
+            <div className="flex items-start justify-between gap-2"><h3 className="min-w-0 !m-0">{t.name}</h3><Badge className="shrink-0"><Layers className="size-3" aria-hidden="true" />{t.stepCount} step{t.stepCount === 1 ? '' : 's'}</Badge></div>
             <p className="small muted !mb-0 line-clamp-3 grow">{t.description}</p>
             <div className="flex flex-wrap gap-1.5">
               <Badge tone="primary">{t.categoryName ?? 'Uncategorised'}</Badge>

@@ -50,6 +50,8 @@ const SCREENS = [
   { name: 'analytics', path: `/funnels/${main.id}/analytics`, wait: 1200 },
   { name: 'templates', path: '/templates', wait: 2500 },
   { name: 'builder', path: `/funnels/${main.id}/builder/${main.steps[0].id}`, builder: true },
+  { name: 'products', path: '/products', wait: 800 },
+  { name: 'products-performance', path: '/products?tab=performance', wait: 1500 },
   { name: 'domains', path: '/domains' },
   { name: 'settings', path: '/settings' },
   // more screens, for review rather than for the docs: SHOTS_EXTRA=1

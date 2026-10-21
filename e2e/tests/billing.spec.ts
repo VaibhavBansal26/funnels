@@ -8,7 +8,7 @@ test('Settings shows plan, usage and payment status; an order from a sales funne
   const billing = page.getByRole('region', { name: 'Billing' });
   await expect(billing).toContainText('Plan: Free');
   await expect(billing.getByRole('row', { name: /Funnels\s+0\s+3/ })).toBeVisible();
-  await expect(billing).toContainText('test mode');
+  await expect(page.getByRole('region', { name: 'Payments' })).toContainText('test mode');
 
   // A sales funnel from a template, and a purchase through the public checkout endpoint (the mock payment provider, as in development).
   const made = await page.evaluate(async () => {
