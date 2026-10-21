@@ -3,7 +3,7 @@
 > **Status mapping (checked against https://docs.stripe.com/api/disputes/object on 2026-10-21).** `lost` deducts the amount. `won`, `warning_closed` and `prevented` close the dispute with nothing deducted and the order returns to its previous state. Every other status (`needs_response`, `under_review`, `warning_needs_response`, `warning_under_review`) is open.
 
 
-Status: implemented and tested against an in-process fake of the Stripe API (`server/test/support/fakestripe.ts`). **Not verified against the real Stripe API.** Before enabling in production, run the test-mode checklist at the end of this page.
+Status: implemented and tested against an in-process fake of the Stripe API (`server/test/support/fakestripe.ts`); field names and response shapes were checked against Stripe's API reference and sandbox responses. **No real payment, refund, dispute or webhook delivery has been run against Stripe** ([VERIFIED.md](VERIFIED.md)). Before enabling in production, run the test-mode checklist at the end of this page.
 
 ## Two separate money flows
 
@@ -76,6 +76,7 @@ Limits (`BILLING_ENFORCE_LIMITS=true`; off by default so self-hosted installs ar
 | domains | 1 | 10 | 100 |
 | members (pending invitations count) | 2 | 10 | 100 |
 | API keys | 1 | 10 | 50 |
+| Cloudflare Pages projects hosted on the installation's account (`CF_PAGES_*`) | 1 | 10 | 100 |
 
 Going over is `402 PLAN_LIMIT_REACHED` with `details {resource, limit, used, plan}`. Nothing is ever deleted on downgrade; trashed funnels free a slot and restoring needs one. `GET /api/billing` reports plan, limits, usage and the connect state.
 

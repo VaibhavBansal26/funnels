@@ -1,6 +1,6 @@
 # Publishing funnels to Cloudflare Pages
 
-**Status: verified against the documented API shapes with a fake; not exercised against real Cloudflare.** The client (`server/src/publish/cfclient.ts`) and the deployment state machine are tested against an in-memory implementation of the documented endpoints (`server/test/support/fakecf.ts`). No Cloudflare account or token was used to build this. `server/scripts/cf-pages-smoke.ts` is the check you run once with your own token (below); until someone has, treat the feature as unproven. Decision record: [ADR 0030](adr/0030-publish-targets-cloudflare-pages.md).
+**Status: the go-live path is verified on a real Cloudflare account; the rest only against a fake.** The maintainer connected a real account and went live on a `pages.dev` address; the run found that Cloudflare rejects `per_page=100` when listing projects (fixed, see the [CHANGELOG](../CHANGELOG.md)). The client (`server/src/publish/cfclient.ts`) and the deployment state machine are otherwise tested against an in-memory implementation of the documented endpoints (`server/test/support/fakecf.ts`): rollback, unpublish, custom domains on a project, the project limits and the platform-account mode have no recorded real run. `server/scripts/cf-pages-smoke.ts` is the check you run once with your own token (below). Overview of every integration: [VERIFIED.md](VERIFIED.md). Decision record: [ADR 0030](adr/0030-publish-targets-cloudflare-pages.md).
 
 ## The free address: you do not need a domain
 

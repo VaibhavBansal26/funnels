@@ -23,7 +23,7 @@ Last reviewed 2026-10-21, against the code at that date. Update it whenever some
 
 ## What is verified for real in this repository
 
-* The application itself: the server suite runs against **SQLite, in-process PostgreSQL (PGlite) and real PostgreSQL** (17 and 18), and the rate limiter and event bus suites run against **real Redis** ([TESTING.md](TESTING.md)).
+* The application itself: the server suite runs against **SQLite, in-process PostgreSQL (PGlite, PostgreSQL 18 in WASM) and a real PostgreSQL server** (the CI job uses `postgres:17`), and the rate limiter and event bus suites run against **real Redis** ([TESTING.md](TESTING.md)).
 * The web app and the builder in a **real browser** (Playwright, real mouse drags) against the built server ([TESTING.md](TESTING.md)).
 * For this documentation pass (2026-10-21): the app was built, seeded (`npm run seed`) and run locally on a random port; every page in [USER-GUIDE.md](USER-GUIDE.md) was opened in Chromium and its text and controls compared with the guide; going live on the built-in address, taking it offline, moving a funnel to the trash and restoring it were exercised over the HTTP API (headers checked: `X-Robots-Tag`, cookie path, CSP, 404 after taking offline, restore in test mode).
 

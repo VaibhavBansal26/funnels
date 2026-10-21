@@ -1,6 +1,6 @@
 # 0043. Free addresses as system domains
 
-Status: Accepted (Cloudflare parts unverified against the real API, see [CLOUDFLARE-PAGES.md](../CLOUDFLARE-PAGES.md))
+Status: Accepted (going live on a pages.dev address verified on a real Cloudflare account; other Cloudflare parts only against a fake, see [CLOUDFLARE-PAGES.md](../CLOUDFLARE-PAGES.md))
 
 ## Context
 

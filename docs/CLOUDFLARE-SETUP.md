@@ -1,6 +1,6 @@
 # Cloudflare setup, step by step
 
-For someone who has never used Cloudflare. About ten minutes. **Status: the app's Cloudflare code has only been tested against a fake that follows Cloudflare's documentation; it has never talked to the real Cloudflare** (nobody has given the project a token). Step 6 runs the check that proves it on your account. Screens and labels in the dashboard change from time to time; if a name below differs, look for the closest one. Last checked against Cloudflare's documentation on 2026-10-21.
+For someone who has never used Cloudflare. About ten minutes. **Status: connecting an account and going live on the free `pages.dev` address (steps 4 and 5) have been run by the maintainer on a real Cloudflare account**; that run found a real-API difference (the project count) that is fixed. Rollback, unpublish, custom domains on a project and the Workers option have only been tested against a fake that follows Cloudflare's documentation ([VERIFIED.md](VERIFIED.md)). Step 6 runs the check that proves the rest on your account. Screens and labels in the dashboard change from time to time; if a name below differs, look for the closest one. Last checked against Cloudflare's documentation on 2026-10-21.
 
 **Never paste an API token into a chat, an issue, a commit, a screenshot or a file in the repository.** Anyone with the token can publish to and delete things in your Cloudflare account. If you did, delete the token (step 3 backwards) and make a new one.
 

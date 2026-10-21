@@ -1,6 +1,6 @@
 # 0020. Stripe Connect hosted checkout, idempotent finalization, refunds and plan limits
 
-Status: Accepted (implementation verified against a fake only)
+Status: Accepted (implementation verified against a fake and sandbox response shapes only; no real payment)
 
 ## Context
 

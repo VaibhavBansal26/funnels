@@ -1,6 +1,6 @@
 # 0030. Publish targets: serving from this server or from Cloudflare Pages
 
-Status: Accepted (unverified against real Cloudflare: see [CLOUDFLARE-PAGES.md](../CLOUDFLARE-PAGES.md))
+Status: Accepted (go live verified on a real Cloudflare account; rollback, unpublish and custom domains only against a fake: see [CLOUDFLARE-PAGES.md](../CLOUDFLARE-PAGES.md))
 
 ## Context
 

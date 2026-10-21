@@ -129,7 +129,7 @@ A funnel starts in **test** mode. In test mode the pages are not served on any a
 stateDiagram-v2
   [*] --> pending: add hostname
   pending --> active: TXT token + CNAME match
-  pending --> failed: not verified within 72h
+  pending --> failed: not verified within DOMAIN_VERIFY_TIMEOUT_HOURS
   active --> failed: DNS lost on re-verify
   failed --> active: DNS fixed, verify
   active --> [*]: delete
@@ -209,7 +209,7 @@ Pixel and tag settings exist per workspace, funnel and step (a step overrides it
 
 ## Google reviews
 
-A *Google reviews* block (list, carousel, rating badge) and an *Ask for a Google review* button. **Flow:** the page document only stores the place id and options; when a page is rendered or published the server fetches the place (Places API (New): Place Details and Text Search) with the workspace's **encrypted key** (or the platform key `GOOGLE_PLACES_API_KEY`), caches it in `google_places_cache` for a short time (`GOOGLE_REVIEWS_CACHE_SECONDS`, 3,600 by default, Google's storage terms apply), and bakes a snapshot into the HTML; pages (origin and Pages) refresh the numbers at runtime from `GET /public/reviews/{token}` (CORS for customer domains and Pages hosts). **Failures:** a missing key, no place, an API error, a quota limit (200 lookups per day per workspace by default) or an open circuit breaker all degrade to the testimonials typed into the block, labelled as customer feedback, never as Google reviews; the endpoint always answers 200. Attribution to Google and links to authors are always shown. **Not exercised against the real Google API** ([VERIFIED.md](VERIFIED.md)). **Deeper:** [REVIEWS.md](REVIEWS.md), [ADR 0042](adr/0042-google-reviews-places-api.md).
+A *Google reviews* block (list, carousel, rating badge) and an *Ask for a Google review* button. **Flow:** the page document only stores the place id and options; when a page is rendered or published the server fetches the place (Places API (New): Place Details and Text Search) with the workspace's **encrypted key** (or the platform key `GOOGLE_PLACES_API_KEY`), caches it in `google_places_cache` for a short time (`GOOGLE_REVIEWS_CACHE_TTL_S`, 3,600 by default, Google's storage terms apply), and bakes a snapshot into the HTML; pages (origin and Pages) refresh the numbers at runtime from `GET /public/reviews/{token}` (CORS for customer domains and Pages hosts). **Failures:** a missing key, no place, an API error, a quota limit (`GOOGLE_REVIEWS_DAILY_FETCHES`, 200 lookups per day per workspace by default) or an open circuit breaker all degrade to the testimonials typed into the block, labelled as customer feedback, never as Google reviews; the endpoint always answers 200. Attribution to Google and links to authors are always shown. **Not exercised against the real Google API** ([VERIFIED.md](VERIFIED.md)). **Deeper:** [REVIEWS.md](REVIEWS.md), [ADR 0042](adr/0042-google-reviews-places-api.md).
 
 ## Analytics API, API keys and identity pepper
 
