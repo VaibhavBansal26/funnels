@@ -68,6 +68,13 @@ Migrations are forward-only. To roll back the application, deploy the previous i
 
 **Migration failed at boot.** The failing file's transaction rolled back; the process exits. Fix forward (new migration) or restore; other replicas keep running the old version. Never edit an applied migration.
 
+## Catalog sync and checkout from the catalog
+
+- **Products show "Sync failed".** The catalog works without Stripe, so nothing stops selling. Read the message on the product, fix the cause (Stripe outage, account restricted, invalid image URL: images must be public https), then `POST /api/products/{id}/sync` or the "Sync with Stripe" button. `payments.sync` limits pushes (12 per minute per workspace).
+- **Checkout says "This product is no longer available".** The product or its price was archived: restore it in Products, or choose another product in the builder. Pages keep rendering.
+- **A workspace connected a different Stripe account.** Stored Stripe ids are reset on the next sync; run "Sync with Stripe".
+- **Upgrade.** Boot links every existing checkout block to a catalog product once per workspace (`catalog_backfill`); check the log for `catalog` and the Products page afterwards. Rolling back the app leaves the new columns and tables in place (additive migrations 020-022).
+
 ## Page builder rollout (GrapesJS, ADR 0022)
 
 * **First start after the upgrade** converts every stored page and template step from the old block document to a GrapesJS project (`migrateLegacyPages`, logged; it re-renders the affected funnels, so published pages change to the new base design) and applies migrations 016 (`legacy_doc_json`) and 018 (`assets`). It is idempotent, so a crash halfway is resumed by the next start. Take a database backup first: **an older image cannot read version-2 pages**, so the rollback of this release is a database restore (the originals are kept in `step_pages.legacy_doc_json`, which allows a manual conversion back only for pages not edited since).

@@ -116,6 +116,10 @@ Other specs: `smoke.spec.ts` (sign-in and out, template and step reorder, a live
 
 Not covered (yet): the AI assistant dialog beyond the alt-text button, webhooks UI, the new-funnel wizard in the browser, other browsers, accessibility audits beyond role-based selectors.
 
+## Commerce tests (templates, catalog, payments, product analytics)
+
+`server/test/templates.library.test.ts` (every built-in template: validity, render, contrast, slots, responsive; a sample through the API), `templates.test.ts` (API, filters, ETag, import and export, seeding and upgrade rules), `products.test.ts` (money, catalog API, permissions, tenancy, price immutability, archive, checkout from the catalog, quantities, currencies, backfill, Stripe sync and reconciliation against the fake, promotion codes, subscriptions), `payments.test.ts` (status states, settings, tax, wizard, template bindings), `productanalytics.test.ts` (math, currency separation, time zones and DST, conversion and take rates, customers, access, CSV, v1 API), `analyticssummary.test.ts` (NumberGuard, narrator property test, endpoint, fallbacks, injection, quota). `fakestripe.ts` models products, prices, tax settings, promotion discounts, tax and subscription sessions.
+
 ## Stripe tests
 
 `server/test/stripe.test.ts` (29 tests, all engines) runs against `server/test/support/fakestripe.ts`: signature scheme (rotation, replay), Connect onboarding and webhooks, hosted checkout parameters and fee by plan, webhook and return-URL race creating orders once, amount mismatch retry, Stripe outage, upsell success/decline/authentication/idempotency, refunds (partial, concurrent, Stripe failure, permissions, dashboard reconciliation), subscriptions and plan limits. A fake cannot prove Stripe's real behaviour: see the checklist in [STRIPE.md](STRIPE.md).

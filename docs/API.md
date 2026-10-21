@@ -30,12 +30,12 @@ curl -s "$BASE/api/funnels?limit=10&search=spring" -H "authorization: Bearer $TO
 # runnable
 curl -s $BASE/api/funnels/$FUNNEL/steps/$STEP/page -H "authorization: Bearer $TOKEN"
 # save VERSION=version
-curl -s -X PUT $BASE/api/funnels/$FUNNEL/steps/$STEP/page -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"version":$VERSION,"doc":{"version":1,"blocks":[{"id":"h1","type":"heading","text":"Hello","level":1}]}}'
+curl -s -X PUT $BASE/api/funnels/$FUNNEL/steps/$STEP/page -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"version":$VERSION,"doc":{"version":2,"project":{"assets":[],"styles":[],"pages":[{"frames":[{"component":{"type":"wrapper","components":[{"type":"fn-heading","tagName":"h1","components":[{"type":"textnode","content":"Hello"}]}]}}]}]}}}'
 # a second save from the same (now stale) version is refused:
-curl -s -X PUT $BASE/api/funnels/$FUNNEL/steps/$STEP/page -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"version":$VERSION,"doc":{"version":1,"blocks":[]}}'
+curl -s -X PUT $BASE/api/funnels/$FUNNEL/steps/$STEP/page -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"version":$VERSION,"doc":{"version":2,"project":{"assets":[],"styles":[],"pages":[{"frames":[{"component":{"type":"wrapper","components":[]}}]}]}}}'
 ```
 
-The second call answers `409` `{"error":{"code":"VERSION_CONFLICT","details":{"currentVersion":...}}}`; reload and re-apply.
+The page document is a GrapesJS project: `{ "version": 2, "project": { assets, styles, pages } }`. The server cleans it against allow-lists and derives `forms` and `products` (prices, product links, form fields) from the typed component props, so a client cannot choose a price or a form definition; the response of `GET .../page` shows the derived lists. Legacy block documents (`{"version":1,"blocks":[...]}`) are still accepted and converted on save. The second call answers `409` `{"error":{"code":"VERSION_CONFLICT","details":{"currentVersion":...}}}`; reload and re-apply.
 
 ## Track visitors (public, runnable)
 

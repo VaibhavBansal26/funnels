@@ -230,6 +230,28 @@ flowchart LR
 
 See [ADS.md](ADS.md) and [ADR 0031](adr/0031-ads-conversions-attribution.md). The pixel runtime (`ads/runtime.ts`) is one inline script generated from validated ids (`ads/snippets.ts`) and injected into the head by the renderer (`services/adtags.ts`), both for the origin and for Pages bundles. The page cache and the edge are invalidated when pixels change because they are part of the stored page HTML.
 
+## Commerce: templates, catalog, product analytics
+
+Templates (`templates`, `template_steps`) and the product catalog (`products`, `prices`) are described in [TEMPLATES.md](TEMPLATES.md) and [PRODUCTS.md](PRODUCTS.md). The checkout path with the catalog:
+
+```mermaid
+sequenceDiagram
+  participant V as Visitor
+  participant API as POST /api/public/checkout
+  participant Cat as Catalog (prices)
+  participant S as Stripe (connected account)
+  participant W as Connect webhook
+  V->>API: email, bump ids, quantity (no amounts)
+  API->>Cat: resolveOffer per block (follow replaced_by, refuse archived)
+  API->>S: Checkout Session (synced price ids or price_data), stored items
+  S-->>V: hosted checkout
+  S->>W: checkout.session.completed
+  W->>S: re-read the session
+  W->>API: finalize: verify subtotal - discount + tax, orders with product, price, quantity, discount
+```
+
+Product analytics (`services/productanalytics.ts`) reads `orders` (grouped by product, currency, role, funnel, step and 15-minute bucket, folded to local intervals in the requested zone) and the sales rollups (unique visitors of checkout steps); the AI summary (`services/analyticssummary.ts`) builds an evidence object from the same engine ([ADR 0025](adr/0025-grounded-analytics-summary.md)).
+
 ## Domain state machine
 
 ```mermaid

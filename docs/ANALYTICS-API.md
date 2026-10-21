@@ -62,7 +62,7 @@ The **workspace pepper** is a per-workspace secret. A person holding `analytics_
 Every workspace starts with its own random pepper, so two apps of one customer produce different keys for the same e-mail address until both use the same value. `GET /api/v1/analytics/identity-pepper` answers `{ pepper, version, algorithm: "HMAC-SHA256", fingerprint, rotatedAt }` (the same shape in Funnels and Conversations; schema `identity-pepper.schema.json`). To join two apps:
 
 1. Pick one value: `openssl rand -hex 32` (or read the pepper of the other app).
-2. Set it: `curl -X PUT -H "Authorization: Bearer $SESSION_TOKEN" -H "Content-Type: application/json" -d '{"pepper":"<value>","confirm":"<value>"}' .../api/v1/analytics/identity-pepper`. `confirm` is optional; when sent it must repeat the pepper exactly (`400 PEPPER_CONFIRM_MISMATCH`). A person's session is required (an API key can read, not change).
+2. Set it: `curl -X PUT -H "Authorization: Bearer $SESSION_TOKEN" -H "Content-Type: application/json" -d '{"pepper":"<value>","confirm":"<value>"}' .../api/v1/analytics/identity-pepper`. `confirm` is optional; when sent it must repeat the pepper exactly (`400 PEPPER_CONFIRM_MISMATCH`). A person's session is required: an API key (even one with every scope) is authenticated but gets `403 SESSION_REQUIRED` on `PUT` and `POST .../rotate` (the same answer as Conversations); an API key can read, not change.
 3. Compare `fingerprint` (first 8 hex characters of SHA-256 over the pepper) in both apps: equal fingerprints mean equal peppers, and the fingerprint reveals nothing usable.
 
 Rules (`400 INVALID_PEPPER` otherwise): 32 to 256 printable ASCII characters without spaces; a hex pepper needs 64 characters and a base64 pepper 43 (32 bytes); at least 12 distinct characters, about 128 bits of entropy by a Shannon estimate, no repeated pattern or sequence. The value is used exactly as typed (nothing is trimmed), so both apps must get the same string. Setting the stored value again changes nothing; a different value adds 1 to `version`, sets `rotatedAt` and writes an `analytics.pepper_set` audit entry holding the fingerprint, never the pepper (rotate writes `analytics.pepper_rotated`).
@@ -101,6 +101,22 @@ Two more read endpoints, scope `analytics:read`, following the same conventions 
 * `GET /api/v1/analytics/attribution?...&dimension=source|medium|campaign|content|source_medium|source_medium_campaign` -> rows `{ source, medium, campaign, content, visits, leads, orders, revenue, conversion_rate }` (`(direct)` for visitors, leads or orders without a marketing touch). Schema: [analytics-api/attribution.schema.json](analytics-api/attribution.schema.json).
 
 A `test` key sees test funnels only and therefore no ad spend. Definitions, joining rules and limits: [ADS.md](ADS.md).
+
+## Product analytics
+
+`GET /api/v1/analytics/products` (scope `analytics:read`; `from`, `to`, `tz`, `interval=day|week|month`, `currency`, `funnel_id`, `include=series`, `limit<=1000`, `cursor`) returns `{ data, next_cursor, from, to, tz, interval, totals }`: one row per product **and currency** (an order without a catalog product is a row by name with `product_id: null`), one total per currency. **Currencies are never added together.** Amounts are major units rounded to the currency `exponent`. A `live` key reads live funnels, a `test` key test funnels. The session endpoints `GET /api/analytics/products`, `GET /api/funnels/{id}/analytics/products` (camelCase, with series, top funnels and steps) and `GET /api/analytics/products/export` (CSV, formulas neutralised) use the same engine.
+
+Row fields: `orders` (an order bump or upsell is its own order line), `units`, `gross`, `refunded`, `disputed_lost`, `net`, `discount`, `aov`, `refund_rate`, `refunded_orders`, `roles` (orders by main, bump, upsell, downsell), `customers {total, new, repeat}`, `checkout {visitors, orders, conversion}`, `take_rates {bump, upsell, downsell}` each `{offered, taken, rate}`, `top_funnels`, and with `include=series` zero-filled `series` points `{t, orders, units, gross, refunded, disputed_lost, net}` bucketed in `tz`.
+
+Definitions: **gross** is the booked amount after promotion codes minus amounts lost to lost disputes, the same meaning as `gross` on funnels. **refunded** is the refunds on those orders as of now, attributed to the order's date. **disputed_lost** is shown separately but is already out of `gross`. **net** = `gross - refunded`. `aov` = `gross / orders`; `refund_rate` = `refunded / gross`. **conversion** = main-offer orders / unique visitors of the steps that carry the product's checkout (`0` when there were no visitors). **Take rates**: bump = bump orders / main orders on the steps where it is offered; upsell = upsell orders / main orders of the funnels offering it; downsell = downsell orders / main orders that did not take an upsell there (an approximation: there is no per-visitor decline log). **new** customers placed their first order in the workspace inside the range, **repeat** ones ordered before it. Every ratio is `0` when its denominator is `0`. Funnel analytics book a lost dispute on the day Stripe reports it; product analytics attribute it to the order's date, so a period total can differ between the two when a dispute closes in a later period.
+
+### Additive fields on funnels and steps
+
+`GET /funnels` rows and `GET /funnels/{id}/steps` rows (and the session funnel analytics `sales` objects) gained `refunded`, `disputed_lost` and `net` (`net = gross - refunded`) for the orders created in the range; `gross` keeps its meaning (so `disputed_lost` is informational). Mixed-currency funnels sum minor units like `gross` always did.
+
+### AI summary
+
+`POST /api/analytics/summary` `{scope: workspace|funnel|product, funnelId, productId, from, to, tz, currency}` (permissions `analytics:read` and `ai:use`, AI quota) answers `{narrative, actions[3], source, evidence}`; see [AI.md](AI.md#period-summary).
 
 ## Rate limits
 

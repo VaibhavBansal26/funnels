@@ -99,13 +99,17 @@ describe('safe names and the prompt', () => {
 
 // ---- the endpoint ------------------------------------------------------------------------------------------------------------------------------------
 
-class FakeModel extends HeuristicProvider implements AiProvider {
-  override readonly name = 'fake-model';
+class FakeModel implements AiProvider {
+  readonly name = 'fake-model';
   prompts: string[] = [];
-  constructor(private answer: (e: SummaryEvidence) => unknown | Promise<unknown>) {
-    super();
-  }
-  override summary = async (e: SummaryEvidence) => {
+  private base = new HeuristicProvider();
+  constructor(private answer: (e: SummaryEvidence) => unknown | Promise<unknown>) {}
+  funnelCopy = (i: Parameters<AiProvider['funnelCopy']>[0]) => this.base.funnelCopy(i);
+  rewrite = (i: Parameters<AiProvider['rewrite']>[0]) => this.base.rewrite(i);
+  headlines = (i: Parameters<AiProvider['headlines']>[0]) => this.base.headlines(i);
+  insights = (i: Parameters<AiProvider['insights']>[0]) => this.base.insights(i);
+  altText = (i: Parameters<AiProvider['altText']>[0]) => this.base.altText(i);
+  summary = async (e: SummaryEvidence) => {
     this.prompts.push(summaryPrompt(e));
     return this.answer(e);
   };

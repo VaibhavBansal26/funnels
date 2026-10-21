@@ -2,6 +2,9 @@
 
 | Term | Meaning |
 |---|---|
+| Product / price | A catalog entry a checkout sells and one way to pay for it (amount in minor units, currency, optional billing interval and trial). Prices are immutable: a new amount is a new price and the old one is archived. Replaces the price typed into a checkout block. |
+| Product slot | A placeholder in a template ("main", "bump", ...) bound to a catalog product when the template is used. |
+| Net revenue | `gross - refunded`, where `gross` already excludes amounts lost to lost disputes. |
 | Workspace | The tenant. Owns users, funnels, domains, tags, leads, orders, webhooks. Every business row has `workspace_id`; a resource of another workspace is a 404. |
 | Funnel | An ordered set of steps published as a unit. Has a status (`test` or `live`), optional domain, tags, soft delete (trash). |
 | Step | One page of a funnel with a path (`base_path`, compared through `path_key`), a position, a `version`. |

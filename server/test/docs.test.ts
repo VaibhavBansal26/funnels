@@ -167,7 +167,7 @@ describe.skipIf(BACKEND !== 'sqlite')('documentation', () => {
         const text = await res.text();
         last = { status: res.status, json: text ? JSON.parse(text) : null };
         ran++;
-        const expected = /-X PUT/.test(cmd) && /"blocks":\[\]/.test(cmd) ? 409 : method === 'POST' && url!.startsWith('/api/public') ? 202 : method === 'POST' && url!.includes('/funnels') ? 201 : method === 'POST' ? 201 : 200;
+        const expected = /-X PUT/.test(cmd) && /"components":\[\]/.test(cmd) ? 409 : method === 'POST' && url!.startsWith('/api/public') ? 202 : method === 'POST' && url!.includes('/funnels') ? 201 : method === 'POST' ? 201 : 200;
         expect(res.status, `${line} -> ${text}`).toBe(expected);
       }
     }

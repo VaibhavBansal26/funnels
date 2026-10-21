@@ -76,6 +76,14 @@ Limits (`BILLING_ENFORCE_LIMITS=true`; off by default so self-hosted installs ar
 
 Going over is `402 PLAN_LIMIT_REACHED` with `details {resource, limit, used, plan}`. Nothing is ever deleted on downgrade; trashed funnels free a slot and restoring needs one. `GET /api/billing` reports plan, limits, usage and the connect state.
 
+## Payments setup (Settings, Payments)
+
+`GET /api/payments/status` (`products:read`) answers what the screen shows: the server mode from the key (`test` for `sk_test_...`, `live`, or none: built-in test payments), the connection `state` (`unavailable`, `not_connected`, `onboarding_incomplete` with the requirements Stripe still lists, `restricted`, `connected`), charges and payouts, and from the connected account its country, default currency, active payment methods (capabilities), statement descriptor, display name and whether Stripe Tax is set up. A Stripe outage answers the stored state with `stale: true`. `PATCH /api/payments/settings` (`billing:manage`) sets the statement descriptor suffix (at most 22 letters, digits and spaces: `payment_intent_data[statement_descriptor_suffix]`), receipt emails (`receipt_email`, the account must have customer emails enabled in Stripe) and Stripe Tax (`automatic_tax`; the toggle needs Stripe Tax set up on the account). With tax on, the paid total may exceed the subtotal: orders record the line amounts and the tax is not revenue. Onboarding returns to `/settings`.
+
+Test mode (a test key) shows a banner and the Stripe test cards (`4242 4242 4242 4242` succeeds; `4000 0000 0000 0002` declines; `4000 0000 0000 9995` insufficient funds, also declines one-click upsells; `4000 0025 0000 3155` and `4000 0000 0000 3220` ask for 3-D Secure, which an off-session upsell cannot answer). Use any future expiry, any CVC and any postal code. The wizard "Add payments to this funnel" builds the checkout steps ([PRODUCTS.md](PRODUCTS.md#templates-and-the-wizard)).
+
+Checkout now prices from the product catalog ([PRODUCTS.md](PRODUCTS.md)): synced prices are sent as `line_items[].price`, others as `price_data`; quantity, promotion codes (`allow_promotion_codes`, discounts recorded per order), subscriptions (`mode=subscription`, trials, application fee as a percentage) and zero- and three-decimal currencies are handled there. The Connect webhook also reconciles `product.*` and `price.*` events. The finalizer accepts `payment_status` `paid`, or `no_payment_required` for a subscription trial, and verifies `amount_total = subtotal - discount + tax` against what the server stored (`409 CHECKOUT_MISMATCH` otherwise). Not verified against the real Stripe API: the catalog sync, the subscription session shape (`invoice.payment_intent` expansion), promotion codes and Stripe Tax.
+
 ## Test-mode validation checklist (not yet done)
 
 1. Create a Connect platform in test mode; set the two webhook endpoints and secrets; `stripe listen --forward-to` works for local runs.
@@ -86,4 +94,4 @@ Going over is `402 PLAN_LIMIT_REACHED` with `details {resource, limit, used, pla
 6. Subscribe to Pro with a test price; confirm plan changes, portal opens, past-due with `4000 0000 0000 0341`, and cancellation.
 7. Confirm fields we read exist as assumed (`payment_intent.latest_charge`, `session.payment_intent`, `subscription.items.data[0].current_period_end`; newer API versions moved some of these).
 
-Known gaps: no tax or invoices on funnel checkouts, disputes are tracked but not answered from Funnels (see above), no SCA flow for the upsell beyond failing cleanly, one currency per order, no proration controls (portal decides).
+Known gaps: subscription renewals are not recorded as orders, no invoices on funnel checkouts, disputes are tracked but not answered from Funnels (see above), no SCA flow for the upsell beyond failing cleanly, one currency per order, no proration controls (portal decides).

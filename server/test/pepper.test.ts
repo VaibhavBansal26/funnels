@@ -95,8 +95,8 @@ describe('pepper endpoints', () => {
       expect(r.json.error.message).toMatch(/lacks the/);
     }
     const both = await mk(['analytics:read', 'analytics:export', 'analytics_identity:manage']);
-    expect((await h.call('PUT', URL, { token: both, body: { pepper: hex() } })).status).toBe(401);
-    expect((await h.call('POST', `${URL}/rotate`, { token: both })).status).toBe(401);
+    expect((await h.call('PUT', URL, { token: both, body: { pepper: hex() } })).status).toBe(403);
+    expect((await h.call('POST', `${URL}/rotate`, { token: both })).status).toBe(403);
     const admin = await h.member(owner, 'admin'); // has analytics:export, lacks analytics_identity:manage
     const r = await h.call('POST', '/api/v1/api-keys', { token: admin.token, body: { name: 'x', scopes: ['analytics_identity:manage'] } });
     expect(r.status).toBeGreaterThanOrEqual(400);
