@@ -1,3 +1,4 @@
+import { runBuildJob } from './ai/builder/service.js';
 import { AnthropicProvider } from './ai/anthropic.js';
 import { HeuristicProvider } from './ai/heuristic.js';
 import type { AiProvider } from './ai/types.js';
@@ -115,6 +116,7 @@ export function createWorker(deps: Deps): JobWorker {
     'publish.poll': (payload) => pollJob(deps, payload),
     'publish.domain': (payload) => domainJob(deps, payload),
     'publish.destroy': (payload) => destroyJob(deps, payload),
+    'ai.build': (payload) => runBuildJob(deps, payload),
   };
   return new JobWorker(deps.jobs, handlers, deps.log);
 }

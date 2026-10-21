@@ -16719,6 +16719,404 @@
         ]
       }
     },
+    "/api/ai/builds": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Start the multi-stage funnel builder from a brief; answers 202 at once, progress comes as `ai.build` events on the SSE stream and from GET /api/ai/builds/:id",
+        "description": "One build per workspace at a time (409 BUILD_IN_PROGRESS). `options.products: \"create\"` also needs products:write. Uses the job queue, so it resumes after a restart.",
+        "operationId": "post_api_ai_builds",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "prompt": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 50000
+                  },
+                  "structured": {
+                    "type": "object",
+                    "properties": {
+                      "business": {
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      "offer": {
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      "audience": {
+                        "type": "string",
+                        "maxLength": 1000
+                      },
+                      "tone": {
+                        "type": "string",
+                        "enum": [
+                          "persuasive",
+                          "concise",
+                          "friendly",
+                          "formal",
+                          "playful",
+                          "authoritative"
+                        ]
+                      },
+                      "goal": {
+                        "type": "string",
+                        "enum": [
+                          "leads",
+                          "webinar",
+                          "sales",
+                          "booking",
+                          "events",
+                          "donations",
+                          "engagement"
+                        ]
+                      },
+                      "priceMin": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1000000
+                      },
+                      "priceMax": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1000000
+                      },
+                      "currency": {
+                        "type": "string",
+                        "pattern": "^[A-Z]{3}$"
+                      },
+                      "constraints": {
+                        "maxItems": 10,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 300
+                        }
+                      },
+                      "avoid": {
+                        "maxItems": 20,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 60
+                        }
+                      },
+                      "mustInclude": {
+                        "maxItems": 10,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 120
+                        }
+                      },
+                      "language": {
+                        "type": "string",
+                        "maxLength": 40
+                      }
+                    }
+                  },
+                  "options": {
+                    "default": {
+                      "products": "none",
+                      "redactPii": false
+                    },
+                    "type": "object",
+                    "properties": {
+                      "products": {
+                        "default": "none",
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "create",
+                          "existing"
+                        ]
+                      },
+                      "productIds": {
+                        "maxItems": 5,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 64
+                        }
+                      },
+                      "redactPii": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "steps": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 6
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-also-permissions": [
+          "funnels:write"
+        ],
+        "x-auth": "user",
+        "x-permission": "ai:use",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace",
+          "ai.minute",
+          "ai.daily"
+        ]
+      },
+      "get": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Recent generations of the workspace (status, stages, token use)",
+        "operationId": "get_api_ai_builds",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "ai:use",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/ai/builds/{id}": {
+      "get": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "One generation: stages, brief, assumptions, strategy, validation report, token use and the funnel it created",
+        "operationId": "get_api_ai_builds_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "ai:use",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.read",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/ai/builds/{id}/cancel": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Cancel a queued or running generation (nothing is created)",
+        "operationId": "post_api_ai_builds_id_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-auth": "user",
+        "x-permission": "ai:use",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace"
+        ]
+      }
+    },
+    "/api/ai/builds/{id}/steps/{key}/regenerate": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Rewrite one page of a finished generation and save it to the funnel (the previous version goes to the page history)",
+        "operationId": "post_api_ai_builds_id_steps_key_regenerate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "instruction": {
+                    "type": "string",
+                    "maxLength": 400
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-also-permissions": [
+          "funnels:write"
+        ],
+        "x-auth": "user",
+        "x-permission": "ai:use",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace",
+          "ai.minute",
+          "ai.daily"
+        ]
+      }
+    },
     "/api/ai/rewrite": {
       "post": {
         "tags": [

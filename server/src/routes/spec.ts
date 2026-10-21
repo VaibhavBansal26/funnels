@@ -1,6 +1,7 @@
 import type { ZodType } from 'zod';
 import type { Permission } from '../auth/permissions.js';
 import * as ai from '../ai/service.js';
+import * as aiBuild from '../ai/builder/service.js';
 import { AnalyticsQuery } from '../services/analytics.js';
 import { DefaultPagesInput, DomainInput } from '../services/domains.js';
 import { PublicEventInput } from '../services/events.js';
@@ -365,6 +366,11 @@ export const OPERATIONS: Operation[] = [
   // AI
   A('GET', '/api/ai/status', 'ai:use', 'ai', 'Provider and daily usage'),
   A('POST', '/api/ai/funnel', 'ai:use', 'ai', 'Generate a funnel', { body: ai.FunnelRequest, status: 201, limits: ['ip.global', 'api.write', 'api.workspace'], inHandler: ['ai.minute', 'ai.daily'] }),
+  A('POST', '/api/ai/builds', 'ai:use', 'ai', 'Start the multi-stage funnel builder from a brief; answers 202 at once, progress comes as `ai.build` events on the SSE stream and from GET /api/ai/builds/:id', { body: aiBuild.BuildRequest, status: 202, also: ['funnels:write'], inHandler: ['ai.minute', 'ai.daily'], notes: 'One build per workspace at a time (409 BUILD_IN_PROGRESS). `options.products: "create"` also needs products:write. Uses the job queue, so it resumes after a restart.' }),
+  A('GET', '/api/ai/builds', 'ai:use', 'ai', 'Recent generations of the workspace (status, stages, token use)'),
+  A('GET', '/api/ai/builds/:id', 'ai:use', 'ai', 'One generation: stages, brief, assumptions, strategy, validation report, token use and the funnel it created'),
+  A('POST', '/api/ai/builds/:id/cancel', 'ai:use', 'ai', 'Cancel a queued or running generation (nothing is created)'),
+  A('POST', '/api/ai/builds/:id/steps/:key/regenerate', 'ai:use', 'ai', 'Rewrite one page of a finished generation and save it to the funnel (the previous version goes to the page history)', { body: aiBuild.RegenerateRequest, also: ['funnels:write'], inHandler: ['ai.minute', 'ai.daily'] }),
   A('POST', '/api/ai/rewrite', 'ai:use', 'ai', 'Rewrite copy', { body: ai.RewriteRequest, inHandler: ['ai.minute', 'ai.daily'] }),
   A('POST', '/api/ai/headlines', 'ai:use', 'ai', 'Headline variants', { body: ai.HeadlineRequest, inHandler: ['ai.minute', 'ai.daily'] }),
   A('POST', '/api/ai/insights', 'ai:use', 'ai', 'Analytics insights', { body: ai.InsightRequest, inHandler: ['ai.minute', 'ai.daily'] }),
