@@ -3,13 +3,13 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Build } from '../api/aibuild';
+import type { Build, BuildStage } from '../api/aibuild';
 import { ToastProvider } from '../components/Toasts';
 import { AiBuilderWizard, validateBrief } from './AiBuilder';
 
 vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ can: () => true }) }));
 
-const stages = (statuses: string[]) => ['understanding', 'strategy', 'products', 'copy:s1', 'assembly', 'validation', 'saving'].map((id, i) => ({ id, label: `Stage ${id}`, status: statuses[i] ?? 'pending' }));
+const stages = (statuses: string[]): BuildStage[] => ['understanding', 'strategy', 'products', 'copy:s1', 'assembly', 'validation', 'saving'].map((id, i) => ({ id, label: `Stage ${id}`, status: (statuses[i] ?? 'pending') as BuildStage['status'] }));
 const build = (over: Partial<Build> = {}): Build => ({ id: 'gen_1', status: 'running', provider: 'heuristic', model: null, source: null, funnelId: null, stages: stages(['done', 'running']), assumptions: ['No tone was given, so the voice is friendly.'], usage: { inputTokens: 0, outputTokens: 0, calls: 0 }, degraded: false, error: null, createdAt: '', completedAt: null, ...over });
 const done = (): Build => build({
   status: 'succeeded', source: 'fallback', degraded: true, funnelId: 'fn_1', model: 'fake-1', stages: stages(['done', 'done', 'skipped', 'fallback', 'done', 'done', 'done']), usage: { inputTokens: 800, outputTokens: 600, calls: 3 },

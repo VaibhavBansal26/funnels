@@ -48,7 +48,7 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
   const [notes, setNotes] = useState<string[]>([]);
   // The rail stays on the tab the author chose when the page changes (switching pages from the Pages tab must not throw them back to Blocks).
   const [leftTab, setLeftTabState] = useState<LeftTab>(() => {
-    try { const t = sessionStorage.getItem('funnels.builder.tab'); return t === 'layers' || t === 'pages' || t === 'assets' ? t : 'blocks'; } catch { return 'blocks'; }
+    try { const t = sessionStorage.getItem('funnels.builder.tab'); return t === 'layers' || t === 'pages' || t === 'assets' || t === 'ai' ? t : 'blocks'; } catch { return 'blocks'; }
   });
   const setLeftTab = (t: LeftTab) => { setLeftTabState(t); try { sessionStorage.setItem('funnels.builder.tab', t); } catch { /* private mode: the choice just is not remembered */ } };
   const [drawer, setDrawer] = useState<null | 'left' | 'right'>(null);
