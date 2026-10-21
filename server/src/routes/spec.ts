@@ -2,6 +2,7 @@ import type { ZodType } from 'zod';
 import type { Permission } from '../auth/permissions.js';
 import * as ai from '../ai/service.js';
 import * as aiBuild from '../ai/builder/service.js';
+import * as aiEdit from '../ai/builder/edit.js';
 import { AnalyticsQuery } from '../services/analytics.js';
 import { DefaultPagesInput, DomainInput } from '../services/domains.js';
 import { PublicEventInput } from '../services/events.js';
@@ -371,6 +372,8 @@ export const OPERATIONS: Operation[] = [
   A('GET', '/api/ai/builds/:id', 'ai:use', 'ai', 'One generation: stages, brief, assumptions, strategy, validation report, token use and the funnel it created'),
   A('POST', '/api/ai/builds/:id/cancel', 'ai:use', 'ai', 'Cancel a queued or running generation (nothing is created)'),
   A('POST', '/api/ai/builds/:id/steps/:key/regenerate', 'ai:use', 'ai', 'Rewrite one page of a finished generation and save it to the funnel (the previous version goes to the page history)', { body: aiBuild.RegenerateRequest, also: ['funnels:write'], inHandler: ['ai.minute', 'ai.daily'] }),
+  A('POST', '/api/ai/edit', 'ai:use', 'ai', 'Builder assistant: turn an instruction about the current page (outline of element ids and text) into validated edit operations (insert, replace, delete, move, setText, restyle over allow-listed components and styles); the browser applies them as one undoable step after preview', { body: aiEdit.EditRequest, also: ['funnels:write'], inHandler: ['ai.minute', 'ai.daily'], notes: 'Never returns HTML. Answer: {summary, ops, source: model|heuristic|fallback, message?, usage}.' }),
+  A('POST', '/api/ai/section', 'ai:use', 'ai', 'Builder assistant: write one section from a short description; returns a validated node spec the browser inserts', { body: aiEdit.SectionRequest, also: ['funnels:write'], inHandler: ['ai.minute', 'ai.daily'] }),
   A('POST', '/api/ai/rewrite', 'ai:use', 'ai', 'Rewrite copy', { body: ai.RewriteRequest, inHandler: ['ai.minute', 'ai.daily'] }),
   A('POST', '/api/ai/headlines', 'ai:use', 'ai', 'Headline variants', { body: ai.HeadlineRequest, inHandler: ['ai.minute', 'ai.daily'] }),
   A('POST', '/api/ai/insights', 'ai:use', 'ai', 'Analytics insights', { body: ai.InsightRequest, inHandler: ['ai.minute', 'ai.daily'] }),

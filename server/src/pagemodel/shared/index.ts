@@ -6,3 +6,4 @@ export * from './css.js';
 export * from './cssvalues.js';
 export * from './build.js';
 export { esc, safeUrl, safeImageSrc, parseVideoUrl, formatMoney } from '../../blocks/safe.js';
+export * from './edit.js';

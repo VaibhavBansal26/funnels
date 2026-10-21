@@ -4,6 +4,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { authenticate, authOf, type AppEnv } from '../auth/context.js';
 import * as ai from '../ai/service.js';
 import * as build from '../ai/builder/service.js';
+import * as edit from '../ai/builder/edit.js';
 import type { Deps } from '../deps.js';
 import { AppError } from '../errors.js';
 import { bodyOf } from './util.js';
@@ -22,6 +23,8 @@ export function aiRoutes(deps: Deps): Hono<AppEnv> {
   r.post('/headlines', async (c) => c.json(await ai.headlineVariants(deps, authOf(c), await bodyOf(c, ai.HeadlineRequest))));
   r.post('/insights', async (c) => c.json(await ai.analyticsInsights(deps, authOf(c), await bodyOf(c, ai.InsightRequest))));
   r.post('/alt-text', async (c) => c.json(await ai.altText(deps, authOf(c), await bodyOf(c, ai.AltTextRequest))));
+  r.post('/edit', async (c) => c.json(await edit.editPage(deps, authOf(c), await bodyOf(c, edit.EditRequest))));
+  r.post('/section', async (c) => c.json(await edit.writeSection(deps, authOf(c), await bodyOf(c, edit.SectionRequest))));
   // Multi-stage funnel builder (docs/AI-BUILDER.md): start returns 202 at once; progress arrives on the SSE stream as `ai.build` events and from GET.
   r.post('/builds', async (c) => c.json(await build.startBuild(deps, authOf(c), await bodyOf(c, build.BuildRequest)), 202));
   r.get('/builds', async (c) => c.json(await build.listBuilds(deps, authOf(c).workspaceId, Number(c.req.query('limit') ?? 20) || 20)));

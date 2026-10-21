@@ -25,10 +25,22 @@ export class ScriptedLlm implements LlmClient {
   }
 }
 
-export class ScriptedProvider extends HeuristicProvider implements AiProvider {
-  override readonly name: string = 'scripted';
+export class ScriptedProvider implements AiProvider {
+  readonly name: string = 'scripted';
+  funnelCopy: AiProvider['funnelCopy'];
+  rewrite: AiProvider['rewrite'];
+  headlines: AiProvider['headlines'];
+  insights: AiProvider['insights'];
+  altText: AiProvider['altText'];
+  summary: AiProvider['summary'];
   constructor(public llm: ScriptedLlm) {
-    super();
+    const h = new HeuristicProvider();
+    this.funnelCopy = h.funnelCopy;
+    this.rewrite = h.rewrite;
+    this.headlines = h.headlines;
+    this.insights = h.insights;
+    this.altText = h.altText;
+    this.summary = h.summary;
   }
 }
 

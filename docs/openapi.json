@@ -17117,6 +17117,197 @@
         ]
       }
     },
+    "/api/ai/edit": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Builder assistant: turn an instruction about the current page (outline of element ids and text) into validated edit operations (insert, replace, delete, move, setText, restyle over allow-listed components and styles); the browser applies them as one undoable step after preview",
+        "description": "Never returns HTML. Answer: {summary, ops, source: model|heuristic|fallback, message?, usage}.",
+        "operationId": "post_api_ai_edit",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "instruction": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  },
+                  "outline": {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  "selectedId": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "funnelId": {
+                    "type": "string",
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "instruction",
+                  "outline"
+                ],
+                "$defs": {
+                  "__schema0": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "type": {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      "tag": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "text": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "children": {
+                        "maxItems": 120,
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/__schema0"
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "type"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-also-permissions": [
+          "funnels:write"
+        ],
+        "x-auth": "user",
+        "x-permission": "ai:use",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace",
+          "ai.minute",
+          "ai.daily"
+        ]
+      }
+    },
+    "/api/ai/section": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Builder assistant: write one section from a short description; returns a validated node spec the browser inserts",
+        "operationId": "post_api_ai_section",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 600
+                  },
+                  "tone": {
+                    "type": "string",
+                    "enum": [
+                      "persuasive",
+                      "concise",
+                      "friendly",
+                      "formal",
+                      "playful",
+                      "authoritative"
+                    ]
+                  },
+                  "selectedId": {
+                    "type": "string",
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "description"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "x-also-permissions": [
+          "funnels:write"
+        ],
+        "x-auth": "user",
+        "x-permission": "ai:use",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "api.write",
+          "api.workspace",
+          "ai.minute",
+          "ai.daily"
+        ]
+      }
+    },
     "/api/ai/rewrite": {
       "post": {
         "tags": [
