@@ -70,14 +70,14 @@ export function AddressChoices({ data, choice, onChoice, disabled, settingsNewTa
               <br />
               {o.url ? <span className="mono small break-all">{o.url}</span> : <span className="muted small">{o.kind === 'pages' ? 'Created when you go live (name.pages.dev)' : o.kind === 'workers' ? 'Created when you go live (name.account.workers.dev)' : '—'}</span>}
             </span>
-            {o.kind === 'pages' && needsCloudflare(o) ? <><br /><span className="small"><strong>Connect Cloudflare first.</strong> Open <Link to="/settings" {...link}>Settings, Publishing card</Link>.</span></> : null}
+            {o.kind === 'pages' && needsCloudflare(o) ? <><br /><span className="small"><strong>Connect Cloudflare first.</strong> Open <Link to="/settings" {...link}>Settings, Publishing card</Link> and add an API token with the <strong>Cloudflare Pages: Edit</strong> permission.</span></> : null}
             {!o.available && o.reason && !(o.kind === 'pages' && needsCloudflare(o)) ? <><br /><span className="small text-warn">{o.reason}</span></> : null}
           </span>
         </label>
       ))}
       <LearnMore label="About these addresses">
         <p className="m-0"><strong className="font-medium text-fg">Built-in:</strong> free, no account and no DNS needed; a custom domain looks more professional.</p>
-        <p className="m-0"><strong className="font-medium text-fg">Cloudflare Pages:</strong> free, served by Cloudflare. Connect Cloudflare in Settings with your Account id and an API token with the Cloudflare Pages: Edit permission (about two minutes). Cloudflare allows 100 Pages projects per account (one per funnel) and the first publish takes about a minute.</p>
+        <p className="m-0"><strong className="font-medium text-fg">Cloudflare Pages:</strong> free, served by Cloudflare. Connecting takes about two minutes: your Cloudflare Account id and an API token, in Settings. Cloudflare allows 100 Pages projects per account (one per funnel) and the first publish takes about a minute.</p>
         <p className="m-0"><strong className="font-medium text-fg">Cloudflare Workers (experimental):</strong> not yet checked against real Cloudflare. Needs a workers.dev subdomain on your account and the token permission Workers Scripts: Edit.</p>
         <p className="m-0"><strong className="font-medium text-fg">Your own domain:</strong> add and verify it on the Domains page.</p>
       </LearnMore>
