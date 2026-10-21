@@ -22,16 +22,16 @@ export const Select = forwardRef<HTMLButtonElement, { value: string; onValueChan
         ref={ref}
         id={rest.id}
         aria-label={rest['aria-label']}
-        className={cn('inline-flex w-full items-center justify-between gap-2 rounded-md border border-border-strong bg-surface px-3 text-left text-sm text-fg shadow-sm focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring/40 disabled:opacity-60 data-[placeholder]:text-muted', size === 'sm' ? 'min-h-7 px-2 text-[0.82rem]' : 'min-h-9', className)}
+        className={cn('inline-flex w-full items-center justify-between gap-2 rounded-lg border border-border-strong bg-surface px-3.5 text-left text-sm text-fg transition-[border-color,box-shadow] duration-150 hover:border-muted/60 focus-visible:border-ring focus-visible:outline-0 focus-visible:ring-4 focus-visible:ring-ring/15 disabled:opacity-60 data-[placeholder]:text-muted', size === 'sm' ? 'min-h-8 px-2.5 text-[0.8125rem]' : 'min-h-10 max-sm:min-h-11', className)}
       >
         <span className="truncate"><RadixSelect.Value placeholder={placeholder} /></span>
         <RadixSelect.Icon><ChevronDown className="size-4 text-muted" /></RadixSelect.Icon>
       </RadixSelect.Trigger>
       <RadixSelect.Portal>
-        <RadixSelect.Content position="popper" sideOffset={4} className="z-[160] max-h-72 min-w-[var(--radix-select-trigger-width)] animate-[pop-in_0.12s] overflow-hidden rounded-lg border border-border bg-surface text-fg shadow-pop">
-          <RadixSelect.Viewport className="p-1">
+        <RadixSelect.Content position="popper" sideOffset={4} className="z-[160] max-h-72 min-w-[var(--radix-select-trigger-width)] animate-[pop-in_0.12s] overflow-hidden rounded-xl border border-border bg-surface text-fg shadow-pop">
+          <RadixSelect.Viewport className="p-1.5">
             {options.map((o) => (
-              <RadixSelect.Item key={o.value} value={o.value === '' ? EMPTY : o.value} disabled={o.disabled} className="relative flex cursor-pointer select-none items-center rounded-md py-1.5 pr-8 pl-2.5 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-surface-2">
+              <RadixSelect.Item key={o.value} value={o.value === '' ? EMPTY : o.value} disabled={o.disabled} className="relative flex cursor-pointer select-none items-center rounded-lg py-2 pr-8 pl-3 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-surface-2">
                 <RadixSelect.ItemText>{o.label}</RadixSelect.ItemText>
                 <RadixSelect.ItemIndicator className="absolute right-2"><Check className="size-4 text-primary" /></RadixSelect.ItemIndicator>
               </RadixSelect.Item>

@@ -30,19 +30,19 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
             'fixed z-[101] flex max-h-[90dvh] flex-col border border-border bg-surface text-fg shadow-pop outline-none',
             side
               ? cn('inset-y-0 w-full max-w-md animate-[slide-in-right_0.2s] rounded-none', side === 'right' ? 'right-0 border-r-0' : 'left-0 border-l-0', 'max-h-none')
-              : cn('top-1/2 left-1/2 w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 animate-[pop-in_0.15s] rounded-xl', width),
+              : cn('top-1/2 left-1/2 w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 animate-[pop-in_0.15s] rounded-2xl', width),
             className,
           )}
         >
-          <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-3.5">
+          <header className="flex items-start justify-between gap-3 px-6 pt-5 pb-3">
             <div className="min-w-0">
-              <RadixDialog.Title className={cn('text-base font-semibold', hideTitle && 'sr-only')}>{title}</RadixDialog.Title>
-              {description ? <RadixDialog.Description className="mt-0.5 text-sm text-muted">{description}</RadixDialog.Description> : null}
+              <RadixDialog.Title className={cn('text-[1.0625rem] font-semibold', hideTitle && 'sr-only')}>{title}</RadixDialog.Title>
+              {description ? <RadixDialog.Description className="mt-1.5 text-[0.8125rem] leading-relaxed text-muted">{description}</RadixDialog.Description> : null}
             </div>
-            <RadixDialog.Close aria-label="Close dialog" className="grid size-8 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg"><X className="size-4" /></RadixDialog.Close>
+            <RadixDialog.Close aria-label="Close dialog" className="grid size-9 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"><X className="size-4" /></RadixDialog.Close>
           </header>
-          <div className="min-h-0 flex-1 overflow-auto px-5 py-4">{children}</div>
-          {footer ? <footer className="flex flex-wrap justify-end gap-2 border-t border-border px-5 py-3">{footer}</footer> : null}
+          <div className="min-h-0 flex-1 overflow-auto px-6 pb-5">{children}</div>
+          {footer ? <footer className="flex flex-wrap justify-end gap-2 border-t border-border px-6 py-4">{footer}</footer> : null}
         </RadixDialog.Content>
       </RadixDialog.Portal>
     </RadixDialog.Root>

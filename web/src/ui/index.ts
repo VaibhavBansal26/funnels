@@ -16,3 +16,4 @@ export { EmptyState } from './empty-state';
 export { Switch } from './switch';
 export { Slider } from './slider';
 export { ColorPicker } from './color-picker';
+export { PageHeader } from './page-header';

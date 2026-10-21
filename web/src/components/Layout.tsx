@@ -97,8 +97,8 @@ const NAV: { to: string; label: string; icon: LucideIcon; gate?: 'webhooks' | 'a
 
 function Brand() {
   return (
-    <NavLink to="/funnels" className="flex items-center gap-2.5 px-2.5 pt-1 pb-4 text-lg font-bold tracking-tight text-fg no-underline" aria-label="Funnels home">
-      <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-fg shadow-sm"><Zap className="size-4" aria-hidden="true" /></span>
+    <NavLink to="/funnels" className="flex items-center gap-2.5 px-3 pt-1 pb-6 text-[1.0625rem] font-semibold tracking-tight text-fg no-underline" aria-label="Funnels home">
+      <span className="grid size-8 place-items-center rounded-[10px] bg-primary text-primary-fg"><Zap className="size-4" aria-hidden="true" /></span>
       Funnels
     </NavLink>
   );
@@ -131,7 +131,7 @@ export function Layout() {
   useEffect(() => setMenu(false), [loc.pathname]);
   const links = NAV.filter((l) => (l.gate === 'webhooks' ? can('webhooks:manage') : l.gate === 'audit' ? can('audit:read') : l.gate === 'products' ? can('products:read') : l.gate === 'ads' ? can('ads:read') : l.gate === 'admin' ? !!session?.platformAdmin : true));
   const NavList = (
-    <nav className="flex flex-col gap-0.5" aria-label="Main">
+    <nav className="flex flex-col gap-1" aria-label="Main">
       {links.map((l) => (
         <NavLink key={l.to} to={l.to} className="nav-link">
           <l.icon className="size-4 shrink-0" aria-hidden="true" />
@@ -142,17 +142,17 @@ export function Layout() {
   );
   return (
     <TooltipProvider>
-      <div className="grid min-h-full grid-cols-1 lg:grid-cols-[15rem_1fr]">
-        <aside className="sticky top-0 hidden h-dvh flex-col gap-1 border-r border-border bg-surface px-3 py-4 lg:flex">
+      <div className="grid min-h-full grid-cols-1 lg:grid-cols-[16rem_1fr]">
+        <aside className="sticky top-0 hidden h-dvh flex-col gap-1 border-r border-border bg-surface px-4 py-6 lg:flex">
           <Brand />
           {NavList}
           <div className="flex-1" />
-          <div className="truncate px-2.5 text-xs text-muted" title={session?.workspace.name}>{session?.workspace.name}</div>
+          <div className="truncate px-3 text-xs text-muted" title={session?.workspace.name}>{session?.workspace.name}</div>
         </aside>
         <div className="flex min-w-0 flex-col">
-          <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-surface/90 px-4 py-2 backdrop-blur sm:px-6">
+          <header className="sticky top-0 z-20 flex h-14 items-center gap-1.5 border-b border-border/70 bg-bg/85 px-4 backdrop-blur-md sm:px-8">
             <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation" onClick={() => setMenu(true)}><Menu /></Button>
-            <span className="text-base font-bold tracking-tight lg:hidden">Funnels</span>
+            <span className="text-base font-semibold tracking-tight lg:hidden">Funnels</span>
             <span className="flex-1" />
             <ThemeMenu />
             <Tooltip label="Notifications">
@@ -164,7 +164,7 @@ export function Layout() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2 px-2" aria-label="Account menu">
-                  <span className="grid size-7 place-items-center rounded-full bg-primary-soft text-xs font-bold text-primary">{(session?.user.name ?? '?').slice(0, 1).toUpperCase()}</span>
+                  <span className="grid size-7 place-items-center rounded-full bg-surface-3 text-xs font-semibold text-fg">{(session?.user.name ?? '?').slice(0, 1).toUpperCase()}</span>
                   <span className="hidden max-w-32 truncate sm:inline">{session?.user.name}</span>
                 </Button>
               </DropdownMenuTrigger>
@@ -176,7 +176,7 @@ export function Layout() {
               </DropdownMenuContent>
             </DropdownMenu>
           </header>
-          <main className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6" id="main">
+          <main className="mx-auto w-full max-w-[1200px] px-4 py-8 sm:px-8 sm:py-10" id="main">
             <Notices />
             {session?.workspace.suspended ? null : <Outlet />}
           </main>
