@@ -45,7 +45,14 @@ Feedback was that the app looked crowded and not classy. The fix is made in the 
 * **Fewer lines.** Cards keep one hairline border and a very soft shadow; tables lose the grey header fill and use light column labels; consecutive sub-sections of a card are separated by one rule; a card inside a card is a flat inset. Segmented controls (status filter, view switch, builder style controls) are a tinted track with a raised active segment instead of bordered boxes.
 * **One accent, used sparingly.** Indigo marks primary actions, links and selection. The active nav item and tab are neutral with weight; the inspector's margin and padding boxes are neutral (they used yellow and green).
 * **Lighter type.** Buttons, labels and tabs are weight 500 (600 only for headings and table figures), body line-height 1.6, labels 13 px, the page title 26 px with tighter tracking.
-* **Progressive disclosure.** A step row shows its number, thumbnail, name and Edit page; duplicate, home/404 and delete live in its menu (move up/down too under 640 px). A funnel card shows its thumbnail, name, stats and Open; the selection checkbox sits on the thumbnail (visible on hover, focus, selection and on touch screens). Settings has a section index on wide screens.
+* **Progressive disclosure.** What is rarely needed sits one click away:
+  * Builder top bar: back, step, undo/redo, device, preview, save status, Save and Publish stay; view saved page, version history, page settings, add payments and shortcuts are in one More menu.
+  * Block panel: only the first category is open.
+  * Step row: number, thumbnail, name and Edit page; move up/down, duplicate, home/404 and delete are in its menu.
+  * Funnel card: thumbnail, name, status, one quiet stats line (only non-zero figures); the actions menu and the selection checkbox appear on the thumbnail on hover, focus, selection and on touch screens.
+  * Funnel tabs: Steps, Analytics, Leads, Orders, Settings; Products and Ads are under More (the open one stays visible).
+  * Reports: Last 7/30/90 days as one segmented control (`RangePicker`) with the date pickers behind Custom range.
+  * Go live and publishing: one line each, the longer explanations behind Learn more (`LearnMore`, a native disclosure); funnel Settings keeps favicon and tracking code in an optional section; Settings has a section index.
 * **Touch and focus.** Controls are 40 px tall (44 px under 640 px); focus is a 4 px soft ring plus the border colour on inputs and the 2 px outline elsewhere.
 * **Radii and shadows.** Controls 8 px, cards 12 px, dialogs 16 px; `shadow-card` is two soft layers, `shadow-pop` only for floating surfaces.
 
