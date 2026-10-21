@@ -120,6 +120,8 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** Set false for endpoints that must not carry credentials (login/register). */
   auth?: boolean;
+  /** A body that is not JSON (a CSV upload): sent as is with this content type. */
+  raw?: { body: string; contentType: string };
 }
 
 export function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -135,7 +137,10 @@ export async function request<T>(method: string, path: string, opts: RequestOpti
   const token = opts.auth === false ? null : tokenStore.get();
   if (token) headers.authorization = `Bearer ${token}`;
   let body: string | undefined;
-  if (opts.body !== undefined) {
+  if (opts.raw) {
+    headers['content-type'] = opts.raw.contentType;
+    body = opts.raw.body;
+  } else if (opts.body !== undefined) {
     headers['content-type'] = 'application/json';
     body = JSON.stringify(opts.body);
   }
@@ -170,6 +175,8 @@ export const api = {
   get: <T>(path: string, query?: RequestOptions['query'], signal?: AbortSignal) => request<T>('GET', path, { query, signal }),
   post: <T>(path: string, body?: unknown, opts: Pick<RequestOptions, 'auth'> = {}) => request<T>('POST', path, { body, ...opts }),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, { body }),
+  /** POST a text body (a CSV file) instead of JSON. */
+  postText: <T>(path: string, text: string, contentType: string, query?: RequestOptions['query']) => request<T>('POST', path, { raw: { body: text, contentType }, query }),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, { body }),
   delete: <T = void>(path: string, query?: RequestOptions['query']) => request<T>('DELETE', path, { query }),
   /** DELETE that carries a JSON body (confirmations). */

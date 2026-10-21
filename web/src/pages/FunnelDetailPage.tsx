@@ -7,9 +7,10 @@ import { ProductAnalytics } from '../components/ProductAnalytics';
 import { AnalyticsTab } from './AnalyticsTab';
 import { LeadsTab, OrdersTab } from './LeadsOrdersTabs';
 import { SettingsTab } from './SettingsTab';
+import { PerformanceView } from './growth/AdsReports';
 import { StepsTab } from './StepsTab';
 
-const TABS = ['steps', 'analytics', 'products', 'leads', 'orders', 'settings'] as const;
+const TABS = ['steps', 'analytics', 'products', 'ads', 'leads', 'orders', 'settings'] as const;
 type Tab = (typeof TABS)[number];
 
 export function FunnelDetailPage() {
@@ -47,6 +48,7 @@ export function FunnelDetailPage() {
       {tab === 'products' ? <ProductAnalytics funnelId={f.id} /> : null}
       {tab === 'leads' ? <LeadsTab funnelId={f.id} /> : null}
       {tab === 'orders' ? <OrdersTab funnelId={f.id} /> : null}
+      {tab === 'ads' ? <PerformanceView funnelId={f.id} /> : null}
       {tab === 'settings' ? <SettingsTab funnel={f} /> : null}
     </div>
   );

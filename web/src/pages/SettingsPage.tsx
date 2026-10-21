@@ -11,6 +11,8 @@ import { ApiAccess } from './settings/ApiAccess';
 import { Billing } from './settings/Billing';
 import { Payments } from './settings/Payments';
 import { useToast } from '../components/Toasts';
+import { ConnectionCard } from './growth/ConnectionCard';
+import { WorkspaceTracking } from './growth/TrackingCards';
 
 function WorkspaceCard() {
   const { session, can, refresh } = useAuth();
@@ -61,6 +63,8 @@ export function SettingsPage() {
       {can('members:read') ? <TeamSection /> : null}
       {can('billing:read') ? <Billing /> : null}
       {can('products:read') ? <Payments /> : null}
+      {can('publishing:manage') ? <ConnectionCard /> : null}
+      {can('funnels:read') ? <WorkspaceTracking /> : null}
       <ApiAccess />
       {can('ai:use') ? <AiUsage /> : null}
     </div>

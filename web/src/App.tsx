@@ -14,6 +14,7 @@ const BuilderPage = lazy(() => import('./pages/BuilderPage').then((m) => ({ defa
 const FunnelDetailPage = lazy(() => import('./pages/FunnelDetailPage').then((m) => ({ default: m.FunnelDetailPage })));
 const NewFunnelPage = lazy(() => import('./pages/NewFunnelPage').then((m) => ({ default: m.NewFunnelPage })));
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage })));
+const AdsPage = lazy(() => import('./pages/growth/AdsPage').then((m) => ({ default: m.AdsPage })));
 const ProductsPage = lazy(() => import('./pages/ProductsPage').then((m) => ({ default: m.ProductsPage })));
 const DomainsPage = lazy(() => import('./pages/DomainsPage').then((m) => ({ default: m.DomainsPage })));
 const WebhooksPage = lazy(() => import('./pages/WebhooksPage').then((m) => ({ default: m.WebhooksPage })));
@@ -43,6 +44,7 @@ export const routes: RouteObject[] = [
           { path: '/funnels/:id/:tab?', element: lazyEl(<FunnelDetailPage />) },
           { path: '/templates', element: lazyEl(<TemplatesPage />) },
           { path: '/products', element: lazyEl(<ProductsPage />) },
+          { path: '/ads/:tab?', element: lazyEl(<AdsPage />) },
           { path: '/domains', element: lazyEl(<DomainsPage />) },
           { path: '/webhooks', element: lazyEl(<WebhooksPage />) },
           { path: '/trash', element: lazyEl(<TrashPage />) },

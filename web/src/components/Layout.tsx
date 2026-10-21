@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Bell, Globe, LayoutGrid, LayoutTemplate, LogOut, Menu, Monitor, Moon, Package, ScrollText, Settings, Shield, Sun, Trash2, Webhook, Zap, type LucideIcon } from 'lucide-react';
+import { Megaphone, Bell, Globe, LayoutGrid, LayoutTemplate, LogOut, Menu, Monitor, Moon, Package, ScrollText, Settings, Shield, Sun, Trash2, Webhook, Zap, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router';
 import { api } from '../api/client';
@@ -82,10 +82,11 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
   );
 }
 
-const NAV: { to: string; label: string; icon: LucideIcon; gate?: 'webhooks' | 'audit' | 'admin' | 'products' }[] = [
+const NAV: { to: string; label: string; icon: LucideIcon; gate?: 'webhooks' | 'audit' | 'admin' | 'products' | 'ads' }[] = [
   { to: '/funnels', label: 'My Funnels', icon: LayoutGrid },
   { to: '/templates', label: 'Templates', icon: LayoutTemplate },
   { to: '/products', label: 'Products', icon: Package, gate: 'products' },
+  { to: '/ads', label: 'Ads', icon: Megaphone, gate: 'ads' },
   { to: '/domains', label: 'Domains', icon: Globe },
   { to: '/webhooks', label: 'Webhooks', icon: Webhook, gate: 'webhooks' },
   { to: '/trash', label: 'Trash', icon: Trash2 },
@@ -128,7 +129,7 @@ export function Layout() {
   const notes = useNotifications();
   useNotificationStream();
   useEffect(() => setMenu(false), [loc.pathname]);
-  const links = NAV.filter((l) => (l.gate === 'webhooks' ? can('webhooks:manage') : l.gate === 'audit' ? can('audit:read') : l.gate === 'products' ? can('products:read') : l.gate === 'admin' ? !!session?.platformAdmin : true));
+  const links = NAV.filter((l) => (l.gate === 'webhooks' ? can('webhooks:manage') : l.gate === 'audit' ? can('audit:read') : l.gate === 'products' ? can('products:read') : l.gate === 'ads' ? can('ads:read') : l.gate === 'admin' ? !!session?.platformAdmin : true));
   const NavList = (
     <nav className="flex flex-col gap-0.5" aria-label="Main">
       {links.map((l) => (

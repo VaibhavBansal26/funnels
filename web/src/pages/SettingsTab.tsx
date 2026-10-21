@@ -6,6 +6,8 @@ import type { FunnelDetail, PathConflict } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { ConflictDialog } from '../components/ConflictDialog';
 import { useToast } from '../components/Toasts';
+import { FunnelTracking } from './growth/TrackingCards';
+import { PublishingCard } from './growth/PublishingCard';
 import { ConfirmDialog, ErrorBanner, Field, StatusBadge, TextField } from '../components/ui';
 
 interface Form {
@@ -128,6 +130,9 @@ export function SettingsTab({ funnel }: { funnel: FunnelDetail }) {
           <button type="button" className="btn" onClick={() => void preview()}>Open signed preview</button>
         </div>
       </form>
+
+      <FunnelTracking funnel={funnel} />
+      <PublishingCard funnel={funnel} />
 
       <div className="card">
         <h2>Actions</h2>
