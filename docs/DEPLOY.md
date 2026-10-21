@@ -26,4 +26,4 @@ Never commit keys. Add them in the Render **Environment** tab (or as GitHub Acti
 
 ## 5. Cloudflare edge Worker (optional)
 `edge/` is the Worker that serves published funnels from Cloudflare's cache. Deploy it with **Actions > deploy-edge > Run workflow** after adding the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` and filling in `edge/wrangler.toml` (KV namespace id, route, `ORIGIN_URL`) as described in [CLOUDFLARE.md](CLOUDFLARE.md). Set the same `EDGE_SHARED_SECRET` on the Worker (`wrangler secret put EDGE_SHARED_SECRET`) and on the Render service; without it the origin refuses edge calls.
-For customers' own domains, publishing needs a verified domain: see [Domains in the README](../README.md) and `DOMAIN_PROVIDER` in [CONFIGURATION.md](CONFIGURATION.md).
+A funnel does not need a domain to go live (built-in address, free Cloudflare Pages address, see [GO-LIVE.md](GO-LIVE.md)). For customers' own domains a verified domain is needed: see [Domains in the README](../README.md) and `DOMAIN_PROVIDER` in [CONFIGURATION.md](CONFIGURATION.md).

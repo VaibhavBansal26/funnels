@@ -290,7 +290,7 @@ export async function createFunnel(deps: Deps, auth: Auth, input: z.infer<typeof
     const domain = input.domain_id ? await requireDomain(d, ws, input.domain_id) : null;
     if (domain && domain.status !== 'active') throw conflict('DOMAIN_NOT_ACTIVE', 'The domain is not verified yet');
     const status = input.status ?? 'test';
-    if (status === 'live' && !domain) throw conflict('DOMAIN_NOT_ADDED', 'Publishing needs an active domain');
+    if (status === 'live' && !domain) throw conflict('DOMAIN_NOT_ADDED', 'Choose where the funnel goes live (built-in address, Cloudflare Pages address or a verified domain) with POST /api/funnels/{id}/go-live or the Go live card');
     const fid = newId('fn');
     await requireTags(d.db, ws, input.tags ?? []);
     await insertFunnel(d.db, {

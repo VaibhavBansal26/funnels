@@ -27,7 +27,7 @@ const fromFunnel = (f: FunnelDetail): Form => ({ name: f.name, status: f.status,
 export function validateSettings(f: Form): Partial<Record<'name' | 'domainId' | 'favicon', string>> {
   const e: Partial<Record<'name' | 'domainId' | 'favicon', string>> = {};
   if (!f.name.trim()) e.name = 'Give the funnel a name';
-  if (f.status === 'live' && !f.domainId) e.domainId = 'Choose a connected domain to publish this funnel';
+  if (f.status === 'live' && !f.domainId) e.domainId = 'Choose an address in Go live to publish this funnel';
   if (f.favicon && !/^(https?:\/\/|\/)/i.test(f.favicon)) e.favicon = 'Use an http(s) URL';
   return e;
 }

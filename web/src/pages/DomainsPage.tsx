@@ -79,11 +79,11 @@ export function DomainsPage() {
   return (
     <div className="stack">
       <div className="row between"><h1>Domains</h1>{can('domains:manage') ? <button type="button" className="btn primary" onClick={() => setAdding(true)}>Add domain</button> : null}</div>
-      <p className="muted">Connect your own domain to publish funnels. Only domains whose DNS is verified can be attached to a funnel.</p>
+      <p className="muted">A domain of your own is optional: a funnel can also go live on the free built-in address or a free Cloudflare Pages address (funnel Settings, Go live). Only domains whose DNS is verified can be attached to a funnel.</p>
       {!can('domains:manage') ? <div className="alert">You need the domains:manage permission to change domains. You can see their status here.</div> : null}
       <ErrorBanner error={q.error} onRetry={() => void q.refetch()} />
       {q.isLoading ? <Loading /> : null}
-      {q.data && q.data.data.length === 0 ? <div className="card"><Empty title="No domains yet">Add a domain such as offers.example.com to publish your first funnel.</Empty></div> : null}
+      {q.data && q.data.data.length === 0 ? <div className="card"><Empty title="No domains yet">Add a domain such as offers.example.com to serve funnels on your own address.</Empty></div> : null}
       {q.data?.data.map((d) => <DomainCard key={d.id} d={d} canManage={can('domains:manage')} />)}
       {adding ? (
         <Modal title="Add domain" onClose={() => { setAdding(false); setHost(''); setError(null); }}

@@ -134,7 +134,7 @@ export function StepsTab({ funnel }: { funnel: FunnelDetail }) {
           </li>
         ))}
       </ol>
-      {!funnel.domain ? <p className="muted small">Connect a domain in the Settings tab to choose the home and 404 pages served on it.</p> : null}
+      {!funnel.domain ? <p className="muted small">Put the funnel live in the Settings tab (Go live) to choose the home and 404 pages served on its address.</p> : null}
       {adding ? <AddStepDialog funnel={funnel} onClose={() => setAdding(false)} /> : null}
       {payments ? <PaymentsWizard funnel={funnel} onClose={() => setPayments(false)} onDone={(r) => { setPayments(false); toast.push(r.added.length ? `Payments added: ${r.added.length} new step${r.added.length === 1 ? '' : 's'}` : 'Payments added to the page', 'ok'); }} /> : null}
       {deleting ? (

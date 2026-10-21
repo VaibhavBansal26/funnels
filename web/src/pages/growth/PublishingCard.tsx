@@ -145,7 +145,7 @@ export function PublishingCard({ funnel }: { funnel: FunnelDetail }) {
                 <dt className="muted">Live version</dt><dd className="mono">{s.active?.versionId ?? 'nothing deployed yet'}{s.active?.finishedAt ? <span className="muted"> · {fmtDate(s.active.finishedAt)}</span> : null}</dd>
                 <dt className="muted">Custom domain</dt>
                 <dd>
-                  {s.customDomain ? <span className="row"><span className="mono">{s.customDomain.hostname}</span> <Badge tone={s.customDomain.status === 'active' ? 'ok' : s.customDomain.status === 'failed' ? 'danger' : 'warn'}>{s.customDomain.status ?? 'pending'}</Badge></span> : <span className="muted">{s.domain ? 'attached after the first successful deployment' : 'none: connect a domain in the General settings'}</span>}
+                  {s.customDomain ? <span className="row"><span className="mono">{s.customDomain.hostname}</span> <Badge tone={s.customDomain.status === 'active' ? 'ok' : s.customDomain.status === 'failed' ? 'danger' : 'warn'}>{s.customDomain.status ?? 'pending'}</Badge></span> : <span className="muted">{s.domain ? 'attached after the first successful deployment' : 'none (optional): add a domain under Domains and choose it in Go live'}</span>}
                 </dd>
               </dl>
               {s.customDomain && s.customDomain.status !== 'active' && s.customDomain.dns.value ? (
