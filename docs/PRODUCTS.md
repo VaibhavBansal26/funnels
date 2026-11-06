@@ -58,6 +58,8 @@ curl -s -X POST $BASE/api/products/$PRODUCT/prices/$PRICE/replace -H "authorizat
 
 ## Checkout blocks and server authority
 
+Add to cart buttons and Payment forms that sell one product carry the same catalog fields (`productId`, `priceId`, `slot`, display snapshot) and are linked, refreshed and bound to template slots exactly like checkout blocks.
+
 A checkout block (`fn-checkout`) names `productId` and `priceId`; its `price`, `currency` and billing text are a display snapshot. The server never reads an amount from the page or the request:
 
 1. **On every page save** (`linkCatalog`, inside the save transaction) a block that names a price of this workspace gets its snapshot refreshed from the catalog (a replaced price is followed to its successor). A block that names nothing, or an id of another workspace, is matched to an equal active product (same name, currency, amount, billing) or gets a new one. A forged id never links another tenant's product.
@@ -70,6 +72,44 @@ Legacy pages (saved before the catalog) are priced from their block fields until
 Offer options per block: `quantity` {enabled, min, max, default}, `allowPromotionCodes` (Stripe shows the code field; the discount is allocated over the lines and recorded as `discount_cents`, `amount_cents` is what was paid), roles (main, bump, upsell, downsell) and `acceptStepId` / `declineStepId` for one-click offers (accept can skip a downsell).
 
 Subscriptions: any recurring price makes the Checkout Session `mode=subscription` (one-time lines ride on the first invoice; the application fee becomes `application_fee_percent`). A free trial records orders of amount 0. Only the first purchase creates an order: renewals are not recorded (known limitation). Refunding an order that started a subscription without a payment answers `409 REFUND_IN_STRIPE`.
+
+## Cart
+
+Server-side carts for the **Add to cart**, **Cart** and **Cart count** blocks and the cart **Payment form** (decision record [ADR 0047](adr/0047-embedded-payments-and-cart.md), migration 044).
+
+```mermaid
+erDiagram
+  funnels ||--o{ carts : has
+  carts ||--o{ cart_items : holds
+  carts ||--o{ cart_ops : "applied operation ids"
+  carts ||--o{ payment_attempts : "paid by"
+  cart_items }o--|| prices : price_id
+  carts {
+    text id PK "crt_..."
+    text visitor_id "random id, not personal data"
+    text currency "one per cart"
+    text status "open | checked_out"
+    text bumps_json "order bumps chosen in the cart"
+    text expires_at "last change + CART_TTL_DAYS"
+  }
+  cart_items {
+    text price_id "re-read from the catalog on every view and checkout"
+    int quantity "1..CART_MAX_QUANTITY"
+  }
+```
+
+* **Where the cart lives.** One open cart per visitor and funnel. The answer carries a signed token (`crt_<id>.<HMAC>`) that the page keeps in a first-party cookie of its own host (`fn_cart_<funnel>`, scoped like the visitor cookie) and sends in the JSON body, so the same cross-origin calls work on the built-in address, customer domains and Cloudflare Pages hosts (CORS as for the other public endpoints). Without a token (a sandboxed page cannot read cookies) the visitor id finds the cart. A forged or foreign token is not a cart. Previews have their own carts.
+* **What it holds.** Catalog prices and quantities, nothing personal (no email, no name, no address). Amounts are never stored: every view and every checkout re-reads the price, following `replaced_by`; an archived product shows as *No longer available*, is left out of the totals and blocks checkout with `409 PRODUCT_UNAVAILABLE` naming it.
+* **Rules.** One currency per cart (`409 CART_CURRENCY_MISMATCH`: "Your cart is in USD and ... is priced in EUR. Check out your cart first, or remove its items, to buy it."; an emptied cart accepts any currency again); subscriptions cannot be added (`409 SUBSCRIPTION_NOT_IN_CART`); at most `CART_MAX_LINES` different products (`409 CART_FULL`) and `CART_MAX_QUANTITY` units per line (capped, the answer says `limited`); the Add to cart block's own quantity range is enforced (`400 INVALID_QUANTITY`).
+* **Concurrency.** Every change carries a client operation id (`opId`), claimed in `cart_ops`, so a retry or a double click changes the cart once; changes lock the cart row (PostgreSQL) inside one transaction. Two tabs share the cart (same cookie); when one pays, the cart closes and the other tab's open payment attempt is cancelled (with its PaymentIntent), so it cannot be paid twice.
+* **Expiry.** `CART_TTL_DAYS` (default 7) after the last change; an expired cart is empty for the visitor and maintenance deletes it with its items.
+* **Checkout.** The cart Payment form (or the hosted Checkout fallback) prices the lines and the ticked order bumps of its page; each line becomes its own order with role `cart` (bumps `bump`), the first order is the parent of the others, and refunds work per order line as before.
+
+| Request | |
+|---|---|
+| `POST /api/public/cart/{funnelId}/view` | The cart (`lines`, `count`, `subtotal`, `bumps` of the asking Cart block's checkout step, `total`, formatted amounts) and its token. |
+| `POST /api/public/cart/{funnelId}/{stepId}/{blockId}/add` | `{opId, quantity?}` from an Add to cart block; records `add_to_cart` and a server-side AddToCart (`eventId: atc_<opId>`). |
+| `POST /api/public/cart/{funnelId}/update` | `{opId, itemId, quantity}` (0 removes) or `{opId, bump: {stepId, blockId, selected}}`. |
 
 ## Stripe sync
 

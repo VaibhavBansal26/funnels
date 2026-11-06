@@ -28,6 +28,44 @@ Enabling: `PAYMENTS_PROVIDER=stripe`, `STRIPE_SECRET_KEY`, and the two webhook s
 
 Webhook handling: signature (`t=...,v1=...`, HMAC-SHA256 over `t.body`, timestamp tolerance `STRIPE_WEBHOOK_TOLERANCE_SECONDS`, constant time, any matching `v1` accepted for secret rotation), then event-id dedup in `stripe_events`; a handler failure records the error, returns a non-2xx and the event is retried.
 
+## Embedded Payment form
+
+The **Payment form** block puts the order summary and the card fields on the funnel's own page (any step, for example a dedicated checkout page after an offer page). Decision record: [ADR 0047](adr/0047-embedded-payments-and-cart.md). **Not run against real Stripe** ([VERIFIED.md](VERIFIED.md)).
+
+```mermaid
+sequenceDiagram
+  participant B as Browser (commerce.js)
+  participant API as Funnels API
+  participant S as Stripe (connected account)
+  participant W as Connect webhook
+  B->>API: POST /api/public/pay/{funnel}/{step}/{block} (cart token, bump ids; no amounts)
+  API->>API: price the cart / product and bumps from the catalog
+  API->>S: POST /v1/payment_intents (Stripe-Account, application_fee_amount, idempotency key)
+  API-->>B: client_secret, publishable key, account
+  B->>S: Stripe.js Payment Element (card data stays in Stripe's iframe)
+  B->>API: bump ticked: re-quote, update the intent amount
+  B->>API: Pay: contact (validated), customer created on the account
+  B->>S: confirmPayment (3-D Secure if needed, return_url = /api/public/pay/return)
+  B->>API: POST /api/public/pay/complete
+  S->>W: payment_intent.succeeded
+  API->>S: re-read the intent (both paths)
+  API->>API: orders once (pi:<attempt>:<line>)
+```
+
+1. **Quote.** When the form appears, `POST /api/public/pay/{funnelId}/{stepId}/{blockId}` prices what it sells: the visitor's cart (each line re-read from the catalog, replaced prices followed, archived products refused with `409 PRODUCT_UNAVAILABLE`) or the block's catalog price, plus the order bumps of the page that are ticked. It creates a `payment_attempts` row and ONE PaymentIntent on the connected account: `amount` and `currency` from that quote, `automatic_payment_methods[enabled]=true`, `application_fee_amount` by plan, `setup_future_usage=off_session` when the funnel has a one-click upsell, the statement descriptor suffix, `metadata[attempt_id]`, idempotency key `pay:<attempt>:0`. The answer carries the client secret, `STRIPE_PUBLISHABLE_KEY` and the connected account id for `Stripe(pk, {stripeAccount})`. A request never names an amount; extra fields are ignored.
+2. **Re-quote.** Ticking a bump (or changing a quantity) calls the same endpoint with the attempt id: the server re-prices and updates the intent amount and fee (idempotency key per quote version and change); the browser calls `elements.fetchUpdates()`.
+3. **Pay.** The runtime validates the email (and the address when the block asks for it), calls `elements.submit()`, sends the contact (validated again; `422` with per-field messages), the server creates a customer on the connected account (once per attempt) and attaches it and `receipt_email` to the intent, then the browser calls `stripe.confirmPayment({ elements, confirmParams: { return_url, payment_method_data: { billing_details } }, redirect: 'if_required' })`. 3-D Secure runs there; a redirect comes back to `GET /api/public/pay/return?attempt=...`, which finishes the order and redirects to the next step with `?fn_order=<id>` (or back to the payment page with `?payment=failed`).
+4. **Orders, once.** `POST /api/public/pay/complete`, the return URL and the Connect webhook `payment_intent.succeeded` all call `finalizeAttempt`: the intent is re-read from Stripe, must be `succeeded` with exactly the stored amount and currency (`409 CHECKOUT_MISMATCH` otherwise, and the webhook is left to retry), and orders are inserted per line under `pi:<attempt>:<line>` (unique), through the same `ordersFromItems` / `persistPurchase` as hosted Checkout (`finalizeSession`). Cart lines get the role `cart`, bumps `bump`, a product form `main`. The cart is closed and other open attempts on it are cancelled (with their intents). Declines (`requires_payment_method` with `last_payment_error`) answer `402 PAYMENT_FAILED` with `details.reason` and the buyer can retry with another card on the same intent; `processing` answers `pending` and the runtime polls.
+5. **Fallbacks.** No `STRIPE_PUBLISHABLE_KEY`, a subscription price, `mode: hosted`, or a page that cannot run Stripe.js (a built-in address page with owner custom code is served sandboxed, with an opaque origin) use the hosted Checkout path above with the same server-side lines.
+
+**Webhook events to enable on the Connect endpoint** (in addition to those above): `payment_intent.succeeded` and `payment_intent.payment_failed`. Intents of hosted Checkout and of one-click upsells also produce these events; they are ignored here (no attempt).
+
+**CSP.** Pages with an embedded Payment form, when payments run on Stripe, get `script-src https://js.stripe.com https://*.js.stripe.com`, `connect-src https://api.stripe.com` and `frame-src https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com https://m.stripe.network` (from Stripe's CSP guidance), on the built-in address and in Cloudflare Pages bundles; every other page keeps its exact policy. Customer-domain pages carry no CSP from this app. Verify against Stripe's current guide before going live.
+
+**PCI.** Card data is entered only in Stripe's iframe (Payment Element), so the integration stays at SAQ A; Funnels never receives card numbers. The TEST form without Stripe keeps its inputs out of any form submission and sends only the outcome of the documented test card.
+
+**One-click upsell after an embedded payment** charges the saved payment method off-session exactly as below (the order records `payment_method_ref`, `provider_customer`, `provider_account`).
+
 ## One-click upsell
 
 Charges a PaymentIntent off-session with the customer and payment method saved from the first checkout, on the same connected account. Declines and cards needing authentication are `402 PAYMENT_FAILED` (`details.reason`), and an intent that needs the customer is cancelled. Idempotent per submission id.
@@ -89,6 +127,8 @@ Test mode (a test key) shows a banner and the Stripe test cards (`4242 4242 4242
 Checkout now prices from the product catalog ([PRODUCTS.md](PRODUCTS.md)): synced prices are sent as `line_items[].price`, others as `price_data`; quantity, promotion codes (`allow_promotion_codes`, discounts recorded per order), subscriptions (`mode=subscription`, trials, application fee as a percentage) and zero- and three-decimal currencies are handled there. The Connect webhook also reconciles `product.*` and `price.*` events. The finalizer accepts `payment_status` `paid`, or `no_payment_required` for a subscription trial, and verifies `amount_total = subtotal - discount + tax` against what the server stored (`409 CHECKOUT_MISMATCH` otherwise). Not verified against the real Stripe API: the catalog sync, the subscription session shape (`invoice.payment_intent` expansion), promotion codes and Stripe Tax.
 
 ## Test-mode validation checklist (not yet done)
+
+0. Embedded Payment form: set `STRIPE_PUBLISHABLE_KEY` (test), enable `payment_intent.succeeded` and `payment_intent.payment_failed` on the Connect endpoint, publish the "Store with cart" template on a custom domain or Cloudflare Pages, pay with `4242...`, `4000 0000 0000 0002` (inline decline, retry) and `4000 0025 0000 3155` (3-D Secure modal, and the redirect variant); confirm one set of orders whether the webhook or the browser finishes first, the application fee on the payment, and that the CSP allows Stripe.js and its frames in the browser console.
 
 1. Create a Connect platform in test mode; set the two webhook endpoints and secrets; `stripe listen --forward-to` works for local runs.
 2. Onboard a test Standard account; confirm `GET /api/billing/connect` shows charges enabled.

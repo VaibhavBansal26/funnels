@@ -1,13 +1,13 @@
 # Template library
 
-Templates are a backend resource: stored in the database, served by the API, filtered, previewed and cloned into a workspace as a new test funnel. 28 built-in templates ship with the app; an administrator can add more as JSON without a deploy. Decision record: [ADR 0023](adr/0023-template-library.md).
+Templates are a backend resource: stored in the database, served by the API, filtered, previewed and cloned into a workspace as a new test funnel. 30 built-in templates ship with the app; an administrator can add more as JSON without a deploy. Decision record: [ADR 0023](adr/0023-template-library.md).
 
 ## What a template is
 
 A template has metadata (slug, name, description, category, industry, recommended goal, tags, brand accent), an ordered list of steps (name, path, kind, a GrapesJS page document) and product placeholders ("slots"). The TypeScript shape is `TemplateDef` in `server/src/templates/types.ts`; the admin import and export format is the same shape wrapped in `{ "format": "funnels-template", "formatVersion": 1, "template": ... }`.
 
 - **Step kinds** (`landing`, `optin`, `registration`, `replay`, `sales`, `checkout`, `upsell`, `downsell`, `booking`, `application`, `survey`, `thankyou`, `page`) describe what a step is for; they never change how it is served.
-- **Product slots** (`products`): each checkout block of a template carries `slot: "<key>"` and the template lists the slot (key, role main/bump/upsell/downsell, sample name, description, type, amount, currency, interval, trial). Using the template binds every slot to a product of the workspace catalog (see [PRODUCTS.md](PRODUCTS.md#templates-and-the-wizard)). A template holds no workspace ids: catalog links are stripped on import and when publishing a funnel as a template.
+- **Product slots** (`products`): each checkout block (and each Add to cart button or product Payment form) of a template carries `slot: "<key>"` and the template lists the slot (key, role main/bump/upsell/downsell, sample name, description, type, amount, currency, interval, trial). Using the template binds every slot to a product of the workspace catalog (see [PRODUCTS.md](PRODUCTS.md#templates-and-the-wizard)). A template holds no workspace ids: catalog links are stripped on import and when publishing a funnel as a template.
 
 ## The library
 
@@ -20,6 +20,8 @@ A template has metadata (slug, name, description, category, industry, recommende
 | `thank-you-page` | Follow-up | general | engagement | Thank you | none |
 | `book-a-call` | Booking | coaching | booking | Booking page → Confirmation | none |
 | `newsletter-signup` | Lead generation | media | leads | Signup | none |
+| `store-with-cart` | Ecommerce | ecommerce | sales | Shop → Cart → Checkout → Thank you | main: Morning green tea (14 USD), Smoky black tea (16 USD), Calm herbal blend (12 USD) on Add to cart buttons; bump: Bamboo tea infuser (6 USD); Payment form pays the cart |
+| `offer-with-payment-page` | Ecommerce | education | sales | Offer → Checkout → Welcome | main: Watercolour weekend workshop (49 USD) on a product Payment form; bump: Printable practice pack (9 USD) |
 | `ecommerce-single-product` | Ecommerce | ecommerce | sales | Product page → Refill offer → Thank you | main: Ember Glass Candle (38 USD); bump: Gift wrap and note (6 USD); upsell: Candle refill 3-pack (45 USD) |
 | `saas-free-trial` | Software and apps | saas | sales | Landing page → Start trial → Welcome | main: Pro plan (29 USD/month) |
 | `saas-demo-booking` | Software and apps | saas | booking | Landing page → Demo requested | none |

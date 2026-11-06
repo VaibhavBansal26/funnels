@@ -85,6 +85,9 @@ The builder stores GrapesJS project data and the server publishes HTML rendered 
 
 ## Commerce: catalog, templates, summaries
 
+- **Card data.** The Payment form uses Stripe's Payment Element: the card fields are Stripe's iframe on js.stripe.com, so card numbers never reach Funnels (PCI SAQ A). The server only creates and re-reads PaymentIntents on the connected account. The TEST card form (no Stripe) renders inputs without names and sends only the outcome of a documented test card; its TEST label is inline-styled and checked for visibility before each payment. Stripe.js loads only on pages with an embedded Payment form, and only those pages get the Stripe hosts in their CSP.
+- **Amounts.** The PaymentIntent amount is computed on the server from the catalog, the cart and the ticked bumps; every finaliser re-reads the intent from Stripe and refuses an amount or currency that differs from the stored quote. Cart tokens are HMAC-signed; carts hold no personal data.
+
 - **Price authority.** A checkout never reads an amount from the page or the request: the catalog price is resolved server-side at checkout and refreshed on every save; ids a client sends are looked up with the workspace id, so another tenant's product cannot be linked ([PRODUCTS.md](PRODUCTS.md)).
 - **Templates** carry no workspace ids; imports (platform administrators only) pass the page-save sanitiser without script rights and are size limited. SVG is not accepted anywhere in pages; template art is CSS.
 - **AI summary.** Product, funnel and step names are untrusted text: cleaned, delimited as data, and every number the model writes must exist in the SQL evidence or the answer is replaced ([ADR 0025](adr/0025-grounded-analytics-summary.md)); links and markup are refused. The CSV export neutralises spreadsheet formulas.
