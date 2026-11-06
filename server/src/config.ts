@@ -88,6 +88,10 @@ export const EnvSchema = z.object({
   CF_IP_RANGES: csv,
   PUBLIC_EVENTS_PER_MINUTE: int(120, 1),
   PUBLIC_FORMS_PER_MINUTE: int(20, 1),
+  PUBLIC_CART_PER_MINUTE: int(60, 1),
+  CART_TTL_DAYS: int(7, 1, 90),
+  CART_MAX_LINES: int(50, 1, 200),
+  CART_MAX_QUANTITY: int(99, 1, 999),
   AUTH_ATTEMPTS_PER_MINUTE: int(10, 1),
   WEBHOOK_MAX_ATTEMPTS: int(6, 1, 20),
   DOMAIN_VERIFY_TIMEOUT_HOURS: int(72, 1),
@@ -95,6 +99,7 @@ export const EnvSchema = z.object({
   ANALYTICS_EXACT_DISTINCT_MAX: int(200_000, 0),
   PAYMENTS_PROVIDER: z.enum(['mock', 'stripe']).default('mock'),
   STRIPE_SECRET_KEY: z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/, 'STRIPE_SECRET_KEY must look like sk_test_... or sk_live_...').optional(),
+  STRIPE_PUBLISHABLE_KEY: z.string().regex(/^pk_(test|live)_[A-Za-z0-9]+$/, 'STRIPE_PUBLISHABLE_KEY must look like pk_test_... or pk_live_...').optional(),
   STRIPE_WEBHOOK_SECRET: z.string().min(8).optional(),
   STRIPE_CONNECT_WEBHOOK_SECRET: z.string().min(8).optional(),
   STRIPE_API_BASE: z.string().regex(/^https?:\/\//, 'STRIPE_API_BASE must start with http:// or https://').default('https://api.stripe.com'),
@@ -186,6 +191,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   }
   if (rest.EVENT_BUS === 'redis' && !rest.REDIS_URL) throw new Error('Invalid environment: EVENT_BUS=redis needs REDIS_URL');
   if (rest.PAYMENTS_PROVIDER === 'stripe' && !(rest.STRIPE_SECRET_KEY && rest.STRIPE_WEBHOOK_SECRET && rest.STRIPE_CONNECT_WEBHOOK_SECRET)) throw new Error('Invalid environment: PAYMENTS_PROVIDER=stripe needs STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET and STRIPE_CONNECT_WEBHOOK_SECRET');
+  // The browser key and the secret key must belong to the same mode: a live page with a test key (or the reverse) would create PaymentIntents the Payment Element cannot confirm.
+  if (rest.STRIPE_PUBLISHABLE_KEY && rest.STRIPE_SECRET_KEY && rest.STRIPE_PUBLISHABLE_KEY.split('_')[1] !== rest.STRIPE_SECRET_KEY.split('_')[1]) throw new Error('Invalid environment: STRIPE_PUBLISHABLE_KEY and STRIPE_SECRET_KEY must both be test keys or both live keys');
   if (rest.MAIL_TRANSPORT === 'webhook' && !rest.MAIL_WEBHOOK_URL) throw new Error('Invalid environment: MAIL_TRANSPORT=webhook needs MAIL_WEBHOOK_URL');
   if (rest.ANALYTICS_READ_STORE === 'clickhouse' && !rest.CLICKHOUSE_URL) throw new Error('Invalid environment: ANALYTICS_READ_STORE=clickhouse needs CLICKHOUSE_URL');
   if (rest.EVENTSTORE_MIRROR === 'clickhouse' && !rest.CLICKHOUSE_URL) throw new Error('Invalid environment: EVENTSTORE_MIRROR=clickhouse needs CLICKHOUSE_URL');
