@@ -282,7 +282,7 @@ export async function quotePayment(deps: Deps, p: { funnelId: string; stepId: st
       const changed = attempt.amount !== summary.total || attempt.currency !== summary.currency;
       if (!created) await requote(deps, attempt, { items, summary, bumpIds, cart, fee });
       const update: Record<string, unknown> = {};
-      if (changed && !created) Object.assign(update, { amount: stripeAmount(summary.total, summary.currency), currency: lower(summary.currency), application_fee_amount: fee > 0 ? fee : '' });
+      if (changed && !created) Object.assign(update, { amount: stripeAmount(summary.total, summary.currency), currency: lower(summary.currency), ...(fee > 0 ? { application_fee_amount: fee } : {}) }); // the fee follows the amount; a 0 % plan never sets one
       if (contact) {
         const customer = attempt.stripe_customer ?? (await stripe.call<{ id: string }>('POST', '/v1/customers', { email: contact.email, ...(contact.name ? { name: contact.name } : {}), metadata: { funnels_attempt: attempt.id } }, { account: account.stripe_account_id, idempotencyKey: `cus:${attempt.id}` })).id;
         if (customer !== attempt.stripe_customer) {
