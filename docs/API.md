@@ -59,6 +59,8 @@ curl -s "$BASE/api/funnels/$FUNNEL/analytics?from=2026-03-01&to=2026-03-31&tz=Am
 
 Create with `POST /api/webhooks { url, events: ["funnel.optin","funnel.purchase"] }`; the signing secret is shown once. Deliveries are `POST`s with `x-funnels-event`, `x-funnels-delivery`, `x-funnels-timestamp` and `x-funnels-signature: sha256=HMAC_SHA256(secret, "{timestamp}.{body}")`. Retries: 30 s x 2^n backoff, dead-lettered after `WEBHOOK_MAX_ATTEMPTS`. Redirects are never followed; private addresses are refused (SSRF).
 
+`funnel.purchase` is sent once per order; its body has `funnel`, `step`, `order` (`id, productName, amount, currency, isBump, isUpsell, email, name, productId, priceId, quantity, role`) and, added for carts (additive), `purchase`: `{ id, currency, total, lines: [{ orderId, productName, productId, priceId, quantity, amount, currency, role }] }`, every order of the same payment (an offer and its bumps, or every cart line), so a receiver can process a cart once by `purchase.id`.
+
 ## AI funnel builder and Google reviews
 
 ```bash
