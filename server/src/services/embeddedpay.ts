@@ -369,6 +369,7 @@ export async function completePayment(deps: Deps, input: z.infer<typeof Complete
   if (!a) throw notFound('Payment');
   const have = await ordersOf(deps, a);
   if (have.length) return { ok: true, recorded: false, orderId: have[0]!.id, orders: have.map(serializeLine) };
+  if (a.status === 'canceled') throw conflict('CART_ALREADY_PAID', 'This cart was already paid in another tab or window');
   if (a.provider === 'mock') return completeMock(deps, a, input);
   const r = await finalizeAttempt(deps, a.stripe_intent_id ?? '', a.stripe_account ?? undefined);
   if (!r) throw notFound('Payment');
