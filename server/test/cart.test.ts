@@ -345,3 +345,19 @@ describe('templates with a cart and a payment page', () => {
     expect(q.summary.lines.map((l: any) => [l.name, l.role])).toEqual([['Watercolour weekend workshop', 'main']]);
   });
 });
+
+describe('default public limits', () => {
+  it('a normal purchase fits the default policies (public.cart, public.checkout) and a flood is refused', async () => {
+    const h = await makeHarness({ env: { API_USER_PER_MINUTE: '1000000', API_WORKSPACE_PER_MINUTE: '1000000' } });
+    const owner = await h.register();
+    const s = await shop(h, owner.token);
+    for (const b of ['atcmug', 'atctee']) expect((await s.add(b)).status).toBe(200);
+    expect((await s.view()).status).toBe(200);
+    const q = await s.quote({ contact });
+    expect(q.status, q.text).toBe(200);
+    expect((await s.complete({ attemptId: q.json.attemptId, test: 'success' })).status).toBe(200);
+    let last = 200;
+    for (let i = 0; i < 40 && last !== 429; i++) last = (await s.quote()).status;
+    expect(last).toBe(429);
+  });
+});
