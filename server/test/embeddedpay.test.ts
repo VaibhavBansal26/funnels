@@ -205,6 +205,18 @@ describe('embedded Payment form with Stripe (fake)', () => {
     void h;
   });
 
+  it('Settings > Payments says whether embedded payments are ready, with the steps left', async () => {
+    const w = await world({ STRIPE_PUBLISHABLE_KEY: testPublishableKey() });
+    const st = async () => (await w.h.call('GET', '/api/payments/status', { token: w.owner.token })).json.embedded;
+    expect(await st()).toMatchObject({ ready: false, mode: 'stripe_element', publishableKey: true, connected: false, chargesEnabled: false, steps: [expect.stringMatching(/Connect your Stripe account/)] });
+    await w.h.call('POST', '/api/billing/connect/start', { token: w.owner.token });
+    expect((await st()).steps).toEqual([expect.stringMatching(/Finish the Stripe onboarding/)]);
+    w.stripe.enable([...w.stripe.accounts.keys()][0]!);
+    expect(await st()).toMatchObject({ ready: true, chargesEnabled: true, steps: [], webhookEvents: ['payment_intent.succeeded', 'payment_intent.payment_failed'] });
+    const noKey = await world();
+    expect((await noKey.h.call('GET', '/api/payments/status', { token: noKey.owner.token })).json.embedded).toMatchObject({ ready: false, mode: 'hosted_fallback', steps: expect.arrayContaining([expect.stringMatching(/STRIPE_PUBLISHABLE_KEY/)]) });
+  });
+
   it('needs a connected account with charges enabled and a live funnel', async () => {
     const w = await world({ STRIPE_PUBLISHABLE_KEY: testPublishableKey() });
     const s = await shop(w.h, w.owner.token);

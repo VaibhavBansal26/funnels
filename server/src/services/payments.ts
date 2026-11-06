@@ -32,6 +32,35 @@ interface StripeAccount {
  * The account is refreshed from Stripe when reachable; a Stripe outage degrades to the last stored state with `stale: true`.
  */
 export async function paymentsStatus(deps: Deps, ws: string) {
+  const r = await paymentsStatusCore(deps, ws);
+  return { ...r, embedded: embeddedReadiness(deps, r.state, !!r.connect?.chargesEnabled) };
+}
+
+/**
+ * Whether Payment forms can show the card fields on the page (docs/STRIPE.md#embedded-payment-form), with the steps still to do in plain words. Without Stripe the
+ * form shows the labelled TEST card form (ready, no money moves); without a publishable key it falls back to the hosted Stripe Checkout redirect.
+ */
+export function embeddedReadiness(deps: Deps, state: ConnectState, chargesEnabled: boolean) {
+  const stripe = deps.config.PAYMENTS_PROVIDER === 'stripe';
+  const publishableKey = !!deps.config.STRIPE_PUBLISHABLE_KEY;
+  const steps: string[] = [];
+  if (!stripe) steps.push('Payments run in test mode on this server: Payment forms show a labelled TEST card form and no money moves. The server administrator sets PAYMENTS_PROVIDER=stripe to take real payments.');
+  else {
+    if (!publishableKey) steps.push('The server administrator adds STRIPE_PUBLISHABLE_KEY (the pk_ key of the same mode as the secret key). Until then Payment forms send buyers to Stripe Checkout instead.');
+    if (state === 'not_connected' || state === 'unavailable') steps.push('Connect your Stripe account (button above).');
+    else if (!chargesEnabled) steps.push('Finish the Stripe onboarding so that charges are enabled.');
+    if (!deps.config.STRIPE_CONNECT_WEBHOOK_SECRET) steps.push('The server administrator configures the Connect webhook with the events payment_intent.succeeded and payment_intent.payment_failed.');
+  }
+  return {
+    ready: !stripe || (publishableKey && chargesEnabled),
+    mode: !stripe ? ('test_form' as const) : publishableKey ? ('stripe_element' as const) : ('hosted_fallback' as const),
+    publishableKey, connected: state !== 'not_connected' && state !== 'unavailable', chargesEnabled,
+    webhookEvents: ['payment_intent.succeeded', 'payment_intent.payment_failed'],
+    steps,
+  };
+}
+
+async function paymentsStatusCore(deps: Deps, ws: string) {
   const key = deps.config.STRIPE_SECRET_KEY ?? '';
   const mode = key.startsWith('sk_live_') ? 'live' : key.startsWith('sk_test_') ? 'test' : null;
   const settings = await paymentSettings(deps, ws);
