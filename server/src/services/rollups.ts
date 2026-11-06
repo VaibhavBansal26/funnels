@@ -6,7 +6,7 @@ export interface EventInsert {
   workspace_id: string;
   funnel_id: string;
   step_id: string;
-  type: 'page_view' | 'optin' | 'order';
+  type: 'page_view' | 'optin' | 'order' | 'add_to_cart' | 'begin_checkout';
   visitor_id: string | null;
   unique_visit: number;
   lead_id: string | null;
@@ -39,6 +39,8 @@ interface Delta {
   optins: number;
   orders: number;
   cents: number;
+  cart_adds: number;
+  checkouts: number;
 }
 
 /** Folds events into one delta per (funnel, bucket, step). Pure, so the batching is unit-testable. */
@@ -48,11 +50,13 @@ export function aggregate(rows: EventInsert[]): Delta[] {
     const bucket = bucketOf(r.created_at);
     const key = `${r.funnel_id}\u0000${bucket}\u0000${r.step_id}`;
     let d = map.get(key);
-    if (!d) map.set(key, (d = { workspace_id: r.workspace_id, funnel_id: r.funnel_id, step_id: r.step_id, bucket, page_views: 0, unique_views: 0, optins: 0, orders: 0, cents: 0 }));
+    if (!d) map.set(key, (d = { workspace_id: r.workspace_id, funnel_id: r.funnel_id, step_id: r.step_id, bucket, page_views: 0, unique_views: 0, optins: 0, orders: 0, cents: 0, cart_adds: 0, checkouts: 0 }));
     if (r.type === 'page_view') {
       d.page_views++;
       if (r.unique_visit === 1) d.unique_views++;
     } else if (r.type === 'optin') d.optins++;
+    else if (r.type === 'add_to_cart') d.cart_adds++;
+    else if (r.type === 'begin_checkout') d.checkouts++;
     else {
       d.orders++;
       d.cents += r.amount_cents;
@@ -134,10 +138,10 @@ export async function insertEvents(tx: Db, rows: EventInsert[], opts: { decideUn
   const deltas = aggregate(stored);
   for (let i = 0; i < deltas.length; i += CHUNK) {
     const chunk = deltas.slice(i, i + CHUNK);
-    const set = ['page_views', 'unique_views', 'optins', 'orders', 'cents'].map((c) => `${c} = event_rollups.${c} + excluded.${c}`).join(', ');
+    const set = ['page_views', 'unique_views', 'optins', 'orders', 'cents', 'cart_adds', 'checkouts'].map((c) => `${c} = event_rollups.${c} + excluded.${c}`).join(', ');
     await tx.run(
-      `INSERT INTO event_rollups (workspace_id, funnel_id, step_id, bucket, page_views, unique_views, optins, orders, cents) VALUES ${chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}${tx.dialect.upsert(['funnel_id', 'bucket', 'step_id'], set)}`,
-      ...chunk.flatMap((d) => [d.workspace_id, d.funnel_id, d.step_id, d.bucket, d.page_views, d.unique_views, d.optins, d.orders, d.cents]),
+      `INSERT INTO event_rollups (workspace_id, funnel_id, step_id, bucket, page_views, unique_views, optins, orders, cents, cart_adds, checkouts) VALUES ${chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}${tx.dialect.upsert(['funnel_id', 'bucket', 'step_id'], set)}`,
+      ...chunk.flatMap((d) => [d.workspace_id, d.funnel_id, d.step_id, d.bucket, d.page_views, d.unique_views, d.optins, d.orders, d.cents, d.cart_adds, d.checkouts]),
     );
   }
   return inserted;
