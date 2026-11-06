@@ -233,7 +233,7 @@ export async function productReport(base: Deps, s: ProductScope) {
     const money3 = (v: Money) => ({ orders: v.orders, gross: fromMinor(v.gross, p.currency), refunded: fromMinor(v.refunded, p.currency), net: fromMinor(v.gross - v.refunded, p.currency) });
     const byGross = <T extends Money>(m: Map<string, T>) => [...m].sort((x, y) => y[1].gross - x[1].gross || x[0].localeCompare(y[0])).slice(0, 5);
     return {
-      productId: p.productId, name: p.name, ...out(p.money, p.currency), roles: { main: p.roles.main ?? 0, bump: p.roles.bump ?? 0, upsell: p.roles.upsell ?? 0, downsell: p.roles.downsell ?? 0 },
+      productId: p.productId, name: p.name, ...out(p.money, p.currency), roles: { main: p.roles.main ?? 0, bump: p.roles.bump ?? 0, upsell: p.roles.upsell ?? 0, downsell: p.roles.downsell ?? 0, cart: p.roles.cart ?? 0 },
       customers: cu, checkout: { visitors: checkoutVisitors, orders: mainOrders, conversion: frac(mainOrders, checkoutVisitors) },
       takeRates: { bump: rate(bumpOffered, taken('bump')), upsell: rate(upOffered, taken('upsell')), downsell: rate(downOffered, taken('downsell')) },
       series: series(p.byInterval, p.currency),

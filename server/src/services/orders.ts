@@ -194,6 +194,13 @@ function persistTx(deps: Deps, p: PersistInput): Promise<void> {
   deps.db.noteWrite(ws);
   return inTx(deps, async (d) => {
     const lead = await upsertLead(d, ws, { email: p.email, name: p.name, funnelId: funnel.id, countSubmission: false });
+    // Every order of this payment (offer and bumps, or every cart line), added to each funnel.purchase payload (additive): a cart purchase is several orders.
+    const purchase = created[0] ? {
+      id: created[0].id,
+      lines: created.map((o) => ({ orderId: o.id, productName: o.product_name, productId: o.product_id ?? null, priceId: o.price_id ?? null, quantity: o.quantity ?? 1, amount: fromMinor(o.amount_cents, o.currency), currency: o.currency, role: o.role ?? (o.is_bump ? 'bump' : o.is_upsell ? 'upsell' : 'main') })),
+      total: fromMinor(created.filter((o) => o.currency === created[0]!.currency).reduce((t, o) => t + o.amount_cents, 0), created[0].currency),
+      currency: created[0].currency,
+    } : null;
     for (const o of created) {
       o.lead_id = lead.id;
       await d.db.run(
@@ -211,7 +218,8 @@ function persistTx(deps: Deps, p: PersistInput): Promise<void> {
       await fireWebhookEvent(d, ws, 'funnel.purchase', {
         funnel: { id: funnel.id, name: funnel.name },
         step: { id: step.id, name: step.name },
-        order: { id: o.id, productName: o.product_name, amount: fromMinor(o.amount_cents, o.currency), currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1, email: o.email, name: o.name, productId: o.product_id ?? null, priceId: o.price_id ?? null, quantity: o.quantity ?? 1 },
+        order: { id: o.id, productName: o.product_name, amount: fromMinor(o.amount_cents, o.currency), currency: o.currency, isBump: o.is_bump === 1, isUpsell: o.is_upsell === 1, email: o.email, name: o.name, productId: o.product_id ?? null, priceId: o.price_id ?? null, quantity: o.quantity ?? 1, role: o.role ?? null },
+        purchase,
       });
     }
     // Ads: stamp the orders with the visitor's first and last touch, and queue ONE server-side Purchase for the checkout (the main offer plus its bumps share a

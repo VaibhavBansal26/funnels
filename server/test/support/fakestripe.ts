@@ -147,6 +147,17 @@ export class FakeStripe {
     }
     if (method === 'GET' && (m = path.match(/^\/v1\/subscriptions\/(\w+)$/))) return this.subscriptions.get(m[1]!) ?? this.err(404, 'invalid_request_error', 'resource_missing', 'No such subscription');
     if (method === 'POST' && path === '/v1/payment_intents') {
+      if (p.confirm !== 'true') {
+        // An intent for the Payment Element: confirmed later by Stripe.js in the browser (see confirm()).
+        if (!(Number(p.amount) > 0) || !p.currency) return this.err(400, 'invalid_request_error', 'parameter_missing', 'amount and currency are required');
+        const id = this.id('pi');
+        this.intents.set(id, {
+          id, object: 'payment_intent', amount: Number(p.amount), currency: p.currency, status: 'requires_payment_method', client_secret: `${id}_secret_${String(this.n).padStart(8, '0')}`, payment_method: null, customer: p.customer ?? null,
+          application_fee_amount: p.application_fee_amount ? Number(p.application_fee_amount) : null, setup_future_usage: p.setup_future_usage ?? null, receipt_email: p.receipt_email ?? null,
+          metadata: Object.fromEntries(Object.entries(p).filter(([k]) => k.startsWith('metadata[')).map(([k, v]) => [k.slice(9, -1), v])), last_payment_error: null, refunded: 0, account, params: p,
+        });
+        return this.intents.get(id)!;
+      }
       if (this.nextIntent === 'decline') {
         this.nextIntent = 'ok';
         return this.err(402, 'card_error', 'card_declined', 'Your card was declined.', 'insufficient_funds');
@@ -159,8 +170,23 @@ export class FakeStripe {
     }
     if (method === 'POST' && (m = path.match(/^\/v1\/payment_intents\/(\w+)\/cancel$/))) {
       const pi = this.intents.get(m[1]!);
-      if (pi) pi.status = 'canceled';
-      return pi ?? this.err(404, 'invalid_request_error', 'resource_missing', 'No such payment intent');
+      if (!pi) return this.err(404, 'invalid_request_error', 'resource_missing', 'No such payment intent');
+      if (pi.status === 'succeeded') return this.err(400, 'invalid_request_error', 'payment_intent_unexpected_state', 'You cannot cancel this PaymentIntent because it has a status of succeeded.');
+      pi.status = 'canceled';
+      return pi;
+    }
+    if ((m = path.match(/^\/v1\/payment_intents\/(\w+)$/))) {
+      const pi = this.intents.get(m[1]!);
+      if (!pi || (pi.account ?? undefined) !== account) return this.err(404, 'invalid_request_error', 'resource_missing', 'No such payment_intent');
+      if (method === 'GET') return pi;
+      if (['succeeded', 'canceled', 'processing'].includes(pi.status)) return this.err(400, 'invalid_request_error', 'payment_intent_unexpected_state', `This PaymentIntent's status is ${pi.status}`);
+      if (p.amount !== undefined) pi.amount = Number(p.amount);
+      if (p.currency !== undefined) pi.currency = p.currency;
+      if (p.application_fee_amount !== undefined) pi.application_fee_amount = p.application_fee_amount === '' ? null : Number(p.application_fee_amount);
+      if (p.customer !== undefined) pi.customer = p.customer;
+      if (p.receipt_email !== undefined) pi.receipt_email = p.receipt_email;
+      pi.updates = (pi.updates ?? 0) + 1;
+      return pi;
     }
     if (method === 'POST' && path === '/v1/refunds') {
       if (this.failRefund) {
@@ -210,6 +236,30 @@ export class FakeStripe {
     }
     Object.assign(s, { status: 'complete', payment_status: trial ? 'no_payment_required' : 'paid', customer });
     return s;
+  }
+
+  /**
+   * What Stripe.js `confirmPayment` does in the browser with a test card: 4242... succeeds, 0002 is declined (the intent goes back to requires_payment_method with
+   * last_payment_error), 3155 needs 3-D Secure (requires_action; then authenticate()). 9995 declines with insufficient funds.
+   */
+  confirm(intentId: string, card: string): Obj {
+    const pi = this.intents.get(intentId)!;
+    if (pi.status === 'succeeded') return pi;
+    const n = card.replace(/\s/g, '');
+    pi.payment_method = this.id('pm');
+    if (n === '4000000000000002' || n === '4000000000009995') {
+      Object.assign(pi, { status: 'requires_payment_method', last_payment_error: { type: 'card_error', code: 'card_declined', decline_code: n.endsWith('9995') ? 'insufficient_funds' : 'generic_decline', message: 'Your card was declined.' } });
+    } else if (n === '4000002500003155' || n === '4000000000003220') Object.assign(pi, { status: 'requires_action', next_action: { type: 'redirect_to_url' }, last_payment_error: null });
+    else Object.assign(pi, { status: 'succeeded', last_payment_error: null, latest_charge: this.id('ch') });
+    return pi;
+  }
+
+  /** The buyer completed (or failed) the 3-D Secure challenge. */
+  authenticate(intentId: string, ok: boolean): Obj {
+    const pi = this.intents.get(intentId)!;
+    if (ok) Object.assign(pi, { status: 'succeeded', next_action: null, latest_charge: this.id('ch') });
+    else Object.assign(pi, { status: 'requires_payment_method', next_action: null, last_payment_error: { type: 'card_error', code: 'payment_intent_authentication_failure', message: 'The provided payment method has failed authentication.' } });
+    return pi;
   }
 
   subscription(o: { id?: string; status?: string; price: string; customer: string; workspace: string; periodEnd?: number }): Obj {

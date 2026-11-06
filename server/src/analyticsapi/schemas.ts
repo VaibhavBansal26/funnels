@@ -62,7 +62,7 @@ const device = z.enum(['desktop', 'mobile', 'tablet', 'unknown']);
 export const EventLine = z.looseObject({
   id: z.string(),
   ts: ts,
-  type: z.enum(['page_view', 'optin', 'order']),
+  type: z.enum(['page_view', 'optin', 'order', 'add_to_cart', 'begin_checkout']).describe('add_to_cart: a cart change that added units; begin_checkout: a Payment form attempt started (both added in v1, additive)'),
   funnel_id: z.string(),
   step_id: z.string(),
   visitor_key: z.string().nullable().describe('Hex HMAC-SHA256 of the visitor id with the workspace pepper; null when the event has no visitor'),
@@ -199,7 +199,7 @@ export const ProductRow = z.looseObject({
   aov: amount.describe('gross / orders'),
   refund_rate: rate.describe('refunded / gross'),
   refunded_orders: z.number().int().min(0),
-  roles: z.looseObject({ main: z.number().int(), bump: z.number().int(), upsell: z.number().int(), downsell: z.number().int() }).describe('Orders by role'),
+  roles: z.looseObject({ main: z.number().int(), bump: z.number().int(), upsell: z.number().int(), downsell: z.number().int(), cart: z.number().int().describe('Lines bought through a cart Payment form (added in v1, additive)') }).describe('Orders by role'),
   customers: z.looseObject({ total: z.number().int(), new: z.number().int().describe('First ever order in the workspace fell in the range'), repeat: z.number().int() }),
   checkout: z.looseObject({ visitors: z.number().int(), orders: z.number().int(), conversion: rate.describe('main-offer orders / unique visitors of the checkout steps') }),
   take_rates: z.looseObject({ bump: takeRate, upsell: takeRate, downsell: takeRate }),

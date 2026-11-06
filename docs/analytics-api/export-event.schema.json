@@ -15,8 +15,11 @@
       "enum": [
         "page_view",
         "optin",
-        "order"
-      ]
+        "order",
+        "add_to_cart",
+        "begin_checkout"
+      ],
+      "description": "add_to_cart: a cart change that added units; begin_checkout: a Payment form attempt started (both added in v1, additive)"
     },
     "funnel_id": {
       "type": "string"

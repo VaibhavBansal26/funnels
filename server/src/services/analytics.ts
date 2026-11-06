@@ -18,9 +18,11 @@ export interface Metrics {
   optIns: { all: number; conversionRate: number };
   sales: { orders: number; conversionRate: number; gross: number; refunded: number; disputedLost: number; net: number };
   earningsPerView: { all: number; unique: number };
+  /** Cart funnel events (additive): units added to carts and Payment form checkouts started. */
+  cart: { adds: number; checkouts: number };
 }
 
-export function computeMetrics(raw: { views: number; uniques: number; optins: number; orders: number; cents: number; refundedCents?: number; lostCents?: number }): Metrics {
+export function computeMetrics(raw: { views: number; uniques: number; optins: number; orders: number; cents: number; refundedCents?: number; lostCents?: number; cartAdds?: number; checkouts?: number }): Metrics {
   const gross = round2(raw.cents / 100);
   return {
     pageViews: { all: raw.views, unique: raw.uniques },
@@ -28,6 +30,7 @@ export function computeMetrics(raw: { views: number; uniques: number; optins: nu
     // `gross` is unchanged; refunds and lost disputes (of the orders created in the range) are added next to it, and net = gross - refunded.
     sales: { orders: raw.orders, conversionRate: pct(raw.orders, raw.uniques), gross, refunded: round2((raw.refundedCents ?? 0) / 100), disputedLost: round2((raw.lostCents ?? 0) / 100), net: round2(gross - (raw.refundedCents ?? 0) / 100) },
     earningsPerView: { all: ratio(raw.cents / 100, raw.views), unique: ratio(raw.cents / 100, raw.uniques) },
+    cart: { adds: Number(raw.cartAdds ?? 0), checkouts: Number(raw.checkouts ?? 0) },
   };
 }
 
@@ -56,6 +59,8 @@ export interface Agg {
   optins: number;
   orders: number;
   cents: number;
+  cart_adds?: number;
+  checkouts?: number;
 }
 export interface StepAgg extends Agg {
   step_id: string;
@@ -84,7 +89,7 @@ export interface AnalyticsReader {
 }
 
 const AGG = `COALESCE(SUM(page_views), 0) AS views, COALESCE(SUM(unique_views), 0) AS uniques, COALESCE(SUM(optins), 0) AS optins,
-             COALESCE(SUM(orders), 0) AS orders, COALESCE(SUM(cents), 0) AS cents`;
+             COALESCE(SUM(orders), 0) AS orders, COALESCE(SUM(cents), 0) AS cents, COALESCE(SUM(cart_adds), 0) AS cart_adds, COALESCE(SUM(checkouts), 0) AS checkouts`;
 
 /** Reads come from `event_rollups` (15-minute UTC buckets written with every event batch, see rollups.ts), never from a scan of raw events. */
 export const bounds = (r: Range) => [r.startUtc.slice(0, 16), r.endUtc.slice(0, 16)] as const;
@@ -220,12 +225,12 @@ export async function funnelAnalytics(base: Deps, ws: string, funnelId: string, 
   });
   const steps = (await listSteps(rdb, ws, funnelId)).map((s) => {
     const a = perStep.get(s.id);
-    return { stepId: s.id, name: s.name, path: s.base_path, position: s.position, ...computeMetrics({ views: a?.views ?? 0, uniques: a?.uniques ?? 0, optins: a?.optins ?? 0, orders: a?.orders ?? 0, cents: a?.cents ?? 0, ...adj.byStep.get(s.id) }) };
+    return { stepId: s.id, name: s.name, path: s.base_path, position: s.position, ...computeMetrics({ views: a?.views ?? 0, uniques: a?.uniques ?? 0, optins: a?.optins ?? 0, orders: a?.orders ?? 0, cents: a?.cents ?? 0, cartAdds: a?.cart_adds, checkouts: a?.checkouts, ...adj.byStep.get(s.id) }) };
   });
   return {
     range: { from: range.from, to: range.to, tz: range.tz },
     distinct: { method: visitors.method, standardErrorPct: visitors.standardErrorPct },
-    summary: computeMetrics({ views: totals.views, uniques: visitors.value, optins: totals.optins, orders: totals.orders, cents: totals.cents, ...adj.total }),
+    summary: computeMetrics({ views: totals.views, uniques: visitors.value, optins: totals.optins, orders: totals.orders, cents: totals.cents, cartAdds: totals.cart_adds, checkouts: totals.checkouts, ...adj.total }),
     steps,
     series: seriesFromBuckets(buckets, range),
   };
@@ -242,7 +247,7 @@ export async function stepAnalytics(base: Deps, ws: string, funnelId: string, st
   return {
     range: { from: range.from, to: range.to, tz: range.tz },
     step: { stepId: step.id, name: step.name, path: step.base_path },
-    ...computeMetrics({ views: a.views, uniques: a.uniques, optins: a.optins, orders: a.orders, cents: a.cents, ...adj.total }),
+    ...computeMetrics({ views: a.views, uniques: a.uniques, optins: a.optins, orders: a.orders, cents: a.cents, cartAdds: a.cart_adds, checkouts: a.checkouts, ...adj.total }),
     series: seriesFromBuckets(buckets, range),
   };
 }

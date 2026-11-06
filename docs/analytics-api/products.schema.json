@@ -96,13 +96,20 @@
                 "type": "integer",
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
+              },
+              "cart": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Lines bought through a cart Payment form (added in v1, additive)"
               }
             },
             "required": [
               "main",
               "bump",
               "upsell",
-              "downsell"
+              "downsell",
+              "cart"
             ],
             "additionalProperties": {},
             "description": "Orders by role"

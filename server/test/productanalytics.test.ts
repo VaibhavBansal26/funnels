@@ -151,7 +151,7 @@ describe('product analytics: funnel behaviour', () => {
     expect(main.checkout).toEqual({ visitors: 4, orders: 2, conversion: 0.5 });
     const bump = r.products.find((p: any) => p.productId === w.bump.id);
     expect(bump.takeRates.bump).toEqual({ offered: 2, taken: 1, rate: 0.5 });
-    expect(bump.roles).toEqual({ main: 0, bump: 1, upsell: 0, downsell: 0 });
+    expect(bump.roles).toEqual({ main: 0, bump: 1, upsell: 0, downsell: 0, cart: 0 });
     const up = r.products.find((p: any) => p.productId === w.up.id);
     expect(up.takeRates.upsell).toEqual({ offered: 2, taken: 1, rate: 0.5 });
   });

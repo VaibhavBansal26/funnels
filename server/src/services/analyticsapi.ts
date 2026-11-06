@@ -366,7 +366,7 @@ export async function exportEvents(deps: Deps, api: ApiAuth, q: z.infer<typeof E
   const { pepper } = await identityPepper(deps, api.workspaceId);
   const hmac = keyer(pepper);
   const rows = await deps.db.all<{
-    id: string; created_at: string; type: 'page_view' | 'optin' | 'order'; funnel_id: string; step_id: string; visitor_id: string | null; unique_visit: number; utm_json: string | null;
+    id: string; created_at: string; type: 'page_view' | 'optin' | 'order' | 'add_to_cart' | 'begin_checkout'; funnel_id: string; step_id: string; visitor_id: string | null; unique_visit: number; utm_json: string | null;
     device: string | null; country: string | null; referrer_host: string | null; amount_cents: number; currency: string | null; lead_email: string | null;
   }>(
     `SELECT e.id, e.created_at, e.type, e.funnel_id, e.step_id, e.visitor_id, e.unique_visit, e.utm_json, e.device, e.country, e.referrer_host, e.amount_cents, e.currency, l.email AS lead_email
