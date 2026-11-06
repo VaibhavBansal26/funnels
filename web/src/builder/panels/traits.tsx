@@ -437,7 +437,7 @@ export function PaymentTrait({ trait }: TraitProps) {
     <div className="flex flex-col gap-2.5">
       <Row label="Pays for"><Select size="sm" aria-label="What the form pays for" value={p.source} options={[{ value: 'cart', label: "The visitor's cart" }, { value: 'product', label: 'One product' }]} onValueChange={(v) => set({ source: v as PaymentProps['source'] })} /></Row>
       {p.source === 'product' ? <LinkedProduct p={p} onPick={(f) => set(pickFields(f) as Partial<PaymentProps>)} empty="Choose the product this form sells. Order bumps on this page are added to it." /> : null}
-      <Row label="Card fields"><Select size="sm" aria-label="Where buyers enter their card" value={p.mode} options={[{ value: 'embedded', label: 'On this page (Stripe Payment Element)' }, { value: 'hosted', label: 'On Stripe Checkout (redirect)' }]} onValueChange={(v) => set({ mode: v as PaymentProps['mode'] })} /></Row>
+      <Row label="Card fields"><Select size="sm" aria-label="Where buyers enter their card" value={p.mode} options={[{ value: 'embedded', label: 'On this page' }, { value: 'hosted', label: 'Stripe Checkout' }]} onValueChange={(v) => set({ mode: v as PaymentProps['mode'] })} /></Row>
       <Row label="Title"><input aria-label="Payment form title" className={inputCls} value={p.title} maxLength={120} onChange={(e) => set({ title: e.target.value })} /></Row>
       <Row label="Button text"><input aria-label="Pay button text" className={inputCls} value={p.buttonLabel} maxLength={80} onChange={(e) => set({ buttonLabel: e.target.value })} /></Row>
       <Check id="pay-name" label="Ask for the name on the card" checked={p.collectName !== false} onChange={(collectName) => set({ collectName })} />
