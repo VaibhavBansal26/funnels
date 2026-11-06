@@ -38,18 +38,18 @@ sequenceDiagram
   participant API as Funnels API
   participant S as Stripe (connected account)
   participant W as Connect webhook
-  B->>API: POST /api/public/pay/{funnel}/{step}/{block} (cart token, bump ids; no amounts)
+  B->>API: POST /api/public/pay/{funnel}/{step}/{block} (cart token and bump ids, never amounts)
   API->>API: price the cart / product and bumps from the catalog
   API->>S: POST /v1/payment_intents (Stripe-Account, application_fee_amount, idempotency key)
   API-->>B: client_secret, publishable key, account
   B->>S: Stripe.js Payment Element (card data stays in Stripe's iframe)
-  B->>API: bump ticked: re-quote, update the intent amount
-  B->>API: Pay: contact (validated), customer created on the account
+  B->>API: bump ticked, re-quote and update the intent amount
+  B->>API: Pay with the contact (validated), a customer is created on the account
   B->>S: confirmPayment (3-D Secure if needed, return_url = /api/public/pay/return)
   B->>API: POST /api/public/pay/complete
   S->>W: payment_intent.succeeded
   API->>S: re-read the intent (both paths)
-  API->>API: orders once (pi:<attempt>:<line>)
+  API->>API: orders once, unique key per attempt and line
 ```
 
 1. **Quote.** When the form appears, `POST /api/public/pay/{funnelId}/{stepId}/{blockId}` prices what it sells: the visitor's cart (each line re-read from the catalog, replaced prices followed, archived products refused with `409 PRODUCT_UNAVAILABLE`) or the block's catalog price, plus the order bumps of the page that are ticked. It creates a `payment_attempts` row and ONE PaymentIntent on the connected account: `amount` and `currency` from that quote, `automatic_payment_methods[enabled]=true`, `application_fee_amount` by plan, `setup_future_usage=off_session` when the funnel has a one-click upsell, the statement descriptor suffix, `metadata[attempt_id]`, idempotency key `pay:<attempt>:0`. The answer carries the client secret, `STRIPE_PUBLISHABLE_KEY` and the connected account id for `Stripe(pk, {stripeAccount})`. A request never names an amount; extra fields are ignored.
