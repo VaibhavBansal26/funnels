@@ -125,6 +125,32 @@
         ]
       }
     },
+    "/commerce.js": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Cart and Payment form runtime (cacheable); loaded only by pages with an Add to cart, Cart, Cart count or Payment form block",
+        "description": "Loads Stripe.js from js.stripe.com only when the page has an embedded Payment form and payments run on Stripe.",
+        "operationId": "get_commerce_js",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global"
+        ]
+      }
+    },
     "/internal/edge/resolve": {
       "get": {
         "tags": [

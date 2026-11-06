@@ -50,6 +50,8 @@ export interface BundleInput {
   notFoundStepId?: string | null;
   assets: Map<string, BundleAsset>;
   beaconJs: string;
+  /** The cart and Payment form runtime; copied into the site (`_fn/commerce.<hash>.js`) only when a page loads it. */
+  commerceJs?: string;
   /** Origin of the app (`https://app.example.com`): forms, checkout and events call it, and the CSP lets pages connect to it. */
   apiOrigin: string;
   limits: { maxFiles: number; maxFileBytes: number };
@@ -81,6 +83,7 @@ const sha256 = (b: Uint8Array | string) => createHash('sha256').update(b).digest
 const b64sha = (s: string) => createHash('sha256').update(s, 'utf8').digest('base64');
 
 export const beaconPath = (beaconJs: string): string => `/_fn/beacon.${sha256(beaconJs).slice(0, 10)}.js`;
+export const commercePath = (commerceJs: string): string => `/_fn/commerce.${sha256(commerceJs).slice(0, 10)}.js`;
 
 const BAD_CHARS = /[\u0000-\u001f\u007f\\/%?#*:"<>|]/;
 
@@ -254,6 +257,7 @@ export function buildBundle(input: BundleInput): Bundle {
   if (notFound) for (const id of findAssetRefs(notFound.html)) { const a = input.assets.get(id); if (a) used.set(id, a); }
   for (const [id, a] of [...used.entries()].sort((x, y) => (x[0] < y[0] ? -1 : 1))) add(`/uploads/${id}/${a.name}`, a.bytes, a.mime);
   add(beaconFile, enc.encode(input.beaconJs));
+  if (input.commerceJs && pages.some((p) => p.html.includes('data-fn-commerce'))) add(commercePath(input.commerceJs), enc.encode(input.commerceJs));
 
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   if (files.length > input.limits.maxFiles) throw new BundleError('TOO_MANY_FILES', `The site has ${files.length} files; the limit is ${input.limits.maxFiles}`);

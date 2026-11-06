@@ -33,7 +33,7 @@ const hostOf = (c: Context, trustProxy: boolean): string => {
 };
 
 // Paths that stay reachable on customer domains because published pages call them.
-const PASSTHROUGH = /^\/(api\/public\/|public\/reviews\/|uploads\/|beacon\.js$|healthz$|readyz$)/;
+const PASSTHROUGH = /^\/(api\/public\/|public\/reviews\/|uploads\/|beacon\.js$|commerce\.js$|healthz$|readyz$)/;
 
 /** Cache miss path, coalesced: a burst of requests for one page costs one database read per process (one per cluster with Redis). */
 async function pageFor(deps: Deps, step: StepRow, builtin = false): Promise<{ html: string; checksum: string; csp?: PageCsp } | null> {

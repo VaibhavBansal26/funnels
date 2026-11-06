@@ -34,6 +34,8 @@ export interface PageRenderContext {
   mode?: 'live' | 'preview';
   apiBase?: string;
   beaconSrc?: string;
+  /** Where the cart and Payment form runtime is loaded from (default `<apiBase>/commerce.js`; a Pages bundle carries its own copy). */
+  commerceSrc?: string;
   /** Where the beacon scopes its cookies (`/s/<workspace>` on a built-in address); default `/`. */
   cookiePath?: string;
   /** Absolute canonical URL of the page (built-in addresses). */
@@ -81,6 +83,7 @@ interface State {
   count: number;
   hrefs: Map<string, string>;
   hasRuntime: boolean;
+  hasCommerce: boolean;
   raw: Map<string, string>;
   extraCss: string[];
   rawSeq: number;
@@ -149,12 +152,16 @@ function renderNode(n: GjsNode, st: State, depth: number): string {
     case 'fn-review-cta':
       return `<div${nodeAttrs(n)}>${reviewCtaInner(id, n.fnReviewCta as ReviewCtaProps, mk)}</div>`;
     case 'fn-cart-add':
+      st.hasCommerce = mk.mode !== 'builder';
       return `<div${nodeAttrs(n)}>${cartAddInner(id, n.fnCartAdd as CartAddProps, mk)}</div>`;
     case 'fn-cart':
+      st.hasCommerce = mk.mode !== 'builder';
       return `<div${nodeAttrs(n)}>${cartInner(id, n.fnCart as CartProps, mk)}</div>`;
     case 'fn-cart-count':
+      st.hasCommerce = mk.mode !== 'builder';
       return `<div${nodeAttrs(n)}>${cartCountInner(n.fnCartCount as CartCountProps, mk)}</div>`;
     case 'fn-payment':
+      st.hasCommerce = mk.mode !== 'builder';
       return `<div${nodeAttrs(n)}>${paymentInner(id, n.fnPayment as PaymentProps, mk)}</div>`;
     case 'fn-code': {
       const code = n.fnCode as CodeProps;
@@ -281,6 +288,7 @@ export function renderProject(rawProject: unknown, ctx: PageRenderContext): Rend
     count: 0,
     hrefs: new Map(steps.map((s) => [s.id, s.href])),
     hasRuntime: false,
+    hasCommerce: false,
     raw: new Map(),
     extraCss: [],
     rawSeq: 0,
@@ -305,6 +313,7 @@ export function renderProject(rawProject: unknown, ctx: PageRenderContext): Rend
   const preview = mode === 'preview';
   const beacon = `<script async src="${esc(ctx.beaconSrc ?? `${ctx.apiBase ?? ''}/beacon.js`)}" data-funnel="${esc(ctx.funnelId)}" data-step="${esc(ctx.stepId)}" data-api="${esc(ctx.apiBase ?? '')}"${ctx.cookiePath ? ` data-cookie-path="${esc(ctx.cookiePath)}"` : ''}${preview ? ' data-preview="1"' : ''}></script>`;
   const runtime = st.hasRuntime ? `<script>${RUNTIME_JS}</script>` : '';
+  const commerce = st.hasCommerce ? `<script async src="${esc(ctx.commerceSrc ?? `${ctx.apiBase ?? ''}/commerce.js`)}" data-fn-commerce data-funnel="${esc(ctx.funnelId)}" data-step="${esc(ctx.stepId)}" data-api="${esc(ctx.apiBase ?? '')}"${ctx.cookiePath ? ` data-cookie-path="${esc(ctx.cookiePath)}"` : ''}${preview ? ' data-preview="1"' : ''}></script>` : '';
   const html =
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<title>${esc(title)}</title>` +
@@ -319,6 +328,7 @@ export function renderProject(rawProject: unknown, ctx: PageRenderContext): Rend
     runtime +
     footer +
     beacon +
+    commerce +
     `</body></html>`;
   return { html, css, body };
 }

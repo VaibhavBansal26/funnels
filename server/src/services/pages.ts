@@ -46,6 +46,7 @@ interface BuildInput {
   adTags?: string;
   apiBase?: string;
   beaconSrc?: string;
+  commerceSrc?: string;
 }
 
 export function renderContext(deps: Deps, i: BuildInput): PageRenderContext {
@@ -68,6 +69,7 @@ export function renderContext(deps: Deps, i: BuildInput): PageRenderContext {
     ...(i.adTags ? { adTags: i.adTags } : {}),
     ...(i.apiBase ? { apiBase: i.apiBase } : {}),
     ...(i.beaconSrc ? { beaconSrc: i.beaconSrc } : {}),
+    ...(i.commerceSrc ? { commerceSrc: i.commerceSrc } : {}),
     reviews: reviewsContext(deps, i.funnel.workspace_id, i.funnel.id, i.step.id),
   };
 }

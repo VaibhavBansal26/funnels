@@ -263,7 +263,7 @@ export async function quotePayment(deps: Deps, p: { funnelId: string; stepId: st
   if (!account || !account.charges_enabled) throw conflict('STRIPE_NOT_CONNECTED', 'This store cannot take payments yet: the owner has not finished connecting Stripe');
   const urls = await returnUrls(deps, { ws, funnel, step, block: { id: block.id, productName: block.productName, success: block.success } });
   const settings = await paymentSettings(deps, ws);
-  let intent: StripeIntent;
+  let intent!: StripeIntent;
   try {
     if (!attempt) {
       attempt = await createAttempt(deps, { ws, funnel, step, block, cart, items, summary, bumpIds, provider: 'stripe', input, fee, account: account.stripe_account_id, urls });
@@ -277,11 +277,12 @@ export async function quotePayment(deps: Deps, p: { funnelId: string; stepId: st
       }, { account: account.stripe_account_id, idempotencyKey: `pay:${attempt.id}:0` });
       await deps.db.run('UPDATE payment_attempts SET stripe_intent_id = ?, updated_at = ? WHERE id = ?', intent.id, deps.now().toISOString(), attempt.id);
       attempt = (await getAttempt(deps, attempt.id))!;
-    } else {
+    }
+    if (!created || contact) {
       const changed = attempt.amount !== summary.total || attempt.currency !== summary.currency;
-      await requote(deps, attempt, { items, summary, bumpIds, cart, fee });
+      if (!created) await requote(deps, attempt, { items, summary, bumpIds, cart, fee });
       const update: Record<string, unknown> = {};
-      if (changed) Object.assign(update, { amount: stripeAmount(summary.total, summary.currency), currency: lower(summary.currency), application_fee_amount: fee > 0 ? fee : '' });
+      if (changed && !created) Object.assign(update, { amount: stripeAmount(summary.total, summary.currency), currency: lower(summary.currency), application_fee_amount: fee > 0 ? fee : '' });
       if (contact) {
         const customer = attempt.stripe_customer ?? (await stripe.call<{ id: string }>('POST', '/v1/customers', { email: contact.email, ...(contact.name ? { name: contact.name } : {}), metadata: { funnels_attempt: attempt.id } }, { account: account.stripe_account_id, idempotencyKey: `cus:${attempt.id}` })).id;
         if (customer !== attempt.stripe_customer) {
@@ -291,7 +292,7 @@ export async function quotePayment(deps: Deps, p: { funnelId: string; stepId: st
         if (settings.receiptEmails) update.receipt_email = contact.email;
       }
       const version = (await getAttempt(deps, attempt.id))!.version;
-      intent = Object.keys(update).length
+      if (Object.keys(update).length || !created) intent = Object.keys(update).length
         ? await stripe.call<StripeIntent>('POST', `/v1/payment_intents/${attempt.stripe_intent_id}`, update, { account: account.stripe_account_id, idempotencyKey: `pay:${attempt.id}:${version}:${createHash('sha256').update(JSON.stringify(update)).digest('hex').slice(0, 12)}` })
         : await stripe.call<StripeIntent>('GET', `/v1/payment_intents/${attempt.stripe_intent_id}`, {}, { account: account.stripe_account_id });
     }

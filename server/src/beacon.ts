@@ -1,5 +1,3 @@
-import { COMMERCE_JS } from './commerce.js';
-
 /**
  * The tracking beacon served at /beacon.js. Plain ES5, no dependencies, injected into every page by the renderer.
  * - page view via sendBeacon (visitor id cookie, UTM cookies, unique-visit hint)
@@ -67,5 +65,4 @@ send(f,f.getAttribute('action'),base({email:f.elements.email.value,name:f.elemen
 document.addEventListener('click',function(ev){var b=ev.target;while(b&&b.hasAttribute&&!b.hasAttribute('data-fn-upsell'))b=b.parentNode;if(!b||!b.hasAttribute)return;ev.preventDefault();
 var prev=cookie('funnels_order');if(!prev&&!preview){say(b,'Please complete your first purchase before adding this offer.',false);return}
 send(b,b.getAttribute('data-action'),base({previousOrderId:prev||'preview',submissionId:rid()}),function(j){if(j&&j.orderId)fire('fn:purchase',{orderId:j.orderId,eventId:'purchase_'+j.orderId,orders:j.orders})})});
-${COMMERCE_JS}
 })();`;

@@ -3,6 +3,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { AppError, badRequest, parse } from '../errors.js';
 import type { Deps } from '../deps.js';
 import { BEACON_JS } from '../beacon.js';
+import { COMMERCE_JS } from '../commerce.js';
 import { webMonitoringConfig } from '../monitoring/index.js';
 import { PublicEventInput, recordPublicEvent } from '../services/events.js';
 import { SubmitInput, submitForm } from '../services/leads.js';
@@ -48,6 +49,8 @@ export function publicRoutes(deps: Deps): Hono {
   r.get('/api/config', (c) => c.json({ monitoring: webMonitoringConfig(deps.config) }, 200, { 'cache-control': 'public, max-age=300' }));
 
   r.get('/beacon.js', (c) => c.body(BEACON_JS, 200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' }));
+
+  r.get('/commerce.js', (c) => c.body(COMMERCE_JS, 200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' }));
 
   r.use('/api/public/*', async (c, next) => {
     const allow = await corsOriginFor(deps, c.req.header('origin'));

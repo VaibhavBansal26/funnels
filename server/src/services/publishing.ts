@@ -4,12 +4,13 @@ import { cspHosts } from '../ads/snippets.js';
 import type { Auth } from '../auth/context.js';
 import { decryptWithDataKey, encryptWithDataKey } from '../auth/dataCrypto.js';
 import { BEACON_JS } from '../beacon.js';
+import { COMMERCE_JS } from '../commerce.js';
 import type { Deps } from '../deps.js';
 import { AppError, badRequest, conflict, notFound } from '../errors.js';
 import type { Job } from '../jobs/queue.js';
 import { loadDoc } from '../pagemodel/doc.js';
 import { RUNTIME_JS } from '../pagemodel/render.js';
-import { withPaymentHosts, buildBundle, buildPausedBundle, BundleError, beaconPath, findAssetRefs, type Bundle, type BundleAsset } from '../publish/bundle.js';
+import { commercePath, withPaymentHosts, buildBundle, buildPausedBundle, BundleError, beaconPath, findAssetRefs, type Bundle, type BundleAsset } from '../publish/bundle.js';
 import { CloudflareApiError, CloudflarePagesClient, domainState, type PagesCredentials } from '../publish/cfclient.js';
 import { CF_TARGETS_SQL, createTarget, isCloudflareTarget, type PublishTarget, type TargetKind } from '../publish/target.js';
 import { requireFunnel, listSteps } from '../repos/funnels.js';
@@ -468,7 +469,7 @@ export async function buildFunnelBundle(deps: Deps, funnel: FunnelRow): Promise<
     // The bundle carries a snapshot of the review content taken now (fetched if the cache is empty or expired); the page refreshes it from the public endpoint.
     await refreshForPublish(deps, ws, loadDoc(page.doc_json));
     await primeSnapshots(deps, ws, loadDoc(page.doc_json));
-    const { html } = renderStep(deps, { funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'live', adTags: tags?.html, apiBase, beaconSrc: beaconPath(BEACON_JS) });
+    const { html } = renderStep(deps, { funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'live', adTags: tags?.html, apiBase, beaconSrc: beaconPath(BEACON_JS), commerceSrc: commercePath(COMMERCE_JS) });
     bundleSteps.push({ id: step.id, basePath: step.base_path, html, knownInline: [RUNTIME_JS, ...(tags ? [tags.source] : [])], vendors: withPaymentHosts(cspHosts(effectivePixels(levels, step.id)), html, deps.config.PAYMENTS_PROVIDER) });
   }
   const refs = new Set(bundleSteps.flatMap((s) => findAssetRefs(s.html)));
@@ -483,7 +484,7 @@ export async function buildFunnelBundle(deps: Deps, funnel: FunnelRow): Promise<
     // The pages.dev address has no home setting: when no step is at "/", the first step answers there.
     homeStepId: domain?.default_home_step_id && own.has(domain.default_home_step_id) ? domain.default_home_step_id : domain?.kind === 'pages' ? (steps[0]?.id ?? null) : null,
     notFoundStepId: domain?.default_404_step_id && own.has(domain.default_404_step_id) ? domain.default_404_step_id : null,
-    assets, beaconJs: BEACON_JS, apiOrigin: apiBase,
+    assets, beaconJs: BEACON_JS, commerceJs: COMMERCE_JS, apiOrigin: apiBase,
     limits: { maxFiles: deps.config.PAGES_MAX_FILES, maxFileBytes: deps.config.PAGES_MAX_FILE_BYTES },
   });
 }

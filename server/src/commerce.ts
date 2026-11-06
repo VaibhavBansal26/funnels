@@ -1,7 +1,8 @@
 /**
- * The cart and Payment form part of the beacon (docs/PRODUCTS.md#cart, docs/STRIPE.md#embedded-payment-form). Plain ES5, inserted into the beacon's closure (it uses
- * its helpers: cookie, setCookie, rid, vid, funnel, step, api, preview, utms, say, done, fire, qp). Everything it shows comes from the server's answers, built with
- * DOM APIs (textContent), never from HTML strings.
+ * The cart and Payment form runtime, `/commerce.js` (docs/PRODUCTS.md#cart, docs/STRIPE.md#embedded-payment-form). Plain ES5, no dependencies, loaded ONLY by pages
+ * that carry an Add to cart, Cart, Cart count or Payment form block (the beacon stays small). Configured by its own script tag like the beacon (data-funnel,
+ * data-step, data-api, data-preview, data-cookie-path) and sharing the beacon's visitor id (cookie `visitor_id`, or window.name on sandboxed pages).
+ * Everything it shows comes from the server's answers, built with DOM APIs (textContent), never from HTML strings.
  *  - Add to cart forms, the Cart block (quantity +/-, remove, order bumps, totals), the Cart count badge; the cart token lives in a first-party cookie of the page host.
  *  - The Payment form: asks the server for a quote (the PaymentIntent and its client secret), loads Stripe.js from js.stripe.com ONLY on pages with this form and
  *    mounts the Payment Element (card data stays in Stripe's iframe), re-quotes when an order bump changes, confirms with Stripe.js (3-D Secure included) and tells
@@ -10,7 +11,19 @@
  *  - Without Stripe: a TEST card form rendered here. The numbers never leave the browser; only the outcome of the documented test card is sent. Its TEST label
  *    is styled inline and checked for visibility before every payment, so a page cannot hide it.
  */
-export const COMMERCE_JS = `
+export const COMMERCE_JS = `(function(){
+var s=document.currentScript||document.querySelector('script[data-fn-commerce]');if(!s)return;
+var funnel=s.getAttribute('data-funnel'),step=s.getAttribute('data-step'),api=s.getAttribute('data-api')||'',preview=s.getAttribute('data-preview')==='1',cp=s.getAttribute('data-cookie-path')||'/';
+var mem={};
+function cookie(n){try{var m=document.cookie.match(new RegExp('(?:^|; )'+n+'=([^;]*)'));return m?decodeURIComponent(m[1]):(mem[n]||null)}catch(e){return mem[n]||null}}
+function setCookie(n,v){mem[n]=v;try{document.cookie=n+'='+encodeURIComponent(v)+'; path='+cp+'; SameSite=Lax'}catch(e){}}
+function rid(){var a=new Uint8Array(12),c=window.crypto||window.msCrypto,o='';if(c&&c.getRandomValues)c.getRandomValues(a);else for(var i=0;i<12;i++)a[i]=Math.floor(Math.random()*256);for(var j=0;j<12;j++)o+=('0'+a[j].toString(16)).slice(-2);return o}
+var vid=cookie('visitor_id');if(!vid){try{var wn=window.name||'';if(wn.indexOf('fnv=')===0)vid=wn.slice(4,40)}catch(e){}}if(!vid){vid=rid()}try{if(!window.name||window.name.indexOf('fnv=')===0)window.name='fnv='+vid}catch(e){}setCookie('visitor_id',vid);
+var utms={};['source','medium','campaign','term','content'].forEach(function(k){var v=cookie('utm_'+k);if(v)utms[k]=v});
+function qp(n){var m=location.search.match(new RegExp('[?&]'+n+'=([^&#]*)'));if(!m)return null;try{return decodeURIComponent(m[1].replace(/\\+/g,' '))}catch(e){return null}}
+function fire(n,d){try{document.dispatchEvent(new CustomEvent(n,{detail:d}))}catch(e){}}
+function say(el,msg,ok){var p=el.querySelector('.fn-status');if(!p)return;p.textContent=msg;p.className='fn-status '+(ok?'fn-ok':'fn-error')}
+function done(el){var t=el.getAttribute('data-success');if(t==='message'||el.getAttribute('data-href')==='#'){say(el,el.getAttribute('data-message')||'Thank you!',true);return}location.href=el.getAttribute('data-href')}
 var CK='fn_cart_'+funnel,cartState=null,cartBumps=[],cartBlockRef=null;
 function ctoken(){return cookie(CK)||''}
 function jpost(url,body){body.token=ctoken();body.visitorId=vid;body.preview=preview;
@@ -98,7 +111,7 @@ if(f.getAttribute('data-address')==='1')c.address={line1:E.line1?E.line1.value.t
 function invalid(st,fields){var k,first=null,msgs=[];for(k in fields){var i=st.f.elements[k==='postalCode'?'postalCode':k];if(i&&i.setAttribute){i.setAttribute('aria-invalid','true');if(!first)first=i}msgs.push(fields[k])}payStatus(st,msgs[0]||'Check the highlighted fields.',false);if(first&&first.focus)first.focus()}
 function checkLocal(st,c){var f={};if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(c.email))f.email='Enter a valid email address';if(c.address){if(!c.address.line1)f.line1='Enter your address';if(!c.address.city)f.city='Enter your city';if(!c.address.postalCode)f.postalCode='Enter your postal code';if(!/^[A-Z]{2}$/.test(c.address.country))f.country='Use the 2-letter country code (for example US)'}return f}
 function busy(st,on){st.busy=on;var b=st.f.querySelector('button[type=submit]');if(b){b.disabled=on;b.setAttribute('aria-busy',on?'true':'false')}}
-function paid(st,j){sset(st.key,null);if(j.orderId){setCookie('funnels_order',j.orderId);fire('fn:purchase',{orderId:j.orderId,eventId:'purchase_'+j.orderId,orders:j.orders})}cartState=null;paintCount();payStatus(st,'Payment received. Thank you!',true);done(st.f,{})}
+function paid(st,j){sset(st.key,null);if(j.orderId){setCookie('funnels_order',j.orderId);fire('fn:purchase',{orderId:j.orderId,eventId:'purchase_'+j.orderId,orders:j.orders})}cartState=null;paintCount();payStatus(st,'Payment received. Thank you!',true);done(st.f)}
 function failText(x){var e=x&&x.j&&x.j.error,r=e&&e.details&&e.details.reason;if(e&&e.code==='PAYMENT_FAILED')return r==='authentication_failed'||r==='authentication_required'?'The card could not be authenticated. Please try again or use another card.':'Your card was declined. Please try another card.';return errOf(x)}
 function complete(st,extra,tries){var body={attemptId:st.attempt},k;for(k in extra)body[k]=extra[k];
 return jpost(api+'/api/public/pay/complete',body).then(function(x){if(x.ok&&x.j.requiresAction){testAuth(function(ok){complete(st,{test:'authenticate',authenticated:ok},0)});return}
@@ -112,7 +125,7 @@ function paySubmit(f){var st=f.__fnPay;if(!st||st.busy)return;var E=f.elements,i
 if(E._hp&&E._hp.value)return;var c=contactOf(st),bad=checkLocal(st,c),k,any=false;for(k in bad)any=true;if(any){invalid(st,bad);return}
 if(!st.ready){payStatus(st,'The card fields are still loading. Please wait a moment.',false);return}
 if(st.lab&&!shown(st.lab)){payStatus(st,'This test payment form must show its TEST label.',false);return}
-if(preview){payStatus(st,'Preview: no payment is taken.',true);done(f,{});return}
+if(preview){payStatus(st,'Preview: no payment is taken.',true);done(f);return}
 var mo=null;if(st.cn){mo=mockOutcome(st);if(mo.error){mo.el.setAttribute('aria-invalid','true');payStatus(st,mo.error,false);mo.el.focus();return}}
 busy(st,true);payStatus(st,'Processing\\u2026',true);
 if(st.hosted){quote(st,{contact:c,hosted:true}).then(function(x){if(!x.ok){busy(st,false);if(x.j&&x.j.error&&x.j.error.details&&x.j.error.details.fields)invalid(st,x.j.error.details.fields);else payStatus(st,errOf(x),false);return}
@@ -131,4 +144,4 @@ document.addEventListener('submit',function(ev){var f=ev.target;if(!f||!f.hasAtt
 var fo=qp('fn_order');if(fo&&/^ord_[A-Za-z0-9_-]{4,64}$/.test(fo))setCookie('funnels_order',fo);
 function commerceStart(){loadCart();var ps=document.querySelectorAll('[data-fn-pay]'),i;for(i=0;i<ps.length;i++)payInit(ps[i])}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',commerceStart);else commerceStart();
-`;
+})();`;
