@@ -218,6 +218,10 @@ describe('forwarding to the origin', () => {
     expect(noSecret.origin.proxied[0]!.headers.get('cf-connecting-ip')).toBeNull();
     expect(noSecret.origin.proxied[0]!.headers.get('x-cf-origin-secret')).toBeNull();
     expect((await w.get('/beacon.js')).status).toBe(202);
+    // the cart and Payment form runtime and its API are the origin's too
+    expect((await w.get('/commerce.js')).status).toBe(202);
+    expect(w.origin.proxied.at(-1)!.url).toBe('https://origin.test/commerce.js');
+    expect((await w.get('/api/public/cart/f/view', {}, 'POST')).status).toBe(202);
     // images uploaded in the page builder are served by the origin on customer domains too
     expect((await w.get('/uploads/ast_1/photo.png')).status).toBe(202);
     expect(w.origin.proxied.at(-1)!.url).toBe('https://origin.test/uploads/ast_1/photo.png');
