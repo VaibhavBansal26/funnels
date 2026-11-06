@@ -13,7 +13,8 @@
     "test:stripe": "playwright test -c playwright.stripe.config.ts",
     "design:shots:ai": "node ai-shots.mjs",
     "design:publish-shots": "node publish-shots.mjs",
-    "design:guide-shots": "node guide-shots.mjs"
+    "design:guide-shots": "node guide-shots.mjs",
+    "design:cart-shots": "node cart-shots.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

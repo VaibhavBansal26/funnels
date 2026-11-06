@@ -256,7 +256,8 @@ export function cartAddInner(blockId: string, p: CartAddProps, ctx: MarkupCtx): 
   const action = `${ctx.apiBase ?? ''}/api/public/cart/${encodeURIComponent(ctx.funnelId)}/${encodeURIComponent(ctx.stepId)}/${encodeURIComponent(bid)}/add`;
   const q = p.quantity?.enabled ? p.quantity : null;
   const qty = q ? `<div class="fn-field"><label for="atc-${bid}-qty">Quantity</label><select id="atc-${bid}-qty" name="quantity">${qtyOptions(q)}</select></div>` : '';
-  const price = p.showPrice ? `<p class="fn-cart-add-price"><span class="fn-cart-add-name">${esc(p.productName)}</span> <span>${money}</span></p>` : '';
+  // The product is named by the form's label (and usually by the card around it): the visible line is the price.
+  const price = p.showPrice ? `<p class="fn-cart-add-price">${money}</p>` : '';
   return `<form class="fn-cart-add" method="post" action="${esc(action)}" data-fn-cart-add${then ? ` data-href="${esc(then)}"` : ''} aria-label="${esc(`Add ${p.productName} to the cart`)}">${price}${qty}<button class="fn-btn fn-btn-primary" type="submit">${esc(p.label || 'Add to cart')}</button><p class="fn-status" role="status" aria-live="polite"></p></form>`;
 }
 

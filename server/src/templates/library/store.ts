@@ -24,7 +24,7 @@ function storeWithCart(): TemplateDef {
   const shop = finish(pm, [
     pm.section([pm.row([
       pm.col([pm.text('**Field & Kettle**')], { grow: 1 }),
-      pm.col([pm.cartCount({ label: 'Cart' })], { grow: 0 }),
+      pm.col([pm.cartCount({ label: 'Cart' }, { style: { 'text-align': 'right' } })], { grow: 0 }),
     ], { valign: 'center', keep: true })], { padding: 'sm', width: 'wide' }),
     pm.section([pm.stack([
       pm.eyebrow('Small-batch tea, packed to order', { align: 'center' }),
