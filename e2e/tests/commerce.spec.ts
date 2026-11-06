@@ -13,7 +13,7 @@ const api = (page: import('@playwright/test').Page, method: string, path: string
 test('templates: search and filter the library, preview on a device, use a checkout template and bind its products', async ({ page }) => {
   await register(page);
   await page.goto('/templates');
-  await expect(page.getByRole('status').filter({ hasText: /templates?$/ })).toContainText(/28 templates/);
+  await expect(page.getByRole('status').filter({ hasText: /templates?$/ })).toContainText(/30 templates/);
   await page.getByLabel('Search templates').fill('dentist');
   await expect(page.getByRole('article')).toHaveCount(1);
   await page.getByRole('button', { name: /^Preview/ }).click();

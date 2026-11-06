@@ -309,3 +309,39 @@ describe('Payment form with the TEST card form (no Stripe)', () => {
     expect((await s.quote({ quantity: 4 })).json.error.code).toBe('INVALID_QUANTITY');
   });
 });
+
+describe('templates with a cart and a payment page', () => {
+  it('"Store with cart" binds its products to the catalog and sells through the cart, the bump and the Payment form', async () => {
+    const h = await makeHarness({ env: { API_USER_PER_MINUTE: '1000000', API_WORKSPACE_PER_MINUTE: '1000000', PUBLIC_FORMS_PER_MINUTE: '100000' } });
+    const owner = await h.register();
+    const f = (await h.call('POST', '/api/templates/store-with-cart/use', { token: owner.token })).json;
+    expect(f.steps.map((s: any) => s.name)).toEqual(['Shop', 'Cart', 'Checkout', 'Thank you']);
+    const docOf = async (i: number) => (await h.call('GET', `/api/funnels/${f.id}/steps/${f.steps[i].id}/page`, { token: owner.token })).json.doc;
+    const shopDoc = await docOf(0);
+    expect(shopDoc.commerce.filter((c: any) => c.type === 'cart-add').every((c: any) => /^prc_/.test(c.priceId))).toBe(true);
+    const payDoc = await docOf(2);
+    const [green, black] = shopDoc.commerce;
+    const vid = 'templatevisitor1';
+    let token: string | undefined;
+    const post = async (path: string, body: object) => { const r = await h.call('POST', path, { body: { visitorId: vid, token, ...body } }); if (r.json?.token) token = r.json.token; return r; };
+    await post(`/api/public/cart/${f.id}/${f.steps[0].id}/${green.id}/add`, { opId: opId(), quantity: 2 });
+    await post(`/api/public/cart/${f.id}/${f.steps[0].id}/${black.id}/add`, { opId: opId() });
+    const pay = payDoc.commerce.find((c: any) => c.type === 'payment');
+    const bump = payDoc.products.find((p: any) => p.orderBump);
+    const q = (await post(`/api/public/pay/${f.id}/${f.steps[2].id}/${pay.id}`, { bumpBlockIds: [bump.id], contact })).json;
+    expect(q.summary).toMatchObject({ total: 2 * 1400 + 1600 + 600, currency: 'USD' });
+    const done = await post('/api/public/pay/complete', { attemptId: q.attemptId, test: 'success' });
+    expect(done.json.orders.map((o: any) => o.productName)).toEqual(['Morning green tea', 'Smoky black tea', 'Bamboo tea infuser']);
+  });
+
+  it('"Offer with a payment page" sells its product from a dedicated checkout step', async () => {
+    const h = await makeHarness({ env: { API_USER_PER_MINUTE: '1000000', API_WORKSPACE_PER_MINUTE: '1000000', PUBLIC_FORMS_PER_MINUTE: '100000' } });
+    const owner = await h.register();
+    const f = (await h.call('POST', '/api/templates/offer-with-payment-page/use', { token: owner.token })).json;
+    const doc = (await h.call('GET', `/api/funnels/${f.id}/steps/${f.steps[1].id}/page`, { token: owner.token })).json.doc;
+    const pay = doc.commerce[0];
+    expect(pay).toMatchObject({ type: 'payment', source: 'product', productName: 'Watercolour weekend workshop', price: 49, priceId: expect.stringMatching(/^prc_/) });
+    const q = (await h.call('POST', `/api/public/pay/${f.id}/${f.steps[1].id}/${pay.id}`, { body: { visitorId: 'v_offer_1', contact } })).json;
+    expect(q.summary.lines.map((l: any) => [l.name, l.role])).toEqual([['Watercolour weekend workshop', 'main']]);
+  });
+});

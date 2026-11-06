@@ -110,6 +110,16 @@ describe('template library', () => {
           expect(p.currency).toBe(slot!.currency);
           expect(p.price).toBe(slot!.amount);
         }
+        // Add to cart buttons and product Payment forms sell a slot too (as a main product).
+        for (const c of s.doc.commerce ?? []) {
+          if (c.type === 'cart') continue;
+          if (c.type === 'payment' && c.source === 'cart') continue;
+          expect(c.slot, `${s.name}: ${c.type} ${c.id} needs a slot`).toBeTruthy();
+          const slot = slots.get(c.slot!);
+          expect(slot?.role, `${s.name}: slot ${c.slot}`).toBe('main');
+          expect(c.price).toBe(slot!.amount);
+          used.add(c.slot!);
+        }
       }
       expect([...slots.keys()].filter((k) => !used.has(k))).toEqual([]);
       if (t.products.length) expect(t.products.some((p) => p.role === 'main') || t.products.every((p) => p.role === 'upsell' || p.role === 'downsell'), 'a checkout template has a main product (or is an upsell pack)').toBe(true);
