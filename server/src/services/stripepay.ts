@@ -20,6 +20,7 @@ import type { Offer } from './catalogcheckout.js';
 import { paymentSettings } from './paymentsettings.js';
 import { allocate, fromMinor, stripeAmount } from '../util/money.js';
 import { fireWebhookEvent } from './webhooks.js';
+import { closeCart } from './cart.js';
 
 /**
  * Real payments through Stripe Connect (docs/STRIPE.md). Money goes straight to the workspace's own Stripe account (a "direct charge" on the connected account);
@@ -49,9 +50,11 @@ async function workspacePlan(deps: Deps, ws: string): Promise<Plan> {
   return ((await deps.db.get<{ plan: Plan }>('SELECT plan FROM workspaces WHERE id = ?', ws))?.plan ?? 'free') as Plan;
 }
 
-/** One line of a checkout session as the server stored it (the page and the request never name amounts). Sessions created before the catalog have only `amountCents`. */
-interface Item {
+/** One line of a checkout session (or of an embedded payment attempt) as the server stored it (the page and the request never name amounts). Sessions created before the catalog have only `amountCents`. */
+export interface Item {
   blockId: string;
+  /** Unique per line within the purchase (cart lines share the Payment form's block id); the order idempotency key uses it. Defaults to blockId. */
+  lineKey?: string;
   productName: string;
   description?: string;
   /** Line total in minor units: unit amount x quantity, before any discount. */
@@ -70,7 +73,9 @@ interface StartCtx {
   ws: string;
   funnel: { id: string; name: string; domain_id: string | null; status: string };
   step: { id: string; base_path: string; position: number };
-  block: CheckoutBlock;
+  block: Pick<CheckoutBlock, 'id' | 'productName' | 'success'>;
+  /** A cart Payment form in hosted mode: the cart is closed when the session is paid. */
+  cartId?: string | null;
   offers: Offer[];
   email: string;
   name: string | null;
@@ -84,33 +89,37 @@ interface StartCtx {
  * name (see catalogcheckout.ts). Any recurring price makes it a subscription-mode session (one-time lines ride on the first invoice); otherwise a payment-mode
  * session, with the workspace's receipt, statement descriptor and tax settings.
  */
+/** Where the buyer goes after paying and after cancelling: the address the visitor came from (custom domain, built-in address under its prefix, or the Cloudflare host). */
+export async function returnUrls(deps: Deps, c: Pick<StartCtx, 'ws' | 'funnel' | 'step' | 'block'>): Promise<{ nextUrl: string; cancelUrl: string }> {
+  const domain = c.funnel.domain_id && c.funnel.status === 'live' ? await deps.db.get<{ id: string }>("SELECT id FROM domains WHERE id = ? AND (status = 'active' OR kind = 'pages')", c.funnel.domain_id) : undefined;
+  const address = domain ? (await stepUrls(deps, c.ws, c.funnel.id, c.step.id))[0]?.address : undefined;
+  if (!domain || !address) throw conflict('FUNNEL_NOT_LIVE', 'Payments are only taken on live funnels');
+  const base = address.base;
+  const next = await deps.db.get<{ base_path: string }>('SELECT base_path FROM steps WHERE funnel_id = ? AND position > ? ORDER BY position LIMIT 1', c.funnel.id, c.step.position);
+  const success = c.block.success;
+  const nextUrl = success?.type === 'url' ? success.url : success?.type === 'message' || !next ? `${base}${c.step.base_path}?purchase=success` : `${base}${next.base_path}`;
+  return { nextUrl, cancelUrl: `${base}${c.step.base_path}?purchase=cancelled` };
+}
+
 export async function startHostedCheckout(deps: Deps, c: StartCtx): Promise<CheckoutResult> {
   const stripe = requireStripe(deps);
   const account = await accountOf(deps, c.ws);
   if (!account || !account.charges_enabled) throw conflict('STRIPE_NOT_CONNECTED', 'This store cannot take payments yet: the owner has not finished connecting Stripe');
-  // The address the visitor came from (custom domain, built-in address under its path prefix, or the Cloudflare host): success and cancel URLs return to it.
-  const domain = c.funnel.domain_id && c.funnel.status === 'live' ? await deps.db.get<{ id: string }>("SELECT id FROM domains WHERE id = ? AND (status = 'active' OR kind = 'pages')", c.funnel.domain_id) : undefined;
-  const address = domain ? (await stepUrls(deps, c.ws, c.funnel.id, c.step.id))[0]?.address : undefined;
-  if (!domain || !address) throw conflict('FUNNEL_NOT_LIVE', 'Payments are only taken on live funnels');
-  const items: Item[] = c.offers.map((o) => ({ blockId: o.blockId, productName: o.name, description: o.description, amountCents: o.unitAmount * o.quantity, unitAmount: o.unitAmount, quantity: o.quantity, currency: o.currency, bump: o.role === 'bump', role: o.role, productId: o.productId, priceId: o.priceId, recurring: o.recurring }));
+  const { nextUrl, cancelUrl } = await returnUrls(deps, c);
+  const items: Item[] = c.offers.map((o) => ({ blockId: o.blockId, lineKey: o.lineKey, productName: o.name, description: o.description, amountCents: o.unitAmount * o.quantity, unitAmount: o.unitAmount, quantity: o.quantity, currency: o.currency, bump: o.role === 'bump', role: o.role, productId: o.productId, priceId: o.priceId, recurring: o.recurring }));
   if (items.some((i) => i.amountCents <= 0)) throw badRequest('NOT_PURCHASABLE', 'A free offer cannot be paid for');
   const subscription = items.some((i) => i.recurring);
   const total = items.reduce((a, i) => a + i.amountCents, 0);
   const feeBps = PLAN_DEFS[await workspacePlan(deps, c.ws)].feeBps;
   const fee = Math.floor((total * feeBps) / 10_000);
   const settings = await paymentSettings(deps, c.ws);
-  const base = address.base;
-  const next = await deps.db.get<{ base_path: string }>('SELECT base_path FROM steps WHERE funnel_id = ? AND position > ? ORDER BY position LIMIT 1', c.funnel.id, c.step.position);
-  const success = c.block.success;
-  const nextUrl = success?.type === 'url' ? success.url : success?.type === 'message' || !next ? `${base}${c.step.base_path}?purchase=success` : `${base}${next.base_path}`;
-  const cancelUrl = `${base}${c.step.base_path}?purchase=cancelled`;
   const id = newId('cks');
   const at = deps.now().toISOString();
   await deps.db.run(
-    'INSERT INTO checkout_sessions (id, workspace_id, funnel_id, step_id, block_id, items_json, email, name, visitor_id, utms_json, next_url, cancel_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    id, c.ws, c.funnel.id, c.step.id, c.block.id, JSON.stringify(items), c.email.toLowerCase(), c.name, c.visitorId ?? null, c.utms ? JSON.stringify(c.utms) : null, nextUrl, cancelUrl, at,
+    'INSERT INTO checkout_sessions (id, workspace_id, funnel_id, step_id, block_id, items_json, email, name, visitor_id, utms_json, next_url, cancel_url, created_at, cart_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    id, c.ws, c.funnel.id, c.step.id, c.block.id, JSON.stringify(items), c.email.toLowerCase(), c.name, c.visitorId ?? null, c.utms ? JSON.stringify(c.utms) : null, nextUrl, cancelUrl, at, c.cartId ?? null,
   );
-  const wantsUpsell = (await deps.db.all<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE funnel_id = ?', c.funnel.id)).some((p) => /"oneClickUpsell"\s*:\s*true/.test(p.doc_json));
+  const wantsUpsell = await funnelWantsUpsell(deps, c.funnel.id);
   const lineItems = c.offers.map((o) =>
     o.stripePriceId && o.stripeAccountId === account.stripe_account_id
       ? { quantity: o.quantity, price: o.stripePriceId }
@@ -155,6 +164,11 @@ export async function startHostedCheckout(deps: Deps, c: StartCtx): Promise<Chec
   return { ok: true, recorded: false, redirect: session.url, orders: [], declined: [] };
 }
 
+/** A funnel with a one-click upsell anywhere: the first payment saves the card for off-session use. */
+export async function funnelWantsUpsell(deps: Deps, funnelId: string): Promise<boolean> {
+  return (await deps.db.all<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE funnel_id = ?', funnelId)).some((p) => /"oneClickUpsell"\s*:\s*true/.test(p.doc_json));
+}
+
 interface SessionRow {
   id: string;
   workspace_id: string;
@@ -170,6 +184,7 @@ interface SessionRow {
   next_url: string;
   cancel_url: string;
   status: string;
+  cart_id?: string | null;
 }
 
 interface StripeSession {
@@ -228,28 +243,56 @@ export async function finalizeSession(deps: Deps, stripeSessionId: string, accou
   const invoicePi = typeof s.invoice === 'object' && s.invoice ? s.invoice.payment_intent : null;
   const rawPi = (typeof s.payment_intent === 'object' && s.payment_intent) || (typeof invoicePi === 'object' && invoicePi) || null;
   const pi = rawPi ?? { id: typeof s.payment_intent === 'string' ? s.payment_intent : typeof invoicePi === 'string' ? invoicePi : s.subscription ? `sub:${s.subscription}` : '', payment_method: null };
-  const funnel = (await deps.db.get<{ id: string; name: string }>('SELECT id, name FROM funnels WHERE id = ?', row.funnel_id))!;
-  const step = (await deps.db.get<{ id: string; name: string }>('SELECT id, name FROM steps WHERE id = ?', row.step_id))!;
   const at = deps.now().toISOString();
+  const created = ordersFromItems(deps, { ws: row.workspace_id, funnelId: row.funnel_id, stepId: row.step_id, email: row.email, name: row.name, idemPrefix: `cs:${row.id}`, at }, items, shares, { provider: 'stripe', ref: pi.id, paymentMethod: pi.payment_method, customer: s.customer, account: acct }, trial);
+  const won = await persistPurchase(deps, { ws: row.workspace_id, funnelId: row.funnel_id, stepId: row.step_id, email: row.email, name: row.name, visitorId: row.visitor_id, utmsJson: row.utms_json }, created, existing);
+  if (won !== created) return done(won);
+  await deps.db.run("UPDATE checkout_sessions SET status = 'completed', completed_at = ? WHERE id = ?", at, row.id);
+  if (row.cart_id) await closeCart(deps, row.cart_id);
+  return done(created);
+}
+
+/**
+ * Orders of one paid purchase (a Checkout Session or an embedded PaymentIntent), one per line, in line order: the first line is the parent of the others (bumps, more
+ * cart lines). `discounts` are the promotion-code shares per line. The idempotency key is unique per purchase and line, so a second finaliser cannot insert again.
+ */
+export function ordersFromItems(
+  deps: Deps,
+  c: { ws: string; funnelId: string; stepId: string; email: string; name: string | null; idemPrefix: string; at: string },
+  items: Item[],
+  discounts: number[],
+  pay: { provider: string; ref: string; paymentMethod: string | null; customer: string | null; account: string | null },
+  trial = false,
+): OrderRow[] {
   let parent: string | null = null;
-  const created: OrderRow[] = items.map((i, n) => {
+  return items.map((i, n) => {
     const o: OrderRow = {
-      id: newId('ord'), workspace_id: row.workspace_id, funnel_id: row.funnel_id, step_id: row.step_id, block_id: i.blockId, lead_id: null, email: row.email, name: row.name,
-      product_name: i.productName, amount_cents: i.amountCents - shares[n]!, currency: i.currency, is_bump: i.bump ? 1 : 0, is_upsell: 0, parent_order_id: parent, provider: 'stripe',
-      provider_ref: pi.id, payment_method_ref: pi.payment_method, idem_key: `cs:${row.id}:${i.blockId}`, created_at: at, provider_customer: s.customer, provider_account: acct,
-      product_id: i.productId ?? null, price_id: i.priceId ?? null, quantity: i.quantity ?? 1, discount_cents: trial ? 0 : shares[n]!, role: i.role ?? (i.bump ? 'bump' : 'main'),
+      id: newId('ord'), workspace_id: c.ws, funnel_id: c.funnelId, step_id: c.stepId, block_id: i.blockId, lead_id: null, email: c.email, name: c.name,
+      product_name: i.productName, amount_cents: i.amountCents - (discounts[n] ?? 0), currency: i.currency, is_bump: i.bump ? 1 : 0, is_upsell: 0, parent_order_id: parent, provider: pay.provider,
+      provider_ref: pay.ref, payment_method_ref: pay.paymentMethod, idem_key: `${c.idemPrefix}:${i.lineKey ?? i.blockId}`, created_at: c.at, provider_customer: pay.customer, provider_account: pay.account,
+      product_id: i.productId ?? null, price_id: i.priceId ?? null, quantity: i.quantity ?? 1, discount_cents: trial ? 0 : (discounts[n] ?? 0), role: i.role ?? (i.bump ? 'bump' : 'main'),
     };
     parent ??= o.id;
     return o;
   });
+}
+
+/** Persists the orders of a purchase; when another finaliser already did (unique idempotency key), returns ITS orders instead. */
+export async function persistPurchase(
+  deps: Deps,
+  c: { ws: string; funnelId: string; stepId: string; email: string; name: string | null; visitorId: string | null; utmsJson: string | null },
+  created: OrderRow[],
+  existing: () => Promise<OrderRow[]>,
+): Promise<OrderRow[]> {
+  const funnel = (await deps.db.get<{ id: string; name: string }>('SELECT id, name FROM funnels WHERE id = ?', c.funnelId))!;
+  const step = (await deps.db.get<{ id: string; name: string }>('SELECT id, name FROM steps WHERE id = ?', c.stepId))!;
   try {
-    await persistOrders(deps, { ws: row.workspace_id, funnel, step, created, email: row.email, name: row.name, visitorId: row.visitor_id ?? undefined, utms: row.utms_json ? JSON.parse(row.utms_json) : undefined });
+    await persistOrders(deps, { ws: c.ws, funnel, step, created, email: c.email, name: c.name, visitorId: c.visitorId ?? undefined, utms: c.utmsJson ? JSON.parse(c.utmsJson) : undefined });
   } catch (e) {
-    if (isUniqueViolation(e)) return done(await existing()); // the other finaliser won
+    if (isUniqueViolation(e)) return existing(); // the other finaliser won
     throw e;
   }
-  await deps.db.run("UPDATE checkout_sessions SET status = 'completed', completed_at = ? WHERE id = ?", at, row.id);
-  return done(created);
+  return created;
 }
 
 /** One-click upsell: charges the saved payment method of the original order off-session on the same connected account. 3-D Secure cannot be answered off-session, so that is a decline. */

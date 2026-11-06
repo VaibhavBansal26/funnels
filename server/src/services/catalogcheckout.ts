@@ -10,11 +10,13 @@ import { audit } from './audit.js';
 import { currentPrice, unavailable, type PriceRow, type ProductRow } from './catalog.js';
 import { mapProducts, productNodes } from './catalogdoc.js';
 
-export type OfferRole = 'main' | 'bump' | 'upsell' | 'downsell';
+export type OfferRole = 'main' | 'bump' | 'upsell' | 'downsell' | 'cart';
 
 /** One thing in a basket, as the server prices it: from the catalog when the block is linked, from the block (legacy pages) otherwise. Never from the request. */
 export interface Offer {
   blockId: string;
+  /** Unique per line of one purchase (cart lines share the Payment form's block id). */
+  lineKey?: string;
   role: OfferRole;
   productId: string | null;
   priceId: string | null;

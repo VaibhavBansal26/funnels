@@ -45,6 +45,8 @@ export async function eraseSubject(deps: Deps, auth: Auth, input: z.infer<typeof
     for (const id of leadIds) await d.db.run('DELETE FROM leads WHERE id = ?', id);
     const orders = (await d.db.run(`UPDATE orders SET email = ?, name = NULL, payment_method_ref = NULL, provider_customer = NULL, lead_id = NULL WHERE lower(email) = ?${wsAnd}`, ...[anon, ...a(email)])).changes;
     const checkouts = (await d.db.run(`UPDATE checkout_sessions SET email = ?, name = NULL, visitor_id = NULL, utms_json = NULL WHERE lower(email) = ?${wsAnd}`, ...[anon, ...a(email)])).changes;
+    // Payment form attempts hold the buyer's email, name and address until they complete (then the orders do).
+    await d.db.run(`UPDATE payment_attempts SET email = ?, name = NULL, address_json = NULL, visitor_id = NULL, utms_json = NULL WHERE lower(email) = ?${wsAnd}`, ...[anon, ...a(email)]);
     const notifications = (await d.db.run(`DELETE FROM notifications WHERE (lower(body) LIKE ? ESCAPE '\\' OR lower(data_json) LIKE ? ESCAPE '\\' OR lower(title) LIKE ? ESCAPE '\\')${wsAnd}`, ...[like, like, like, ...(input.workspaceId ? [input.workspaceId] : [])])).changes;
     const deliveries = (await d.db.run(`UPDATE webhook_deliveries SET payload_json = '{"erased":true}', status = CASE WHEN status = 'queued' THEN 'dead' ELSE status END WHERE lower(payload_json) LIKE ? ESCAPE '\\'${wsAnd}`, ...[like, ...(input.workspaceId ? [input.workspaceId] : [])])).changes;
     return { leads: leadIds.length, orders, checkoutSessions: checkouts, notifications, webhookDeliveries: deliveries };

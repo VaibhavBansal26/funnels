@@ -6,6 +6,7 @@ import { applyAccount, applySubscription } from './billing.js';
 import { notify } from './notifications.js';
 import { applyDisputeEvent, DISPUTE_EVENTS } from './disputes.js';
 import { finalizeSession, syncChargeRefunds } from './stripepay.js';
+import { finalizeAttempt, notePaymentFailed } from './embeddedpay.js';
 import { reconcileStripePrice, reconcileStripeProduct, reconcileStripeProductDeleted } from './catalogsync.js';
 
 /**
@@ -56,6 +57,11 @@ async function connectEvent(deps: Deps, ev: StripeEvent): Promise<boolean> {
     case 'checkout.session.async_payment_succeeded':
       await finalizeSession(deps, String(o.id), ev.account);
       return true;
+    // Embedded Payment form: the PaymentIntent of an attempt. Intents this app did not create for an attempt (hosted Checkout, one-click upsells) are ignored here.
+    case 'payment_intent.succeeded':
+      return (await finalizeAttempt(deps, String(o.id), ev.account)) !== null;
+    case 'payment_intent.payment_failed':
+      return notePaymentFailed(deps, o as never, ev.account);
     case 'checkout.session.expired':
       await deps.db.run("UPDATE checkout_sessions SET status = 'expired' WHERE stripe_session_id = ? AND status = 'open'", String(o.id));
       return true;

@@ -4,6 +4,7 @@ import { inTx } from '../db/scope.js';
 import { fireWebhookEvent } from './webhooks.js';
 import { pruneAttributionPii } from './attribution.js';
 import { purgeReviewCache } from './googlereviews.js';
+import { sweepCarts } from './cart.js';
 import { purgeGenerations } from '../ai/builder/service.js';
 
 /** Arbitrary constant; serialises partition creation between replicas. */
@@ -75,6 +76,9 @@ export async function runMaintenance(deps: Deps): Promise<{ partitions: string[]
   await deps.db.run('DELETE FROM conversion_deliveries WHERE created_at < ?', new Date(now.getTime() - 180 * 86_400_000).toISOString());
   await purgeGenerations(deps, deps.config.AI_GENERATION_RETENTION_DAYS);
   await purgeReviewCache(deps);
+  // Carts expire (CART_TTL_DAYS after their last change); payment attempts that never completed carry an email and are dropped after 30 days.
+  await sweepCarts(deps);
+  await deps.db.run("DELETE FROM payment_attempts WHERE status <> 'succeeded' AND updated_at < ?", new Date(now.getTime() - 30 * 86_400_000).toISOString());
   if (partitions.length || dedupePruned || rollupsAnnounced) deps.log.info('maintenance', { partitions, dedupePruned, rollupsAnnounced });
   return { partitions, dedupePruned, rollupsAnnounced };
 }

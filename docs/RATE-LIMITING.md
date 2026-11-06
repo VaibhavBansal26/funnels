@@ -115,6 +115,7 @@ Defaults, before environment overrides and plan multipliers (this table is gener
 | `public.events` | class | composite(ip+scope) | gcra | 120 / 1 min, burst 120 | open |  | lease | Public beacon events, per IP and funnel. |
 | `public.forms` | class | composite(ip+scope) | gcra | 20 / 1 min, burst 20 | closed |  | penalty box, idempotency key | Public form posts, per IP and funnel. Fails closed so a limiter outage cannot become a spam flood. |
 | `public.checkout` | class | composite(ip+scope) | gcra | 20 / 1 min, burst 20 | closed |  | penalty box, idempotency key | Public checkout posts, per IP and funnel. Fails closed. |
+| `public.cart` | class | composite(ip+scope) | gcra | 60 / 1 min, burst 20 | open |  | idempotency key | Public cart reads and changes (view, add, quantity, remove), per IP and funnel. Fails open: a limiter outage must not empty shoppers' carts. |
 | `public.page` | class | ip | gcra | 6000 / 1 min, burst 1500 | open |  | lease | Pages served straight from the origin on a customer domain, per IP (the edge cache absorbs real traffic). |
 | `public.preview` | class | ip | gcra | 300 / 1 min, burst 100 | open |  | lease | Signed previews, per IP. |
 | `auth.attempts` | class | ip | gcra | 10 / 1 min, burst 10 | closed |  | penalty box | Register and login requests, per IP. Fails closed, with a penalty box. |

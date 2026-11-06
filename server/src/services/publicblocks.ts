@@ -1,6 +1,7 @@
 import { isSuspended } from './suspension.js';
 import type { CheckoutBlock, FormBlock } from '../blocks/index.js';
 import { loadDoc, type ProjectDoc } from '../pagemodel/doc.js';
+import type { CommerceBlock } from '../pagemodel/shared/clean.js';
 import type { Deps } from '../deps.js';
 import { AppError, notFound } from '../errors.js';
 import type { FunnelRow, StepRow } from '../repos/types.js';
@@ -34,6 +35,33 @@ export async function resolvePublicBlock<T extends 'form' | 'checkout'>(
   const block = type === 'form' ? doc.forms.find((f) => f.id === blockId) : doc.products.find((p) => p.id === blockId);
   if (!block) throw notFound('Form');
   return { funnel, step, block: block as never, workspaceId: funnel.workspace_id, doc };
+}
+
+/** The live (not trashed, not suspended) funnel a public cart request names; the workspace always comes from it. */
+export async function resolvePublicFunnel(deps: Deps, funnelId: string): Promise<FunnelRow> {
+  const funnel = await deps.db.get<FunnelRow>('SELECT * FROM funnels WHERE id = ? AND deleted_at IS NULL', funnelId);
+  if (!funnel) throw notFound('Funnel');
+  if (await isSuspended(deps, funnel.workspace_id)) throw new AppError(503, 'SITE_UNAVAILABLE', 'This site is currently unavailable');
+  return funnel;
+}
+
+/** Like resolvePublicBlock, for the cart and payment components (the derived `commerce` list of the stored page). */
+export async function resolveCommerceBlock<T extends CommerceBlock['type']>(deps: Deps, funnelId: string, stepId: string, blockId: string, type: T): Promise<{ funnel: FunnelRow; step: StepRow; block: Extract<CommerceBlock, { type: T }>; workspaceId: string; doc: ProjectDoc }> {
+  const funnel = await deps.db.get<FunnelRow>('SELECT * FROM funnels WHERE id = ? AND deleted_at IS NULL', funnelId);
+  const step = funnel ? await deps.db.get<StepRow>('SELECT * FROM steps WHERE id = ? AND funnel_id = ?', stepId, funnelId) : undefined;
+  const page = step ? await deps.db.get<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE step_id = ?', stepId) : undefined;
+  if (!funnel || !step || !page) throw notFound('Block');
+  if (await isSuspended(deps, funnel.workspace_id)) throw new AppError(503, 'SITE_UNAVAILABLE', 'This site is currently unavailable');
+  const doc = readDoc(page.doc_json);
+  const block = (doc.commerce ?? []).find((b) => b.id === blockId && b.type === type);
+  if (!block) throw notFound('Block');
+  return { funnel, step, block: block as Extract<CommerceBlock, { type: T }>, workspaceId: funnel.workspace_id, doc };
+}
+
+/** The stored document of a step of this funnel (or null), for reading its order bumps and commerce blocks. */
+export async function stepDoc(deps: Deps, funnelId: string, stepId: string): Promise<ProjectDoc | null> {
+  const page = await deps.db.get<{ doc_json: string }>('SELECT p.doc_json FROM step_pages p JOIN steps s ON s.id = p.step_id WHERE s.id = ? AND s.funnel_id = ?', stepId, funnelId);
+  return page ? readDoc(page.doc_json) : null;
 }
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;

@@ -84,6 +84,10 @@ Minimum for production: `NODE_ENV=production`, `JWT_SECRET`, `APP_PUBLIC_URL`, `
 | `CF_IP_RANGES` | (empty) | no | `173.245.48.0/20,103.21.244.0/22` | Comma-separated CIDRs replacing the built-in Cloudflare range list. |
 | `PUBLIC_EVENTS_PER_MINUTE` | `120` | no | `120` | Policy `public.events`: beacon events per IP and funnel per minute. |
 | `PUBLIC_FORMS_PER_MINUTE` | `20` | no | `20` | Policies `public.forms` and `public.checkout`: posts per IP and funnel per minute. |
+| `PUBLIC_CART_PER_MINUTE` | `60` | no | `60` | Policy `public.cart`: cart reads and changes (add, quantity, remove) per IP and funnel per minute. |
+| `CART_TTL_DAYS` | `7` | no | `7` | Days a cart is kept after its last change; an expired cart is empty for the visitor and removed by maintenance. |
+| `CART_MAX_LINES` | `50` | no | `50` | Most different products one cart can hold. |
+| `CART_MAX_QUANTITY` | `99` | no | `99` | Most units of one product in a cart (an Add to cart block can set a lower maximum). |
 | `AUTH_ATTEMPTS_PER_MINUTE` | `10` | no | `10` | Policy `auth.attempts`: register and login requests per IP per minute. |
 | `WEBHOOK_MAX_ATTEMPTS` | `6` | no | `6` | Delivery attempts before a webhook delivery is dead-lettered (30 s x 2^n backoff). |
 | `DOMAIN_VERIFY_TIMEOUT_HOURS` | `72` | no | `72` | Hours a pending domain keeps being re-checked before it is marked failed. |
@@ -91,6 +95,7 @@ Minimum for production: `NODE_ENV=production`, `JWT_SECRET`, `APP_PUBLIC_URL`, `
 | `ANALYTICS_EXACT_DISTINCT_MAX` | `200000` | no | `200000` | Page views in a range above which `auto` switches to sketches (1.6% standard error). The response says which method was used. |
 | `PAYMENTS_PROVIDER` | `mock` | no | `stripe` | `mock` (default: no real payment, orders are recorded as if paid; development and demos only) or `stripe` (hosted Stripe Checkout on the workspace's connected account). UNVERIFIED against the real Stripe API in this repository, see docs/STRIPE.md. **Security:** With `mock` in production every checkout "succeeds" without payment: set `stripe` before taking real orders. |
 | `STRIPE_SECRET_KEY` | (unset) | no | `sk_test_51...` | The platform Stripe secret key (sk_test_... or sk_live_...). Needed for PAYMENTS_PROVIDER=stripe and for subscriptions. **Security:** Secret. Restricted keys work if they allow Connect accounts and account links, Checkout sessions, PaymentIntents, Refunds, Customers, Billing portal. |
+| `STRIPE_PUBLISHABLE_KEY` | (unset) | no | `pk_test_51...` | The platform publishable key (pk_test_... or pk_live_...) for the embedded Payment form: the page loads Stripe.js with it and the connected account id, and the card fields live in Stripe's iframe. Must be the same mode as STRIPE_SECRET_KEY (the server refuses to start otherwise). Without it Payment forms fall back to the hosted Stripe Checkout redirect. **Security:** Not secret (it is sent to browsers), but it identifies the platform account. |
 | `STRIPE_WEBHOOK_SECRET` | (unset) | no | `whsec_...` | Signing secret of the platform webhook endpoint `POST /api/stripe/webhook` (whsec_...): subscriptions and invoices. **Security:** Secret. |
 | `STRIPE_CONNECT_WEBHOOK_SECRET` | (unset) | no | `whsec_...` | Signing secret of the Connect webhook endpoint `POST /api/stripe/connect-webhook` (events on connected accounts: checkout, refunds, account updates). A different endpoint has a different secret. **Security:** Secret. |
 | `STRIPE_API_BASE` | `https://api.stripe.com` | no | `https://api.stripe.com` | Stripe API base URL; change only for a test double. |

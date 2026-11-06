@@ -12,6 +12,8 @@ import { clientIp, trustedCountry } from '../ratelimit/ip.js';
 import { AttributionInput, recordAttribution } from '../services/attribution.js';
 import { corsOriginFor } from '../services/cors.js';
 import { publicReviews } from '../services/googlereviews.js';
+import { CartAddInput, CartUpdateInput, CartViewInput, addToCart, updateCart, viewCart } from '../services/cart.js';
+import { CompleteInput, PayInput, completePayment, paymentReturn, quotePayment } from '../services/embeddedpay.js';
 
 const tooLarge = () => new AppError(413, 'PAYLOAD_TOO_LARGE', 'The request body is too large');
 const limitTo = (maxSize: number) =>
@@ -88,5 +90,21 @@ export function publicRoutes(deps: Deps): Hono {
     const input = parse(CheckoutInput, await readBody(c));
     return c.json(await checkout(deps, { funnelId: c.req.param('funnelId'), stepId: c.req.param('stepId'), blockId: c.req.param('blockId'), input }), 200);
   });
+
+  // Cart (docs/PRODUCTS.md#cart) and the Payment form (docs/STRIPE.md#embedded-payment-form).
+  r.post('/api/public/cart/:funnelId/view', limitTo(8 * 1024), async (c) => c.json(await viewCart(deps, c.req.param('funnelId'), parse(CartViewInput, await readBody(c)))));
+  r.post('/api/public/cart/:funnelId/update', limitTo(8 * 1024), async (c) => c.json(await updateCart(deps, c.req.param('funnelId'), parse(CartUpdateInput, await readBody(c)))));
+  r.post('/api/public/cart/:funnelId/:stepId/:blockId/add', limitTo(8 * 1024), async (c) =>
+    c.json(await addToCart(deps, { funnelId: c.req.param('funnelId'), stepId: c.req.param('stepId'), blockId: c.req.param('blockId'), input: parse(CartAddInput, await readBody(c)), userAgent: c.req.header('user-agent') })),
+  );
+  r.post('/api/public/pay/complete', limitTo(4 * 1024), async (c) => c.json(await completePayment(deps, parse(CompleteInput, await readBody(c)))));
+  r.get('/api/public/pay/return', async (c) => {
+    const to = await paymentReturn(deps, c.req.query('attempt') ?? '').catch((e) => (deps.log.error('payment return failed', { error: (e as Error).message }), null));
+    if (!to) return c.html('<!doctype html><meta charset="utf-8"><title>Payment</title><p>We could not find this payment. If you were charged you will receive a confirmation by email; otherwise go back and try again.</p>', 404);
+    return c.redirect(to.location, 303);
+  });
+  r.post('/api/public/pay/:funnelId/:stepId/:blockId', limitTo(16 * 1024), async (c) =>
+    c.json(await quotePayment(deps, { funnelId: c.req.param('funnelId'), stepId: c.req.param('stepId'), blockId: c.req.param('blockId'), input: parse(PayInput, await readBody(c)), userAgent: c.req.header('user-agent') })),
+  );
   return r;
 }

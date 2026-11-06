@@ -753,6 +753,535 @@
         ]
       }
     },
+    "/api/public/cart/{funnelId}/view": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "The visitor's cart in this funnel (lines priced from the catalog, count, totals, the order bumps of the cart block's checkout step)",
+        "description": "The cart is found by the signed token from an earlier answer, else by the visitor id. No personal data is stored in a cart.",
+        "operationId": "post_api_public_cart_funnelId_view",
+        "parameters": [
+          {
+            "name": "funnelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "visitorId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                  },
+                  "preview": {
+                    "type": "boolean"
+                  },
+                  "cartBlock": {
+                    "type": "object",
+                    "properties": {
+                      "stepId": {
+                        "type": "string",
+                        "maxLength": 64
+                      },
+                      "blockId": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
+                    },
+                    "required": [
+                      "stepId",
+                      "blockId"
+                    ]
+                  },
+                  "funnelId": {
+                    "type": "string",
+                    "maxLength": 64
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "public.cart"
+        ]
+      }
+    },
+    "/api/public/cart/{funnelId}/update": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Change the quantity of a cart line (0 removes it) or select an order bump",
+        "description": "Idempotent per `opId`.",
+        "operationId": "post_api_public_cart_funnelId_update",
+        "parameters": [
+          {
+            "name": "funnelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "visitorId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                  },
+                  "preview": {
+                    "type": "boolean"
+                  },
+                  "cartBlock": {
+                    "type": "object",
+                    "properties": {
+                      "stepId": {
+                        "type": "string",
+                        "maxLength": 64
+                      },
+                      "blockId": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
+                    },
+                    "required": [
+                      "stepId",
+                      "blockId"
+                    ]
+                  },
+                  "funnelId": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "opId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{8,64}$"
+                  },
+                  "itemId": {
+                    "type": "string",
+                    "pattern": "^cti_[A-Za-z0-9_-]{6,60}$"
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 999
+                  },
+                  "bump": {
+                    "type": "object",
+                    "properties": {
+                      "stepId": {
+                        "type": "string",
+                        "maxLength": 64
+                      },
+                      "blockId": {
+                        "type": "string",
+                        "maxLength": 64
+                      },
+                      "selected": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "stepId",
+                      "blockId",
+                      "selected"
+                    ]
+                  }
+                },
+                "required": [
+                  "opId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "public.cart"
+        ]
+      }
+    },
+    "/api/public/cart/{funnelId}/{stepId}/{blockId}/add": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Add to cart: the price comes from the stored Add to cart block (its catalog price), the quantity is checked against the block",
+        "description": "Idempotent per `opId`. One currency per cart (409 CART_CURRENCY_MISMATCH), subscriptions are refused (409 SUBSCRIPTION_NOT_IN_CART), at most CART_MAX_LINES lines and CART_MAX_QUANTITY units per line. Records an add_to_cart event and a server-side AddToCart.",
+        "operationId": "post_api_public_cart_funnelId_stepId_blockId_add",
+        "parameters": [
+          {
+            "name": "funnelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stepId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "blockId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "visitorId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                  },
+                  "preview": {
+                    "type": "boolean"
+                  },
+                  "cartBlock": {
+                    "type": "object",
+                    "properties": {
+                      "stepId": {
+                        "type": "string",
+                        "maxLength": 64
+                      },
+                      "blockId": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
+                    },
+                    "required": [
+                      "stepId",
+                      "blockId"
+                    ]
+                  },
+                  "funnelId": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "opId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{8,64}$"
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 999
+                  },
+                  "url": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "utms": {}
+                },
+                "required": [
+                  "opId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "public.cart"
+        ]
+      }
+    },
+    "/api/public/pay/complete": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Payment form: the browser reports a confirmed payment; the server re-reads the PaymentIntent and creates the orders (idempotent)",
+        "description": "TEST form (no Stripe): carries only the outcome of the test card (`success`, `decline`, `authenticate`), never card data. 402 PAYMENT_FAILED with `details.reason` on a decline or failed authentication.",
+        "operationId": "post_api_public_pay_complete",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "attemptId": {
+                    "type": "string",
+                    "pattern": "^pay_[A-Za-z0-9_-]{6,60}$"
+                  },
+                  "test": {
+                    "type": "string",
+                    "enum": [
+                      "success",
+                      "decline",
+                      "authenticate"
+                    ]
+                  },
+                  "authenticated": {
+                    "type": "boolean"
+                  },
+                  "preview": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "attemptId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "public.checkout"
+        ]
+      }
+    },
+    "/api/public/pay/{funnelId}/{stepId}/{blockId}": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Payment form: create or re-quote the payment (PaymentIntent on the connected account) from the catalog, the cart and the selected bumps; validates the buyer details",
+        "description": "The amount is computed by the server and never read from the request. Answers the client secret, publishable key and connected account for Stripe.js, or a redirect in hosted mode.",
+        "operationId": "post_api_public_pay_funnelId_stepId_blockId",
+        "parameters": [
+          {
+            "name": "funnelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stepId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "blockId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "visitorId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                  },
+                  "attemptId": {
+                    "type": "string",
+                    "pattern": "^pay_[A-Za-z0-9_-]{6,60}$"
+                  },
+                  "bumpBlockIds": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 64
+                    }
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 99
+                  },
+                  "contact": {
+                    "type": "object",
+                    "properties": {
+                      "email": {
+                        "type": "string",
+                        "maxLength": 254
+                      },
+                      "name": {
+                        "type": "string",
+                        "maxLength": 120
+                      },
+                      "address": {}
+                    },
+                    "required": [
+                      "email"
+                    ]
+                  },
+                  "hosted": {
+                    "type": "boolean"
+                  },
+                  "_hp": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "utms": {},
+                  "url": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "preview": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "public.checkout"
+        ]
+      }
+    },
+    "/api/public/pay/return": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Where Stripe.js returns the buyer after a 3-D Secure redirect: finishes the orders (idempotent) and redirects to the next step",
+        "operationId": "get_api_public_pay_return",
+        "parameters": [],
+        "responses": {
+          "303": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-auth": "public",
+        "x-rate-limit-policies": [
+          "ip.global",
+          "public.checkout"
+        ]
+      }
+    },
     "/api/public/attribution": {
       "post": {
         "tags": [
