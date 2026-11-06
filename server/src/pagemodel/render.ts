@@ -4,8 +4,8 @@ import { sanitizeCss } from './cssfilter.js';
 import { sanitizePageBody, sanitizeUserHtml } from './htmlfilter.js';
 import { BASE_CSS, FN_PAGE_CLASS } from './shared/css.js';
 import { PROJECT_LIMITS, childrenOf, cleanProject, emptyProject, isFnType, wrapperOf, type GjsNode, type GjsProject, type GjsRule } from './shared/clean.js';
-import { checkoutInner, countdownInner, formInner, progressInner, reviewCtaInner, reviewsInner, videoInner, type MarkupCtx } from './shared/markup.js';
-import type { ButtonActionProps, CodeProps, CountdownProps, FormProps, ProductProps, ProgressProps, ReviewCtaProps, ReviewsProps, VideoProps } from './shared/props.js';
+import { cartAddInner, cartCountInner, cartInner, checkoutInner, countdownInner, formInner, paymentInner, progressInner, reviewCtaInner, reviewsInner, videoInner, type MarkupCtx } from './shared/markup.js';
+import type { ButtonActionProps, CartAddProps, CartCountProps, CartProps, CodeProps, CountdownProps, FormProps, PaymentProps, ProductProps, ProgressProps, ReviewCtaProps, ReviewsProps, VideoProps } from './shared/props.js';
 
 /**
  * Deterministic page renderer: GrapesJS project data in, a complete HTML document out. Pure with respect to its inputs (nothing is
@@ -148,6 +148,14 @@ function renderNode(n: GjsNode, st: State, depth: number): string {
     }
     case 'fn-review-cta':
       return `<div${nodeAttrs(n)}>${reviewCtaInner(id, n.fnReviewCta as ReviewCtaProps, mk)}</div>`;
+    case 'fn-cart-add':
+      return `<div${nodeAttrs(n)}>${cartAddInner(id, n.fnCartAdd as CartAddProps, mk)}</div>`;
+    case 'fn-cart':
+      return `<div${nodeAttrs(n)}>${cartInner(id, n.fnCart as CartProps, mk)}</div>`;
+    case 'fn-cart-count':
+      return `<div${nodeAttrs(n)}>${cartCountInner(n.fnCartCount as CartCountProps, mk)}</div>`;
+    case 'fn-payment':
+      return `<div${nodeAttrs(n)}>${paymentInner(id, n.fnPayment as PaymentProps, mk)}</div>`;
     case 'fn-code': {
       const code = n.fnCode as CodeProps;
       if (st.ctx.allowScripts) {
@@ -265,7 +273,8 @@ export function renderProject(rawProject: unknown, ctx: PageRenderContext): Rend
   const idx = steps.findIndex((s) => s.id === ctx.stepId);
   const mode = ctx.mode ?? 'live';
   const products = cleaned.ok ? cleaned.products : [];
-  const main = products.find((p) => !p.orderBump && !p.oneClickUpsell);
+  // Order bumps attach to the page's main checkout, or to its Payment form when there is no checkout block.
+  const main = products.find((p) => !p.orderBump && !p.oneClickUpsell) ?? (cleaned.ok ? cleaned.commerce.find((c) => c.type === 'payment') : undefined);
   const st: State = {
     ctx,
     markup: { mode, funnelId: ctx.funnelId, stepId: ctx.stepId, apiBase: ctx.apiBase, nextHref: idx >= 0 && steps[idx + 1] ? steps[idx + 1]!.href : '#', mainCheckoutId: main?.id ?? null, stepHref: (id) => steps.find((s) => s.id === id)?.href, reviews: ctx.reviews },

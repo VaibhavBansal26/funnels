@@ -9,7 +9,7 @@ import { clip, nonEmpty, round2, type BuiltRequest, type ConversionEvent, type C
  * value, contents[], content_type, order_id}, page{url} }] }. Emails, phone numbers (E.164) and external ids are SHA-256 hashed; deduplication is by pixel code +
  * event + event_id within 48 hours. Check the real response in the delivery log of a test event before relying on it.
  */
-const NAMES: Record<ConversionName, string> = { Lead: 'SubmitForm', Purchase: 'CompletePayment' };
+const NAMES: Record<ConversionName, string> = { Lead: 'SubmitForm', Purchase: 'CompletePayment', AddToCart: 'AddToCart', InitiateCheckout: 'InitiateCheckout' };
 
 export const tiktokProvider: ConversionsProvider = {
   id: 'tiktok',

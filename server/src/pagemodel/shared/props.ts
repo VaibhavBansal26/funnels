@@ -109,3 +109,70 @@ export const ReviewCtaPropsSchema = z.object({
   delaySeconds: z.number().int().refine((n) => REVIEW_DELAYS.includes(n), 'Choose 0, 5, 10, 15, 30, 60, 90 or 120 seconds').default(0),
 });
 export type ReviewCtaProps = z.infer<typeof ReviewCtaPropsSchema>;
+
+// ---- cart and payment form (docs/PRODUCTS.md#cart, docs/STRIPE.md#embedded-payment-form) ----------------------------------------------------------
+
+const stepRef = z.string().min(1).max(64);
+/** Catalog link of a commerce block: the same fields as a checkout block, so the save-time catalog link and template slots treat them alike. */
+const catalogLink = {
+  productName: z.string().min(1).max(200),
+  description: z.string().max(500).optional(),
+  /** Display snapshot only: the server prices from the catalog price (`priceId`), refreshed on every save. */
+  price: z.number().min(0).max(1_000_000),
+  currency: z.string().regex(/^[A-Z]{3}$/, 'Currency must be a 3-letter ISO code').default('USD'),
+  productId: CheckoutCatalogFields.productId,
+  priceId: CheckoutCatalogFields.priceId,
+  slot: CheckoutCatalogFields.slot,
+  interval: CheckoutCatalogFields.interval,
+  trialDays: CheckoutCatalogFields.trialDays,
+};
+const QuantitySchema = z.object({ enabled: z.boolean(), min: z.number().int().min(1).max(99).default(1), max: z.number().int().min(1).max(99).default(10), default: z.number().int().min(1).max(99).default(1) });
+
+/** "Add to cart" button: a catalog price, an optional quantity picker, and where to go after adding (stay on the page by default). */
+export const CartAddPropsSchema = z.object({
+  ...catalogLink,
+  label: z.string().min(1).max(80).default('Add to cart'),
+  showPrice: z.boolean().default(true),
+  quantity: QuantitySchema.default({ enabled: false, min: 1, max: 10, default: 1 }),
+  then: z.discriminatedUnion('type', [z.object({ type: z.literal('stay') }), z.object({ type: z.literal('next_step') }), z.object({ type: z.literal('step'), stepId: stepRef })]).default({ type: 'stay' }),
+});
+export type CartAddProps = z.infer<typeof CartAddPropsSchema>;
+
+/** "Cart": line items with quantity and remove, the order bumps of the checkout step, totals, and a Checkout button to the step that holds the Payment form. */
+export const CartPropsSchema = z.object({
+  title: z.string().max(120).default('Your cart'),
+  emptyText: z.string().max(200).default('Your cart is empty.'),
+  checkoutLabel: z.string().min(1).max(80).default('Checkout'),
+  /** The step with the Payment form (default: the next step). */
+  checkoutStepId: stepRef.optional(),
+  /** Offer the order bumps of the checkout step in the cart (they are pre-selected on the payment page). */
+  showBumps: z.boolean().default(true),
+});
+export type CartProps = z.infer<typeof CartPropsSchema>;
+
+/** Small "Cart (n)" badge, linking to the cart step. */
+export const CartCountPropsSchema = z.object({
+  label: z.string().max(40).default('Cart'),
+  cartStepId: stepRef.optional(),
+});
+export type CartCountProps = z.infer<typeof CartCountPropsSchema>;
+
+/**
+ * "Payment form": order summary plus the card fields on the page. `source: cart` pays the visitor's cart; `product` pays one catalog price (with the page's
+ * order bumps). `embedded` shows the Stripe Payment Element (or the TEST form without Stripe); `hosted` keeps the Stripe Checkout redirect.
+ */
+export const PaymentPropsSchema = z.object({
+  source: z.enum(['cart', 'product']).default('cart'),
+  mode: z.enum(['embedded', 'hosted']).default('embedded'),
+  // Used when source = product (kept as a display snapshot otherwise).
+  ...catalogLink,
+  productName: z.string().min(1).max(200).default('Your order'),
+  price: z.number().min(0).max(1_000_000).default(0),
+  quantity: QuantitySchema.optional(),
+  title: z.string().max(120).default('Complete your order'),
+  buttonLabel: z.string().min(1).max(80).default('Pay now'),
+  collectName: z.boolean().default(true),
+  collectAddress: z.boolean().default(false),
+  success: SuccessSchema.default({ type: 'next_step' }),
+});
+export type PaymentProps = z.infer<typeof PaymentPropsSchema>;

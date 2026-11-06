@@ -4,7 +4,7 @@ import { convertDocument, isLegacyDocument } from './convert.js';
 import { sanitizeCss } from './cssfilter.js';
 import { sanitizeUserHtml } from './htmlfilter.js';
 import { createPageBuilder } from './shared/build.js';
-import { PROJECT_VERSION, childrenOf, cleanProject, firstHeadingOfProject, walk, wrapperOf, type GjsNode, type GjsProject, type Issue } from './shared/clean.js';
+import { PROJECT_VERSION, childrenOf, cleanProject, firstHeadingOfProject, walk, wrapperOf, type CommerceBlock, type GjsNode, type GjsProject, type Issue } from './shared/clean.js';
 import type { CodeProps } from './shared/props.js';
 
 /**
@@ -17,6 +17,8 @@ export interface ProjectDoc {
   project: GjsProject;
   forms: FormBlock[];
   products: CheckoutBlock[];
+  /** Add to cart, Cart and Payment form components (absent in documents saved before carts existed: read as empty). */
+  commerce?: CommerceBlock[];
 }
 
 export type DocResult = { ok: true; doc: ProjectDoc; notes: string[] } | { ok: false; issues: Issue[] };
@@ -74,7 +76,7 @@ export function normalizeDoc(raw: unknown, opts: NormalizeOptions = {}): DocResu
       }
     });
   }
-  return { ok: true, doc: { version: PROJECT_VERSION, project: cleaned.project, forms: cleaned.forms, products: cleaned.products }, notes };
+  return { ok: true, doc: { version: PROJECT_VERSION, project: cleaned.project, forms: cleaned.forms, products: cleaned.products, ...(cleaned.commerce.length ? { commerce: cleaned.commerce } : {}) }, notes };
 }
 
 /** Parses a stored `doc_json`. Legacy documents are converted on the fly; a document that no longer validates opens as an empty page. */
@@ -148,6 +150,20 @@ export function remapStepRefs(doc: ProjectDoc, idMap: Map<string, string>): Proj
     if (a?.type === 'step') {
       const target = a.stepId ? idMap.get(a.stepId) : undefined;
       n.fnAction = target ? { type: 'step', stepId: target } : { type: 'next_step' };
+    }
+    // Commerce blocks name steps too (after adding to the cart, the checkout step, the cart step).
+    const cartAdd = n.fnCartAdd as { then?: { type: string; stepId?: string } } | undefined;
+    if (cartAdd?.then?.type === 'step') {
+      const target = cartAdd.then.stepId ? idMap.get(cartAdd.then.stepId) : undefined;
+      cartAdd.then = target ? { type: 'step', stepId: target } : { type: 'next_step' };
+    }
+    for (const [key, field] of [['fnCart', 'checkoutStepId'], ['fnCartCount', 'cartStepId']] as const) {
+      const p = n[key] as Record<string, string | undefined> | undefined;
+      if (p?.[field]) {
+        const target = idMap.get(p[field]!);
+        if (target) p[field] = target;
+        else delete p[field];
+      }
     }
     const prod = n.fnProduct as { acceptStepId?: string; declineStepId?: string } | undefined;
     if (prod) {

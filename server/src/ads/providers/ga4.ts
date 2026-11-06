@@ -11,7 +11,7 @@ import { clip, nonEmpty, round2, type BuiltRequest, type ConversionEvent, type C
  * Limits that matter: events may be backdated 72 hours; event names are 40 characters at most. Measurement Protocol cannot carry a gclid: ad attribution of these events
  * works through the GA4 <-> Google Ads link (conversion import), see docs/ADS.md.
  */
-const NAMES: Record<ConversionName, string> = { Lead: 'generate_lead', Purchase: 'purchase' };
+const NAMES: Record<ConversionName, string> = { Lead: 'generate_lead', Purchase: 'purchase', AddToCart: 'add_to_cart', InitiateCheckout: 'begin_checkout' };
 
 /** A GA4 client id has the shape `<number>.<number>`. The browser's own (from the `_ga` cookie) is used when reported; otherwise a stable one is derived from the visitor id. */
 export function clientIdFor(e: ConversionEvent): string {

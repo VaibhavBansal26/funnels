@@ -1,4 +1,5 @@
-export type ConversionName = 'Lead' | 'Purchase';
+/** Lead (opt-in), Purchase (a persisted order), AddToCart (a cart change) and InitiateCheckout (a Payment form attempt started). The commerce events follow the integration's "send purchases" switch. */
+export type ConversionName = 'Lead' | 'Purchase' | 'AddToCart' | 'InitiateCheckout';
 export type ProviderId = 'meta' | 'ga4' | 'tiktok';
 
 export interface ConversionUser {

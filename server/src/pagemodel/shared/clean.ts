@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { safeImageSrc, safeUrl } from '../../blocks/safe.js';
 import type { CheckoutBlock, FormBlock } from '../../blocks/schema.js';
 import {
-  ButtonActionSchema, CodePropsSchema, CountdownPropsSchema, FormPropsSchema, ProductPropsSchema, ProgressPropsSchema, ReviewCtaPropsSchema, ReviewsPropsSchema, VideoPropsSchema,
+  ButtonActionSchema, CartAddPropsSchema, CartCountPropsSchema, CartPropsSchema, CodePropsSchema, CountdownPropsSchema, FormPropsSchema, PaymentPropsSchema, ProductPropsSchema, ProgressPropsSchema, ReviewCtaPropsSchema, ReviewsPropsSchema, VideoPropsSchema,
+  type CartAddProps, type CartProps, type PaymentProps,
 } from './props.js';
 import { CLASS_NAME_RE, ID_RE, cleanDeclarations, isAllowedState, safeMediaText, safeSelectorAdd } from './cssvalues.js';
 
@@ -51,7 +52,7 @@ const CORE_TYPES = new Set(['default', 'text', 'textnode', 'image', 'link', 'lab
 /** Component types the builder defines. Each maps to a fixed tag and, for the dynamic ones, a typed props key. */
 export const FN_TYPES = [
   'fn-section', 'fn-row', 'fn-column', 'fn-heading', 'fn-text', 'fn-button', 'fn-list', 'fn-divider', 'fn-spacer', 'fn-image', 'fn-video', 'fn-faq', 'fn-tabs',
-  'fn-countdown', 'fn-progress', 'fn-form', 'fn-checkout', 'fn-code', 'fn-reviews', 'fn-review-cta', 'fn-popup', 'fn-box', 'fn-faq-item', 'fn-tab-nav', 'fn-tab-btn', 'fn-tab-panel', 'fn-popup-dialog',
+  'fn-countdown', 'fn-progress', 'fn-form', 'fn-checkout', 'fn-code', 'fn-reviews', 'fn-review-cta', 'fn-cart-add', 'fn-cart', 'fn-cart-count', 'fn-payment', 'fn-popup', 'fn-box', 'fn-faq-item', 'fn-tab-nav', 'fn-tab-btn', 'fn-tab-panel', 'fn-popup-dialog',
 ] as const;
 export type FnType = (typeof FN_TYPES)[number];
 const FN_SET = new Set<string>(FN_TYPES);
@@ -73,7 +74,7 @@ export function reconcileNode(type: string, node: GjsNode): GjsNode {
   for (; v < COMPONENT_VERSION; v++) out = COMPONENT_MIGRATIONS[`${type}@${v}`]?.(out) ?? out;
   return out;
 }
-const DYNAMIC = new Set(['fn-video', 'fn-countdown', 'fn-progress', 'fn-form', 'fn-checkout', 'fn-code', 'fn-reviews', 'fn-review-cta']);
+const DYNAMIC = new Set(['fn-video', 'fn-countdown', 'fn-progress', 'fn-form', 'fn-checkout', 'fn-code', 'fn-reviews', 'fn-review-cta', 'fn-cart-add', 'fn-cart', 'fn-cart-count', 'fn-payment']);
 export const isFnType = (t: unknown): t is FnType => typeof t === 'string' && FN_SET.has(t);
 export const isDynamicType = (t: unknown): boolean => typeof t === 'string' && DYNAMIC.has(t);
 
@@ -82,11 +83,15 @@ const SELECTOR_FLAG = /^[A-Za-z0-9_\-\s.#,>[\]="':()*]{1,200}$/;
 const ROLES = new Set(['banner', 'navigation', 'main', 'contentinfo', 'complementary', 'region', 'list', 'listitem', 'button', 'img', 'presentation', 'note', 'group', 'tablist', 'tab', 'tabpanel', 'dialog', 'timer', 'status', 'article', 'separator']);
 const REL = new Set(['noopener', 'noreferrer', 'nofollow', 'sponsored', 'ugc', 'external']);
 
+/** Cart and payment components as the public endpoints read them (derived on save, never from the request). */
+export type CommerceBlock = ({ id: string; type: 'cart-add' } & CartAddProps) | ({ id: string; type: 'cart' } & CartProps) | ({ id: string; type: 'payment' } & PaymentProps);
+
 export interface CleanResult {
   ok: true;
   project: GjsProject;
   forms: FormBlock[];
   products: CheckoutBlock[];
+  commerce: CommerceBlock[];
   /** Non-fatal clean-up notes (dropped attributes, renamed ids). */
   notes: string[];
 }
@@ -103,6 +108,7 @@ interface Ctx {
   allIds: Set<string>;
   forms: FormBlock[];
   products: CheckoutBlock[];
+  commerce: CommerceBlock[];
   serial: number;
 }
 
@@ -193,7 +199,7 @@ function cleanClasses(raw: unknown, attrs: unknown): string[] {
 
 const FN_TAG: Record<string, string> = {
   'fn-section': 'section', 'fn-row': 'div', 'fn-column': 'div', 'fn-list': 'ul', 'fn-divider': 'hr', 'fn-spacer': 'div', 'fn-faq': 'div', 'fn-tabs': 'div', 'fn-popup': 'div', 'fn-box': 'div', 'fn-faq-item': 'details', 'fn-tab-nav': 'div', 'fn-tab-btn': 'button', 'fn-tab-panel': 'div', 'fn-popup-dialog': 'div',
-  'fn-video': 'div', 'fn-countdown': 'div', 'fn-progress': 'div', 'fn-form': 'div', 'fn-checkout': 'div', 'fn-code': 'div', 'fn-reviews': 'div', 'fn-review-cta': 'div', 'fn-button': 'a', 'fn-text': 'p', 'fn-heading': 'h2', 'fn-image': 'img',
+  'fn-video': 'div', 'fn-countdown': 'div', 'fn-progress': 'div', 'fn-form': 'div', 'fn-checkout': 'div', 'fn-code': 'div', 'fn-reviews': 'div', 'fn-review-cta': 'div', 'fn-cart-add': 'div', 'fn-cart': 'div', 'fn-cart-count': 'div', 'fn-payment': 'div', 'fn-button': 'a', 'fn-text': 'p', 'fn-heading': 'h2', 'fn-image': 'img',
 };
 
 function propIssue(path: string, label: string, err: z.ZodError, ctx: Ctx): void {
@@ -294,6 +300,33 @@ function cleanNode(input: unknown, depth: number, path: string, ctx: Ctx): GjsNo
       out.fnReviewCta = need('fnReviewCta', ReviewCtaPropsSchema, {});
       if (out.fnReviewCta) ensureId(out, ctx, 'rc');
       break;
+    case 'fn-cart-add': {
+      const p = need('fnCartAdd', CartAddPropsSchema) as CartAddProps | undefined;
+      if (p) {
+        out.fnCartAdd = p;
+        ctx.commerce.push({ id: ensureId(out, ctx, 'atc'), type: 'cart-add', ...p });
+      }
+      break;
+    }
+    case 'fn-cart': {
+      const p = need('fnCart', CartPropsSchema, {}) as CartProps | undefined;
+      if (p) {
+        out.fnCart = p;
+        ctx.commerce.push({ id: ensureId(out, ctx, 'cart'), type: 'cart', ...p });
+      }
+      break;
+    }
+    case 'fn-cart-count':
+      out.fnCartCount = need('fnCartCount', CartCountPropsSchema, {});
+      break;
+    case 'fn-payment': {
+      const p = need('fnPayment', PaymentPropsSchema, {}) as PaymentProps | undefined;
+      if (p) {
+        out.fnPayment = p;
+        ctx.commerce.push({ id: ensureId(out, ctx, 'pay'), type: 'payment', ...p });
+      }
+      break;
+    }
     case 'fn-code':
       out.fnCode = need('fnCode', CodePropsSchema);
       if (out.fnCode) ensureId(out, ctx, 'code');
@@ -391,7 +424,7 @@ export function cleanProject(input: unknown): CleanResult | CleanFailure {
   const pages = Array.isArray(input.pages) ? input.pages : [];
   const frame = isObj(pages[0]) && Array.isArray(pages[0].frames) ? pages[0].frames[0] : undefined;
   const wrapper = isObj(frame) && isObj(frame.component) ? frame.component : { type: 'wrapper', components: [] };
-  const ctx: Ctx = { nodes: 0, issues: [], notes: [], ids: new Set(), allIds: new Set(), forms: [], products: [], serial: 0 };
+  const ctx: Ctx = { nodes: 0, issues: [], notes: [], ids: new Set(), allIds: new Set(), forms: [], products: [], commerce: [], serial: 0 };
   // Existing ids first, so generated ones never collide with ids that style rules already reference.
   collectIds(wrapper, ctx.allIds);
   const kids: GjsNode[] = [];
@@ -427,7 +460,7 @@ export function cleanProject(input: unknown): CleanResult | CleanFailure {
   }
   if (ctx.issues.length) return { ok: false, issues: ctx.issues.slice(0, 20) };
   const seenProductIds = new Set<string>();
-  for (const f of [...ctx.forms, ...ctx.products]) {
+  for (const f of [...ctx.forms, ...ctx.products, ...ctx.commerce]) {
     if (seenProductIds.has(f.id)) return { ok: false, issues: [{ path: f.id, message: `Duplicate id "${f.id}"` }] };
     seenProductIds.add(f.id);
   }
@@ -436,6 +469,7 @@ export function cleanProject(input: unknown): CleanResult | CleanFailure {
     project: { assets, styles, pages: [{ frames: [{ component: wrapperOut }] }] },
     forms: ctx.forms,
     products: ctx.products,
+    commerce: ctx.commerce,
     notes: ctx.notes,
   };
 }

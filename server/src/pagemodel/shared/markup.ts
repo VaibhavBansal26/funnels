@@ -1,5 +1,5 @@
 import { esc, formatMoney, parseVideoUrl, safeUrl } from '../../blocks/safe.js';
-import type { CountdownProps, FormProps, ProductProps, ProgressProps, ReviewCtaProps, ReviewsProps, VideoProps } from './props.js';
+import type { CartAddProps, CartCountProps, CartProps, CountdownProps, FormProps, PaymentProps, ProductProps, ProgressProps, ReviewCtaProps, ReviewsProps, VideoProps } from './props.js';
 
 /**
  * Inner HTML of the dynamic components. One implementation shared by the server renderer (published pages) and the
@@ -56,7 +56,7 @@ function successAttrs(ctx: MarkupCtx, success: FormProps['success'] | undefined)
   return ` data-success="message" data-message="${esc(success && 'message' in success ? str(success.message, 500) || 'Thank you!' : 'Thank you!')}"`;
 }
 
-export function publicEndpoint(ctx: MarkupCtx, kind: 'forms' | 'checkout', blockId: string): string {
+export function publicEndpoint(ctx: MarkupCtx, kind: 'forms' | 'checkout' | 'pay', blockId: string): string {
   return `${ctx.apiBase ?? ''}/api/public/${kind}/${encodeURIComponent(ctx.funnelId)}/${encodeURIComponent(ctx.stepId)}/${encodeURIComponent(blockId)}`;
 }
 
@@ -234,4 +234,82 @@ export function reviewCtaInner(blockId: string, p: ReviewCtaProps, ctx: MarkupCt
   }
   const wait = p.delaySeconds > 0 && ctx.mode !== 'builder' ? ` fn-rc-wait fn-rc-d${p.delaySeconds}` : '';
   return `<div class="fn-rc${wait}" data-fn-review-cta>${prompt}<a class="fn-btn fn-btn-primary fn-rc-btn" href="${esc(ctx.mode === 'builder' ? '#' : `https://search.google.com/local/writereview?placeid=${encodeURIComponent(place)}`)}" target="_blank" rel="noopener noreferrer">${label}</a></div>`;
+}
+
+
+// ---- cart and payment form ------------------------------------------------------------------------------------------------------------------------
+// The markup is a shell the beacon fills (cart lines, totals, card fields): every value it shows comes from the server's answer, never from the page.
+
+const qtyOptions = (q: { min: number; max: number; default: number }) =>
+  Array.from({ length: Math.max(0, Math.min(q.max, 99) - q.min + 1) }, (_, i) => q.min + i).map((n) => `<option value="${n}"${n === Math.min(Math.max(q.default, q.min), q.max) ? ' selected' : ''}>${n}</option>`).join('');
+
+function stepLink(ctx: MarkupCtx, stepId: string | undefined, fallbackNext: boolean): string {
+  if (ctx.mode === 'builder') return '#';
+  const hit = stepId ? ctx.stepHref?.(stepId) : undefined;
+  return hit ?? (fallbackNext ? ctx.nextHref : '#');
+}
+
+export function cartAddInner(blockId: string, p: CartAddProps, ctx: MarkupCtx): string {
+  const bid = safeId(blockId);
+  const money = esc(formatMoney(p.price, p.currency));
+  const then = p.then?.type === 'step' ? stepLink(ctx, p.then.stepId, true) : p.then?.type === 'next_step' ? stepLink(ctx, undefined, true) : '';
+  const action = `${ctx.apiBase ?? ''}/api/public/cart/${encodeURIComponent(ctx.funnelId)}/${encodeURIComponent(ctx.stepId)}/${encodeURIComponent(bid)}/add`;
+  const q = p.quantity?.enabled ? p.quantity : null;
+  const qty = q ? `<div class="fn-field"><label for="atc-${bid}-qty">Quantity</label><select id="atc-${bid}-qty" name="quantity">${qtyOptions(q)}</select></div>` : '';
+  const price = p.showPrice ? `<p class="fn-cart-add-price"><span class="fn-cart-add-name">${esc(p.productName)}</span> <span>${money}</span></p>` : '';
+  return `<form class="fn-cart-add" method="post" action="${esc(action)}" data-fn-cart-add${then ? ` data-href="${esc(then)}"` : ''} aria-label="${esc(`Add ${p.productName} to the cart`)}">${price}${qty}<button class="fn-btn fn-btn-primary" type="submit">${esc(p.label || 'Add to cart')}</button><p class="fn-status" role="status" aria-live="polite"></p></form>`;
+}
+
+/** Sample lines for the builder canvas (never published: the published cart is filled from the server). */
+const SAMPLE_LINES = [{ name: 'Sample product', q: 2, unit: '$24.00', total: '$48.00' }, { name: 'Another product', q: 1, unit: '$12.00', total: '$12.00' }];
+
+export function cartInner(blockId: string, p: CartProps, ctx: MarkupCtx): string {
+  const bid = safeId(blockId);
+  const checkout = stepLink(ctx, p.checkoutStepId, true);
+  const sample = ctx.mode === 'builder'
+    ? `<ul class="fn-cart-lines">${SAMPLE_LINES.map((l) => `<li class="fn-cart-line"><div class="fn-cart-info"><span class="fn-cart-name">${l.name}</span><span class="fn-cart-unit">${l.unit} each</span></div><div class="fn-qty"><button type="button" tabindex="-1">−</button><output>${l.q}</output><button type="button" tabindex="-1">+</button></div><span class="fn-cart-sum">${l.total}</span><button type="button" class="fn-cart-remove" tabindex="-1">Remove</button></li>`).join('')}</ul><div class="fn-totals"><div><span>Subtotal</span><span>$60.00</span></div><div class="fn-total"><span>Total</span><span>$60.00</span></div></div><p class="fn-note">Sample lines (editor only). Visitors see their own cart.</p>`
+    : `<p class="fn-cart-empty">${esc(p.emptyText || 'Your cart is empty.')}</p>`;
+  const title = p.title ? `<h3>${esc(p.title)}</h3>` : '';
+  return `<div class="fn-cart" data-fn-cart data-block="${esc(bid)}" data-empty="${esc(p.emptyText || 'Your cart is empty.')}"${p.showBumps ? ' data-bumps="1"' : ''}>${title}<div data-fn-cart-body aria-live="polite">${sample}</div><a class="fn-btn fn-btn-primary fn-btn-block" href="${esc(checkout)}" data-fn-cart-checkout>${esc(p.checkoutLabel || 'Checkout')}</a><p class="fn-status" role="status" aria-live="polite"></p></div>`;
+}
+
+export function cartCountInner(p: CartCountProps, ctx: MarkupCtx): string {
+  const label = p.label || 'Cart';
+  const n = ctx.mode === 'builder' ? '2' : '0';
+  return `<a class="fn-cart-count" href="${esc(stepLink(ctx, p.cartStepId, false))}" data-fn-cart-count data-label="${esc(label)}" aria-label="${esc(`${label}, ${n} items`)}"><span>${esc(label)}</span> <span class="fn-cart-n" data-fn-cart-n>${n}</span></a>`;
+}
+
+export function paymentInner(blockId: string, p: PaymentProps, ctx: MarkupCtx): string {
+  const bid = safeId(blockId);
+  const builder = ctx.mode === 'builder';
+  const fid = (k: string) => `pay-${bid}-${k}`;
+  const field = (k: string, label: string, input: string, required: boolean) => `<div class="fn-field"><label for="${fid(k)}">${esc(label)}${required ? '<span class="fn-req" aria-hidden="true">*</span>' : ''}</label>${input}</div>`;
+  const text = (k: string, name: string, ac: string, max: number, required: boolean, type = 'text') => `<input type="${type}" id="${fid(k)}" name="${name}" autocomplete="${ac}" maxlength="${max}"${required ? ' required aria-required="true"' : ''}>`;
+  const product = p.source === 'product';
+  const money = esc(formatMoney(p.price, p.currency));
+  const q = product && p.quantity?.enabled ? p.quantity : null;
+  const summary = product
+    ? `<ul class="fn-pay-lines"><li class="fn-pay-line"><span>${esc(p.productName)}</span><span>${money}</span></li></ul><div class="fn-totals"><div class="fn-total"><span>Total</span><span>${money}</span></div></div>`
+    : builder
+      ? `<ul class="fn-pay-lines">${SAMPLE_LINES.map((l) => `<li class="fn-pay-line"><span>${l.name} × ${l.q}</span><span>${l.total}</span></li>`).join('')}</ul><div class="fn-totals"><div class="fn-total"><span>Total</span><span>$60.00</span></div></div><p class="fn-note">Sample order (editor only): the published form shows the visitor's cart.</p>`
+      : '<p class="fn-muted" data-fn-pay-loading>Loading your order…</p>';
+  const address = p.collectAddress
+    ? field('line1', 'Address', text('line1', 'line1', 'address-line1', 200, true), true) +
+      `<div class="fn-pay-row">${field('city', 'City', text('city', 'city', 'address-level2', 100, true), true)}${field('postal', 'Postal code', text('postal', 'postalCode', 'postal-code', 20, true), true)}</div>` +
+      field('country', 'Country (2-letter code)', `<input type="text" id="${fid('country')}" name="country" autocomplete="country" maxlength="2" placeholder="US" required aria-required="true">`, true)
+    : '';
+  const card = builder
+    ? '<div class="fn-pay-mock" aria-hidden="true"><div class="fn-pay-fake">Card number</div><div class="fn-pay-row"><div class="fn-pay-fake">MM / YY</div><div class="fn-pay-fake">CVC</div></div></div><p class="fn-note">Card fields appear here on the published page: the Stripe Payment Element, or a labelled TEST card form while payments are in test mode.</p>'
+    : `<p class="fn-note" data-fn-pay-wait>${p.mode === 'hosted' ? 'You will enter your card on Stripe’s secure checkout page.' : 'Loading secure card fields…'}</p>`;
+  const note = p.mode === 'hosted' ? 'Payments are processed by Stripe.' : 'Card details are entered in a secure field and never touch this site.';
+  return `<form class="fn-pay" id="co-${esc(bid)}" method="post" action="${esc(publicEndpoint(ctx, 'pay', bid))}" data-fn-pay data-mode="${p.mode}" data-source="${p.source}"${p.collectAddress ? ' data-address="1"' : ''}${successAttrs(ctx, p.success)} aria-label="${esc(p.title || 'Payment')}" novalidate>`
+    + (p.title ? `<h3>${esc(p.title)}</h3>` : '')
+    + `<div class="fn-pay-summary" data-fn-pay-summary aria-live="polite">${summary}</div>`
+    + (q ? field('qty', 'Quantity', `<select id="${fid('qty')}" name="quantity">${qtyOptions(q)}</select>`, false) : '')
+    + field('email', 'Email', text('email', 'email', 'email', 254, true, 'email'), true)
+    + (p.collectName ? field('name', 'Name on card', text('name', 'name', 'name', 120, false), false) : '')
+    + address
+    + `<div class="fn-field"><span class="fn-pay-label" id="${fid('cardlabel')}">Payment</span><div class="fn-pay-card" data-fn-pay-card role="group" aria-labelledby="${fid('cardlabel')}">${card}</div></div>`
+    + '<div class="fn-hp" aria-hidden="true"><label>Leave this field empty<input type="text" name="_hp" tabindex="-1" autocomplete="off"></label></div>'
+    + `<button class="fn-btn fn-btn-primary fn-btn-block fn-btn-lg" type="submit">${esc(p.buttonLabel || 'Pay now')}</button><p class="fn-status" role="status" aria-live="polite"></p><p class="fn-note">${note}</p></form>`;
 }

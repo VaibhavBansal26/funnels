@@ -1,4 +1,4 @@
-import type { ButtonActionProps, CountdownProps, FormProps, ProductProps, ReviewCtaProps, ReviewsProps } from './props.js';
+import type { ButtonActionProps, CartAddProps, CartCountProps, CartProps, CountdownProps, FormProps, PaymentProps, ProductProps, ReviewCtaProps, ReviewsProps } from './props.js';
 import { PROJECT_VERSION, emptyProject, type GjsNode, type GjsProject, type GjsRule } from './clean.js';
 import { FONT_STACKS } from './css.js';
 
@@ -236,6 +236,22 @@ const col = (children: GjsNode[], o: NodeOpts & { grow?: number } = {}): GjsNode
     reviewCta(id: string, p: Partial<ReviewCtaProps> = {}, o: NodeOpts = {}): GjsNode {
       const props: ReviewCtaProps = { placeId: '', label: 'Leave us a Google review', prompt: '', delaySeconds: 0, ...p };
       return fin({ type: 'fn-review-cta', tagName: 'div', fnReviewCta: props }, { ...o, id, name: o.name ?? 'Ask for a Google review' });
+    },
+    cartAdd(id: string, p: Partial<CartAddProps> & Pick<CartAddProps, 'productName' | 'price'>, o: NodeOpts = {}): GjsNode {
+      const props: CartAddProps = { currency: 'USD', label: 'Add to cart', showPrice: true, quantity: { enabled: false, min: 1, max: 10, default: 1 }, then: { type: 'stay' }, ...p };
+      return fin({ type: 'fn-cart-add', tagName: 'div', fnCartAdd: props }, { ...o, id, name: o.name ?? 'Add to cart' });
+    },
+    cart(id: string, p: Partial<CartProps> = {}, o: NodeOpts = {}): GjsNode {
+      const props: CartProps = { title: 'Your cart', emptyText: 'Your cart is empty.', checkoutLabel: 'Checkout', showBumps: true, ...p };
+      return fin({ type: 'fn-cart', tagName: 'div', fnCart: props }, { ...o, id, name: o.name ?? 'Cart' });
+    },
+    cartCount(p: Partial<CartCountProps> = {}, o: NodeOpts = {}): GjsNode {
+      const props: CartCountProps = { label: 'Cart', ...p };
+      return fin({ type: 'fn-cart-count', tagName: 'div', fnCartCount: props }, { ...o, name: o.name ?? 'Cart count' });
+    },
+    payment(id: string, p: Partial<PaymentProps> = {}, o: NodeOpts = {}): GjsNode {
+      const props: PaymentProps = { source: 'cart', mode: 'embedded', productName: 'Your order', price: 0, currency: 'USD', title: 'Complete your order', buttonLabel: 'Pay now', collectName: true, collectAddress: false, success: { type: 'next_step' }, ...p };
+      return fin({ type: 'fn-payment', tagName: 'div', fnPayment: props }, { ...o, id, name: o.name ?? 'Payment form' });
     },
     code(html: string, css = '', js = '', o: NodeOpts = {}): GjsNode {
       return fin({ type: 'fn-code', tagName: 'div', classes: ['fn-code'], fnCode: { html, css, js } }, { ...o, name: o.name ?? 'Custom code' });
