@@ -17,7 +17,7 @@ import { renderStep } from '../services/pages.js';
 import { adTagsForStep } from '../services/adtags.js';
 import { loadDoc } from '../pagemodel/doc.js';
 import { RUNTIME_JS } from '../pagemodel/render.js';
-import { cspFor } from '../publish/bundle.js';
+import { cspFor, withPaymentHosts } from '../publish/bundle.js';
 import { cspHosts } from '../ads/snippets.js';
 import { adTagsFor, effectivePixels, loadPixelLevels } from '../services/adtags.js';
 import { appHost, appOrigin, builtinCookiePath, builtinPrefix, SLUG_RE } from '../services/addresses.js';
@@ -67,7 +67,7 @@ async function builtinCsp(deps: Deps, step: StepRow, html: string): Promise<Page
   const tags = adTagsFor(levels, step.funnel_id, step.id, docRow ? loadDoc(docRow.doc_json) : null, 'live');
   const origin = appOrigin(deps);
   const { policy, relaxed } = cspFor(
-    { id: step.id, basePath: step.base_path, html, knownInline: [RUNTIME_JS, ...(tags ? [tags.source] : [])], vendors: cspHosts(effectivePixels(levels, step.id)) },
+    { id: step.id, basePath: step.base_path, html, knownInline: [RUNTIME_JS, ...(tags ? [tags.source] : [])], vendors: withPaymentHosts(cspHosts(effectivePixels(levels, step.id)), html, deps.config.PAYMENTS_PROVIDER) },
     origin, new Set([origin]),
   );
   return { policy: relaxed ? `${policy}; sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads` : policy, sandboxed: relaxed };

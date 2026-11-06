@@ -5,7 +5,7 @@
  *  - Google Consent Mode v2: defines dataLayer/gtag and the four consent signals (denied until the visitor accepts when consent is required) and updates them on a choice;
  *  - loads each network's own library only after tracking is allowed, queues the events that happened meanwhile, and maps the standard events to each network's names and parameters;
  *  - in a preview it never loads a vendor library: it records what it WOULD send in `window.__fnAdsLog` and shows it in a small panel.
- * Events: PageView, ViewContent, Lead, InitiateCheckout, AddPaymentInfo, Purchase. The beacon reports Lead and Purchase with the same event id the server uses for its own
+ * Events: PageView, ViewContent, AddToCart, Lead, InitiateCheckout, AddPaymentInfo, Purchase. The beacon reports Lead, AddToCart, InitiateCheckout (Payment form) and Purchase with the same event id the server uses for its own
  * Conversions API event (`lead_<submissionId>`, `purchase_<first order id>`), which is what lets the networks deduplicate browser and server events.
  */
 export const ADS_RUNTIME_JS = `(function(){
@@ -36,10 +36,10 @@ if(n==='PageView'||n==='Lead')return['track',n,{},{eventID:e}];
 base.content_ids=ids(it);base.value=p.value;base.currency=p.currency;
 if(n==='ViewContent'){base.content_type='product';if(it[0])base.content_name=it[0].name;return['track',n,base,{eventID:e}]}
 base.contents=qty(it);base.content_type='product';base.num_items=it.length;return['track',n,base,{eventID:e}]};
-N.ga4=function(n,p){var m={PageView:'page_view',ViewContent:'view_item',Lead:'generate_lead',InitiateCheckout:'begin_checkout',AddPaymentInfo:'add_payment_info',Purchase:'purchase'},o={};
+N.ga4=function(n,p){var m={PageView:'page_view',ViewContent:'view_item',Lead:'generate_lead',AddToCart:'add_to_cart',InitiateCheckout:'begin_checkout',AddPaymentInfo:'add_payment_info',Purchase:'purchase'},o={};
 if(n==='PageView'){o.page_title=d.title;o.page_location=location.href;return['event','page_view',o]}
 if(p.currency)o.currency=p.currency;if(p.value!==undefined)o.value=p.value;if(n==='Purchase')o.transaction_id=p.orderId;if(p.items&&p.items.length)o.items=items(p.items);return['event',m[n],o]};
-N.tiktok=function(n,p,e){var m={ViewContent:'ViewContent',Lead:'SubmitForm',InitiateCheckout:'InitiateCheckout',AddPaymentInfo:'AddPaymentInfo',Purchase:'CompletePayment'},o={};
+N.tiktok=function(n,p,e){var m={ViewContent:'ViewContent',AddToCart:'AddToCart',Lead:'SubmitForm',InitiateCheckout:'InitiateCheckout',AddPaymentInfo:'AddPaymentInfo',Purchase:'CompletePayment'},o={};
 if(n==='PageView')return['page'];
 if(p.currency)o.currency=p.currency;if(p.value!==undefined)o.value=p.value;if(p.items&&p.items.length){o.contents=tkc(p.items);o.content_type='product'}return['track',m[n],o,{event_id:e}]};
 function emit(net,args){note(net,args[0],args.slice(1));if(preview)return;
@@ -102,6 +102,8 @@ for(k=0;k<bumps.length;k++)if(bumps[k].checked&&bumps[k].getAttribute('form')===
 return{items:list,value:Math.round(tot*100)/100,currency:p.currency}}
 function checkoutStart(f){track('InitiateCheckout',cartOf(f),'ic_'+C.step)}
 function checkoutPay(f){track('AddPaymentInfo',cartOf(f),'api_'+C.step+'_'+rid())}
+d.addEventListener('fn:add_to_cart',function(ev){var dt=ev.detail||{},it=dt.item||{},q=it.quantity||1;track('AddToCart',{items:[{id:it.productId||it.priceId,name:it.name,price:Math.round((it.value||0)/q*100)/100,quantity:q}],value:it.value,currency:it.currency},dt.eventId)});
+d.addEventListener('fn:begin_checkout',function(ev){var dt=ev.detail||{},s=dt.summary||{},list=[],i;for(i=0;i<(s.lines||[]).length;i++)list.push({id:s.lines[i].productId||s.lines[i].name,name:s.lines[i].name,price:s.lines[i].unitValue,quantity:s.lines[i].quantity});track('InitiateCheckout',{items:list,value:s.value,currency:s.currency},dt.eventId)});
 d.addEventListener('fn:lead',function(ev){if(C.lead)track('Lead',{},ev.detail&&ev.detail.eventId)});
 d.addEventListener('fn:purchase',function(ev){var dt=ev.detail||{},os=dt.orders||[],list=[],tot=0,cur=null,i,j,q=C.products||[];
 for(i=0;i<os.length;i++){var id=os[i].productName;for(j=0;j<q.length;j++)if(q[j].name===os[i].productName)id=q[j].id;list.push({id:id,name:os[i].productName,price:os[i].amountCents/100,quantity:1});tot+=os[i].amountCents;cur=cur||os[i].currency}

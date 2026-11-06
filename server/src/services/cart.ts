@@ -216,7 +216,7 @@ export interface CartAnswer {
   duplicate?: boolean;
   /** Shared with the browser pixel (fn:add_to_cart) for deduplication against the server-side AddToCart. */
   eventId?: string;
-  added?: { name: string; priceId: string; quantity: number; unitAmount: number; currency: string; value: number };
+  added?: { name: string; productId: string; priceId: string; quantity: number; unitAmount: number; currency: string; value: number };
   /** The quantity was capped at the cart's limit. */
   limited?: boolean;
 }
@@ -282,7 +282,7 @@ export async function addToCart(deps: Deps, p: { funnelId: string; stepId: strin
   if (result.duplicate) return answer(deps, funnel.id, result.cart, input, { duplicate: true });
   return answer(deps, funnel.id, result.cart, input, {
     eventId: result.eventId, limited: result.limited || undefined,
-    added: { name: product.name, priceId: price.id, quantity: result.added, unitAmount: price.unit_amount, currency: price.currency, value: fromMinor(price.unit_amount * result.added, price.currency) },
+    added: { name: product.name, productId: product.id, priceId: price.id, quantity: result.added, unitAmount: price.unit_amount, currency: price.currency, value: fromMinor(price.unit_amount * result.added, price.currency) },
   });
 }
 

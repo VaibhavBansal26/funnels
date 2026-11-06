@@ -9,7 +9,7 @@ import { AppError, badRequest, conflict, notFound } from '../errors.js';
 import type { Job } from '../jobs/queue.js';
 import { loadDoc } from '../pagemodel/doc.js';
 import { RUNTIME_JS } from '../pagemodel/render.js';
-import { buildBundle, buildPausedBundle, BundleError, beaconPath, findAssetRefs, type Bundle, type BundleAsset } from '../publish/bundle.js';
+import { withPaymentHosts, buildBundle, buildPausedBundle, BundleError, beaconPath, findAssetRefs, type Bundle, type BundleAsset } from '../publish/bundle.js';
 import { CloudflareApiError, CloudflarePagesClient, domainState, type PagesCredentials } from '../publish/cfclient.js';
 import { CF_TARGETS_SQL, createTarget, isCloudflareTarget, type PublishTarget, type TargetKind } from '../publish/target.js';
 import { requireFunnel, listSteps } from '../repos/funnels.js';
@@ -469,7 +469,7 @@ export async function buildFunnelBundle(deps: Deps, funnel: FunnelRow): Promise<
     await refreshForPublish(deps, ws, loadDoc(page.doc_json));
     await primeSnapshots(deps, ws, loadDoc(page.doc_json));
     const { html } = renderStep(deps, { funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'live', adTags: tags?.html, apiBase, beaconSrc: beaconPath(BEACON_JS) });
-    bundleSteps.push({ id: step.id, basePath: step.base_path, html, knownInline: [RUNTIME_JS, ...(tags ? [tags.source] : [])], vendors: cspHosts(effectivePixels(levels, step.id)) });
+    bundleSteps.push({ id: step.id, basePath: step.base_path, html, knownInline: [RUNTIME_JS, ...(tags ? [tags.source] : [])], vendors: withPaymentHosts(cspHosts(effectivePixels(levels, step.id)), html, deps.config.PAYMENTS_PROVIDER) });
   }
   const refs = new Set(bundleSteps.flatMap((s) => findAssetRefs(s.html)));
   const assets = new Map<string, BundleAsset>();

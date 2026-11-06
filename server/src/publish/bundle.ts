@@ -124,6 +124,25 @@ function rewriteAssets(html: string, assets: Map<string, BundleAsset>): string {
 
 // ---- CSP ------------------------------------------------------------------------------------------------------------------------------------------------
 
+/**
+ * Hosts the Stripe Payment Element needs, from Stripe's CSP guidance (https://docs.stripe.com/security/guide#content-security-policy): Stripe.js from js.stripe.com,
+ * its API calls to api.stripe.com, and its iframes (card fields on js.stripe.com, 3-D Secure on hooks.stripe.com, fraud signals on m.stripe.network). Added only to
+ * pages that carry an embedded Payment form while payments run on Stripe, so every other page keeps its exact policy. UNVERIFIED against a live Stripe.js load.
+ */
+export const STRIPE_CSP: VendorHosts = {
+  script: ['https://js.stripe.com', 'https://*.js.stripe.com'],
+  connect: ['https://api.stripe.com'],
+  img: [],
+  frame: ['https://js.stripe.com', 'https://*.js.stripe.com', 'https://hooks.stripe.com', 'https://m.stripe.network'],
+};
+
+/** The page's vendor hosts plus Stripe's when it shows an embedded Payment form and the server takes payments with Stripe. */
+export function withPaymentHosts(vendors: VendorHosts, html: string, provider: string): VendorHosts {
+  if (provider !== 'stripe' || !/<form\b[^>]*\bdata-fn-pay\b[^>]*\bdata-mode="embedded"/.test(html)) return vendors;
+  const join = (a: string[], b: string[]) => [...new Set([...a, ...b])];
+  return { script: join(vendors.script, STRIPE_CSP.script), connect: join(vendors.connect, STRIPE_CSP.connect), img: join(vendors.img, STRIPE_CSP.img), frame: join(vendors.frame, STRIPE_CSP.frame) };
+}
+
 interface ScriptReport {
   hashes: string[];
   /** The page has code the platform did not write (owner custom code, tracking snippets, event handler attributes): a hash list cannot describe it. */

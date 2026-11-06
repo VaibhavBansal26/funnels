@@ -117,10 +117,12 @@ interface StripeIntent {
 
 /** What the form shows: the lines the server priced, never anything the browser computed. */
 export interface Summary {
-  lines: { name: string; quantity: number; amount: number; total: string; role: string }[];
+  lines: { name: string; productId: string | null; quantity: number; amount: number; total: string; role: string; unitValue: number }[];
   currency: string;
   total: number;
   totalFormatted: string;
+  /** The total in major units (for the browser pixels). */
+  value: number;
 }
 
 export interface QuoteAnswer {
@@ -184,7 +186,10 @@ const itemsOf = (offers: Offer[]): Item[] => offers.map((o) => ({ blockId: o.blo
 function summaryOf(items: Item[]): Summary {
   const currency = items[0]?.currency ?? 'USD';
   const total = items.reduce((a, i) => a + i.amountCents, 0);
-  return { lines: items.map((i) => ({ name: i.productName, quantity: i.quantity ?? 1, amount: i.amountCents, total: formatMinor(i.amountCents, i.currency), role: i.role ?? 'main' })), currency, total, totalFormatted: formatMinor(total, currency) };
+  return {
+    lines: items.map((i) => ({ name: i.productName, productId: i.productId ?? null, quantity: i.quantity ?? 1, amount: i.amountCents, total: formatMinor(i.amountCents, i.currency), role: i.role ?? 'main', unitValue: fromMinor(i.unitAmount ?? i.amountCents, i.currency) })),
+    currency, total, totalFormatted: formatMinor(total, currency), value: fromMinor(total, currency),
+  };
 }
 
 function checkContact(block: PaymentBlock, contact: NonNullable<z.infer<typeof PayInput>['contact']>) {
@@ -211,7 +216,7 @@ export async function quotePayment(deps: Deps, p: { funnelId: string; stepId: st
   const cart = block.source === 'cart' ? await findCart(deps, funnel, input) : undefined;
   const cartBumps = cart ? selectedBumps(cart).filter((b) => b.stepId === step.id).map((b) => b.blockId).filter((id) => doc.products.some((x) => x.id === id && x.orderBump)) : [];
   const bumpIds = [...new Set(input.bumpBlockIds ?? cartBumps)];
-  if (input._hp) return { ok: true, provider: 'preview', mode: block.mode, attemptId: null, summary: { lines: [], currency: 'USD', total: 0, totalFormatted: '' }, bumpBlockIds: [] };
+  if (input._hp) return { ok: true, provider: 'preview', mode: block.mode, attemptId: null, summary: { lines: [], currency: 'USD', total: 0, totalFormatted: '', value: 0 }, bumpBlockIds: [] };
   const offers = await priceBasket(deps, { ws, block, doc, cart, bumpIds, quantity: input.quantity });
   const items = itemsOf(offers);
   const summary = summaryOf(items);
