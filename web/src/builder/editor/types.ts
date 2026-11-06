@@ -2,7 +2,7 @@
 // draggable constraints, and the per-element settings (button action, form, countdown, checkout, FAQ, tabs, popup) are re-expressed here as proper
 // GrapesJS component types with typed props (`fnAction`, `fnForm`, ...) instead of DOM attributes and iframes. Only these props are trusted by the server.
 import type { Component, Editor } from 'grapesjs';
-import { checkoutInner, countdownInner, formInner, progressInner, reviewCtaInner, reviewsInner, videoInner, type CountdownProps, type FormProps, type MarkupCtx, type ProductProps, type ProgressProps, type ReviewCtaProps, type ReviewsProps, type ReviewsData, type VideoProps } from '@pagemodel';
+import { cartAddInner, cartCountInner, cartInner, paymentInner, type CartAddProps, type CartCountProps, type CartProps, type PaymentProps, checkoutInner, countdownInner, formInner, progressInner, reviewCtaInner, reviewsInner, videoInner, type CountdownProps, type FormProps, type MarkupCtx, type ProductProps, type ProgressProps, type ReviewCtaProps, type ReviewsProps, type ReviewsData, type VideoProps } from '@pagemodel';
 import { getEnv } from './env';
 import { bindClassFlag, bindClassGroups, type ClassGroup } from './classgroups';
 import { canDrop, TYPE_LABEL } from './rules';
@@ -256,6 +256,30 @@ export function registerTypes(editor: Editor): void {
     },
     view: dynamicView('fnProduct', (v) => checkoutInner(idOf(v), v.model.get('fnProduct') as ProductProps, markupCtx(editor))),
   });
+  // Cart and Payment form: the canvas shows inert sample content (the published page fills them from the server).
+  add('fn-cart-add', {
+    model: { defaults: { tagName: 'div', name: 'Add to cart', droppable: false, fnCartAdd: { productName: 'My product', price: 24, currency: 'USD', label: 'Add to cart', showPrice: true, quantity: { enabled: false, min: 1, max: 10, default: 1 }, then: { type: 'stay' } } satisfies CartAddProps, traits: [{ type: 'fn-cart-add', name: 'fnCartAdd', label: 'Add to cart', changeProp: true }] } },
+    view: dynamicView('fnCartAdd', (v) => cartAddInner(idOf(v), v.model.get('fnCartAdd') as CartAddProps, markupCtx(editor))),
+  });
+  add('fn-cart', {
+    model: { defaults: { tagName: 'div', name: 'Cart', droppable: false, fnCart: { title: 'Your cart', emptyText: 'Your cart is empty.', checkoutLabel: 'Checkout', showBumps: true } satisfies CartProps, traits: [{ type: 'fn-cart', name: 'fnCart', label: 'Cart', changeProp: true }] } },
+    view: dynamicView('fnCart', (v) => cartInner(idOf(v), v.model.get('fnCart') as CartProps, markupCtx(editor))),
+  });
+  add('fn-cart-count', {
+    model: { defaults: { tagName: 'div', name: 'Cart count', droppable: false, fnCartCount: { label: 'Cart' } satisfies CartCountProps, traits: [{ type: 'fn-cart-count', name: 'fnCartCount', label: 'Cart count', changeProp: true }] } },
+    view: dynamicView('fnCartCount', (v) => cartCountInner(v.model.get('fnCartCount') as CartCountProps, markupCtx(editor))),
+  });
+  add('fn-payment', {
+    model: {
+      defaults: {
+        tagName: 'div', name: 'Payment form', droppable: false,
+        fnPayment: { source: 'cart', mode: 'embedded', productName: 'Your order', price: 0, currency: 'USD', title: 'Complete your order', buttonLabel: 'Pay now', collectName: true, collectAddress: false, success: { type: 'next_step' } } satisfies PaymentProps,
+        traits: [{ type: 'fn-payment', name: 'fnPayment', label: 'Payment form', changeProp: true }],
+      },
+    },
+    view: dynamicView('fnPayment', (v) => paymentInner(idOf(v), v.model.get('fnPayment') as PaymentProps, markupCtx(editor))),
+  });
+
   // Google reviews: the canvas shows sample content (the real reviews are fetched by the server for the published page).
   const SAMPLE: ReviewsData = { source: 'google', rating: 4.8, total: 123, mapsUri: null, reviews: [] };
   add('fn-reviews', {

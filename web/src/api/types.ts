@@ -83,6 +83,8 @@ export interface Metrics {
   optIns: { all: number; conversionRate: number };
   sales: { orders: number; conversionRate: number; gross: number };
   earningsPerView: { all: number; unique: number };
+  /** Cart funnel events: units added to carts and Payment form checkouts started. */
+  cart?: { adds: number; checkouts: number };
 }
 export interface SeriesPoint { date: string; pageViews: number; uniqueVisits: number; optIns: number; orders: number; gross: number }
 export interface Analytics {
@@ -117,12 +119,14 @@ export interface PaymentsStatus {
   testCards: { number: string; outcome: string; note: string }[]; webhooks: { platform: boolean; connect: boolean };
   connect: { accountId: string; chargesEnabled: boolean; payoutsEnabled: boolean; detailsSubmitted: boolean; requirementsDue: string[]; disabledReason: string | null } | null;
   account: { country: string | null; currency: string | null; paymentMethods: string[]; statementDescriptor: string | null; displayName: string | null; taxAvailable: boolean } | null;
+  /** Payment form readiness: card fields on the page (Stripe Payment Element), the TEST form, or the hosted fallback. */
+  embedded?: { ready: boolean; mode: 'test_form' | 'stripe_element' | 'hosted_fallback'; publishableKey: boolean; connected: boolean; chargesEnabled: boolean; webhookEvents: string[]; steps: string[] };
 }
 export interface SeriesPoint { t: string; orders: number; units: number; gross: number; refunded: number; disputedLost: number; net: number }
 export interface TakeRate { offered: number; taken: number; rate: number }
 export interface ProductRow {
   productId: string | null; name: string; currency: string; exponent: number; orders: number; units: number; gross: number; refunded: number; disputedLost: number; net: number; discount: number; aov: number;
-  refundRate: number; refundedOrders: number; roles: Record<'main' | 'bump' | 'upsell' | 'downsell', number>; customers: { total: number; new: number; repeat: number };
+  refundRate: number; refundedOrders: number; roles: Record<'main' | 'bump' | 'upsell' | 'downsell', number> & { cart?: number }; customers: { total: number; new: number; repeat: number };
   checkout: { visitors: number; orders: number; conversion: number }; takeRates: { bump: TakeRate; upsell: TakeRate; downsell: TakeRate }; series: SeriesPoint[];
   topFunnels: { funnelId: string; name: string; orders: number; gross: number; refunded: number; net: number }[];
   topSteps: { stepId: string; name: string; funnelId: string; funnelName: string; orders: number; gross: number; refunded: number; net: number }[];

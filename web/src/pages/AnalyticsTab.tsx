@@ -38,6 +38,7 @@ export function AnalyticsTab({ funnel }: { funnel: FunnelDetail }) {
             <div className="stat"><div className="v">{fmtNum(s.sales.orders)}</div><div className="l">Orders · {fmtPct(s.sales.conversionRate)} conversion</div></div>
             <div className="stat"><div className="v">{fmtMoney(s.sales.gross)}</div><div className="l">Gross sales</div></div>
             <div className="stat"><div className="v">{fmtMoney(s.earningsPerView.all)}</div><div className="l">Earnings per view ({fmtMoney(s.earningsPerView.unique)} per unique)</div></div>
+            {s.cart && (s.cart.adds || s.cart.checkouts) ? <div className="stat"><div className="v">{fmtNum(s.cart.adds)}</div><div className="l">Added to cart · {fmtNum(s.cart.checkouts)} checkouts started</div></div> : null}
           </div>
 
           <section className="card" aria-label="Daily trend">

@@ -5,7 +5,7 @@ import type { Component, Editor, Trait } from 'grapesjs';
 import { ArrowDown, ArrowUp, ImageIcon, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { PlacePicker } from './PlacePicker';
-import { CheckoutSchemaHint, FormPropsSchema, ProductPropsSchema, VideoPropsSchema, CountdownPropsSchema, parseVideoUrl, type FormProps, type ProductProps } from '../pagemodel-bridge';
+import { CartAddPropsSchema, CartCountPropsSchema, CartPropsSchema, CheckoutSchemaHint, FormPropsSchema, PaymentPropsSchema, ProductPropsSchema, VideoPropsSchema, CountdownPropsSchema, parseVideoUrl, type CartAddProps, type CartCountProps, type CartProps, type FormProps, type PaymentProps, type ProductProps } from '../pagemodel-bridge';
 import { api, errorMessage } from '../../api/client';
 import { Button, Input, Select, Slider, Switch, Textarea } from '../../ui';
 import { randomId } from '../editor/types';
@@ -342,6 +342,113 @@ export function ProductTrait({ trait }: TraitProps) {
   );
 }
 
+/* ---------- cart and payment form ---------- */
+const money = (price: number, currency: string) => { try { return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price); } catch { return `${price} ${currency}`; } };
+
+/** The catalog product a cart or payment component sells, with the picker (shared by Add to cart and a product Payment form). */
+function LinkedProduct({ p, onPick, empty }: { p: { productName: string; price: number; currency: string; priceId?: string; interval?: string }; onPick: (fields: Partial<ProductProps>) => void; empty: string }) {
+  const [picking, setPicking] = useState(false);
+  return (
+    <>
+      {p.priceId ? (
+        <div className="rounded-lg border border-border bg-surface-2/50 p-2.5" data-testid="linked-product">
+          <div className="text-[0.82rem] font-semibold">{p.productName}</div>
+          <div className="text-[0.82rem] text-muted">{money(p.price, p.currency)}</div>
+          {p.interval ? <p className="m-0 mt-1 text-[0.72rem] text-danger">Subscriptions are not sold through carts or the embedded form: choose a one-time price.</p> : null}
+          <div className="mt-2 flex flex-wrap gap-1.5"><Button size="sm" onClick={() => setPicking(true)}>Change product</Button><a className="inline-flex min-h-7 items-center text-[0.8rem] text-primary underline" href="/products" target="_blank" rel="noreferrer">Edit prices in Products</a></div>
+        </div>
+      ) : (
+        <>
+          <Button size="sm" variant="primary" onClick={() => setPicking(true)}>Choose from your products</Button>
+          <p className="m-0 rounded-md bg-surface-2 p-2 text-[0.72rem] text-muted">{empty}</p>
+        </>
+      )}
+      {picking ? <ProductPickerDialog open role="cart" onClose={() => setPicking(false)} onPick={onPick} /> : null}
+    </>
+  );
+}
+
+const pickFields = (f: Partial<ProductProps>) => ({ productId: f.productId, priceId: f.priceId, productName: f.productName, price: f.price, currency: f.currency, interval: f.interval, trialDays: f.trialDays });
+
+export function CartAddTrait({ trait }: TraitProps) {
+  const { env } = useBuilder();
+  const p = val<CartAddProps>(trait, { productName: 'My product', price: 24, currency: 'USD', label: 'Add to cart', showPrice: true, quantity: { enabled: false, min: 1, max: 10, default: 1 }, then: { type: 'stay' } });
+  const set = (n: Partial<CartAddProps>) => trait.setValue({ ...live(trait, p), ...n });
+  const parsed = CartAddPropsSchema.safeParse(p);
+  const q = p.quantity ?? { enabled: false, min: 1, max: 10, default: 1 };
+  const then = p.then?.type === 'step' ? p.then.stepId : p.then?.type ?? 'stay';
+  return (
+    <div className="flex flex-col gap-2.5">
+      <LinkedProduct p={p} onPick={(f) => set(pickFields(f) as Partial<CartAddProps>)} empty="Not linked to a product yet: saving the page adds it to your catalog (or pick one above). Buyers pay the catalog price." />
+      <Row label="Button text"><input aria-label="Add to cart button text" className={inputCls} value={p.label} maxLength={80} onChange={(e) => set({ label: e.target.value })} /></Row>
+      <Check id="atc-price" label="Show the product and price" checked={p.showPrice !== false} onChange={(showPrice) => set({ showPrice })} />
+      <Check id="atc-qty" label="Let buyers choose a quantity" checked={!!q.enabled} onChange={(enabled) => set({ quantity: { ...q, enabled } })} />
+      {q.enabled ? (
+        <div className="grid grid-cols-3 gap-2">
+          {(['min', 'max', 'default'] as const).map((k) => <Row key={k} label={k === 'default' ? 'Start at' : k === 'min' ? 'Least' : 'Most'}><input type="number" min={1} max={99} aria-label={`Quantity ${k}`} className={inputCls} value={q[k]} onChange={(e) => set({ quantity: { ...q, [k]: Math.min(99, Math.max(1, Number(e.target.value) || 1)) } })} /></Row>)}
+        </div>
+      ) : null}
+      <Row label="After adding">
+        <Select size="sm" aria-label="After adding to the cart" value={then} options={[{ value: 'stay', label: 'Stay on this page' }, { value: 'next_step', label: 'Go to the next step' }, ...env.steps.filter((x) => x.id !== env.stepId).map((x) => ({ value: x.id, label: `Go to ${x.name}` }))]} onValueChange={(v) => set({ then: v === 'stay' || v === 'next_step' ? { type: v } : { type: 'step', stepId: v } })} />
+      </Row>
+      <p className="rounded-md bg-surface-2 p-2 text-[0.72rem] text-muted">The cart is kept on the server per visitor (7 days by default). One currency per cart; subscriptions are sold with a Checkout block.</p>
+      <Issues issues={parsed.success ? [] : parsed.error.issues.map((i) => i.message)} />
+    </div>
+  );
+}
+
+export function CartTrait({ trait }: TraitProps) {
+  const { env } = useBuilder();
+  const p = val<CartProps>(trait, { title: 'Your cart', emptyText: 'Your cart is empty.', checkoutLabel: 'Checkout', showBumps: true });
+  const set = (n: Partial<CartProps>) => trait.setValue({ ...live(trait, p), ...n });
+  const parsed = CartPropsSchema.safeParse(p);
+  return (
+    <div className="flex flex-col gap-2.5">
+      <Row label="Title"><input aria-label="Cart title" className={inputCls} value={p.title} maxLength={120} onChange={(e) => set({ title: e.target.value })} /></Row>
+      <Row label="When empty"><input aria-label="Empty cart text" className={inputCls} value={p.emptyText} maxLength={200} onChange={(e) => set({ emptyText: e.target.value })} /></Row>
+      <Row label="Checkout button"><input aria-label="Checkout button text" className={inputCls} value={p.checkoutLabel} maxLength={80} onChange={(e) => set({ checkoutLabel: e.target.value })} /></Row>
+      <Row label="Checkout step"><StepSelect label="Step with the Payment form" value={p.checkoutStepId} steps={env.steps} exclude={env.stepId} onChange={(checkoutStepId) => set({ checkoutStepId })} /></Row>
+      <Check id="cart-bumps" label="Offer the checkout step's order bumps" checked={p.showBumps !== false} onChange={(showBumps) => set({ showBumps })} />
+      <p className="rounded-md bg-surface-2 p-2 text-[0.72rem] text-muted">Visitors change quantities and remove items here. Prices are read from your catalog every time; the Checkout button goes to the step that holds the Payment form.</p>
+      <Issues issues={parsed.success ? [] : parsed.error.issues.map((i) => i.message)} />
+    </div>
+  );
+}
+
+export function CartCountTrait({ trait }: TraitProps) {
+  const { env } = useBuilder();
+  const p = val<CartCountProps>(trait, { label: 'Cart' });
+  const set = (n: Partial<CartCountProps>) => trait.setValue({ ...live(trait, p), ...n });
+  const parsed = CartCountPropsSchema.safeParse(p);
+  return (
+    <div className="flex flex-col gap-2.5">
+      <Row label="Label"><input aria-label="Cart count label" className={inputCls} value={p.label} maxLength={40} onChange={(e) => set({ label: e.target.value })} /></Row>
+      <Row label="Links to"><Select size="sm" aria-label="Cart step" value={p.cartStepId ?? ''} options={[{ value: '', label: 'Nothing (badge only)' }, ...env.steps.map((x) => ({ value: x.id, label: x.name }))]} onValueChange={(v) => set({ cartStepId: v || undefined })} /></Row>
+      <Issues issues={parsed.success ? [] : parsed.error.issues.map((i) => i.message)} />
+    </div>
+  );
+}
+
+export function PaymentTrait({ trait }: TraitProps) {
+  const p = val<PaymentProps>(trait, { source: 'cart', mode: 'embedded', productName: 'Your order', price: 0, currency: 'USD', title: 'Complete your order', buttonLabel: 'Pay now', collectName: true, collectAddress: false, success: { type: 'next_step' } });
+  const set = (n: Partial<PaymentProps>) => trait.setValue({ ...live(trait, p), ...n });
+  const parsed = PaymentPropsSchema.safeParse(p);
+  return (
+    <div className="flex flex-col gap-2.5">
+      <Row label="Pays for"><Select size="sm" aria-label="What the form pays for" value={p.source} options={[{ value: 'cart', label: "The visitor's cart" }, { value: 'product', label: 'One product' }]} onValueChange={(v) => set({ source: v as PaymentProps['source'] })} /></Row>
+      {p.source === 'product' ? <LinkedProduct p={p} onPick={(f) => set(pickFields(f) as Partial<PaymentProps>)} empty="Choose the product this form sells. Order bumps on this page are added to it." /> : null}
+      <Row label="Card fields"><Select size="sm" aria-label="Where buyers enter their card" value={p.mode} options={[{ value: 'embedded', label: 'On this page (Stripe Payment Element)' }, { value: 'hosted', label: 'On Stripe Checkout (redirect)' }]} onValueChange={(v) => set({ mode: v as PaymentProps['mode'] })} /></Row>
+      <Row label="Title"><input aria-label="Payment form title" className={inputCls} value={p.title} maxLength={120} onChange={(e) => set({ title: e.target.value })} /></Row>
+      <Row label="Button text"><input aria-label="Pay button text" className={inputCls} value={p.buttonLabel} maxLength={80} onChange={(e) => set({ buttonLabel: e.target.value })} /></Row>
+      <Check id="pay-name" label="Ask for the name on the card" checked={p.collectName !== false} onChange={(collectName) => set({ collectName })} />
+      <Check id="pay-address" label="Ask for the billing address" checked={!!p.collectAddress} onChange={(collectAddress) => set({ collectAddress })} />
+      <SuccessEditor value={p.success as never} onChange={(success) => set({ success: success as PaymentProps['success'] })} />
+      <p className="rounded-md bg-surface-2 p-2 text-[0.72rem] text-muted">The amount is computed by the server from your catalog (and the cart). Card details stay in Stripe's secure field; with test payments a labelled TEST card form is shown instead. See Settings &gt; Payments for what is still needed.</p>
+      <Issues issues={parsed.success ? [] : parsed.error.issues.map((i) => i.message)} />
+    </div>
+  );
+}
+
 /* ---------- custom code (legacy: Custom code block) ---------- */
 export function CodeTrait({ trait }: TraitProps) {
   const { env } = useBuilder();
@@ -419,7 +526,7 @@ export function PopupTrait({ component }: TraitProps) {
 
 export const TRAIT_EDITORS: Record<string, (p: TraitProps) => ReactNode> = {
   'fn-action': (p) => <ActionTrait {...p} />, 'fn-asset': (p) => <AssetTrait {...p} />, 'fn-video': (p) => <VideoTrait {...p} />, 'fn-countdown': (p) => <CountdownTrait {...p} />,
-  'fn-progress': (p) => <ProgressTrait {...p} />, 'fn-reviews': (p) => <ReviewsTrait {...p} />, 'fn-review-cta': (p) => <ReviewCtaTrait {...p} />, 'fn-form': (p) => <FormTrait {...p} />, 'fn-product': (p) => <ProductTrait {...p} />, 'fn-code': (p) => <CodeTrait {...p} />,
+  'fn-progress': (p) => <ProgressTrait {...p} />, 'fn-reviews': (p) => <ReviewsTrait {...p} />, 'fn-review-cta': (p) => <ReviewCtaTrait {...p} />, 'fn-form': (p) => <FormTrait {...p} />, 'fn-product': (p) => <ProductTrait {...p} />, 'fn-cart-add': (p) => <CartAddTrait {...p} />, 'fn-cart': (p) => <CartTrait {...p} />, 'fn-cart-count': (p) => <CartCountTrait {...p} />, 'fn-payment': (p) => <PaymentTrait {...p} />, 'fn-code': (p) => <CodeTrait {...p} />,
   'fn-faq-items': (p) => <FaqTrait {...p} />, 'fn-tabs-items': (p) => <TabsTrait {...p} />, 'fn-list-items': (p) => <ListTrait {...p} />, 'fn-popup-open': (p) => <PopupTrait {...p} />,
 };
 export { randomId, VideoPropsSchema, Input };

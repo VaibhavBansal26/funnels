@@ -82,6 +82,25 @@ export function Payments() {
             </form>
           ) : null}
 
+          {s.embedded ? (
+            <div className="stack" aria-label="Payment form on your pages" role="group">
+              <div className="row between"><h3>Payment form on your pages</h3><Badge tone={s.embedded.ready ? 'ok' : 'warn'}>{s.embedded.ready ? (s.embedded.mode === 'test_form' ? 'Ready (test form)' : 'Ready') : 'Not ready yet'}</Badge></div>
+              <p className="muted small m-0">
+                {s.embedded.mode === 'stripe_element' ? 'Payment form blocks show the card fields on your own page (Stripe Payment Element). Card details go straight to Stripe and never touch Funnels.' : s.embedded.mode === 'test_form' ? 'Payment form blocks show a TEST card form: try a purchase with 4242 4242 4242 4242 (paid), 4000 0000 0000 0002 (declined) or 4000 0025 0000 3155 (authentication). No money moves.' : 'Payment form blocks send buyers to Stripe Checkout until the card fields can be shown on the page.'}
+              </p>
+              <ul className="m-0 flex list-none flex-wrap gap-2 p-0 text-sm" aria-label="Checks">
+                {s.provider === 'stripe' ? (
+                  <>
+                    <li><Badge tone={s.embedded.publishableKey ? 'ok' : 'warn'}>{s.embedded.publishableKey ? '✓' : '✗'} Publishable key</Badge></li>
+                    <li><Badge tone={s.embedded.connected ? 'ok' : 'warn'}>{s.embedded.connected ? '✓' : '✗'} Account connected</Badge></li>
+                    <li><Badge tone={s.embedded.chargesEnabled ? 'ok' : 'warn'}>{s.embedded.chargesEnabled ? '✓' : '✗'} Charges enabled</Badge></li>
+                  </>
+                ) : <li><Badge>Test payments</Badge></li>}
+              </ul>
+              {s.embedded.steps.length ? <ol className="m-0 pl-5 text-sm">{s.embedded.steps.map((x) => <li key={x}>{x}</li>)}</ol> : null}
+            </div>
+          ) : null}
+
           {s.testCards.length ? (
             <div className="stack">
               <h3>Stripe test cards</h3>

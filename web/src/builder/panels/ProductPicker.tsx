@@ -8,7 +8,8 @@ import { Button, Dialog, Input, Select } from '../../ui';
 import type { ProductProps } from '../pagemodel-bridge';
 import { inputCls } from './kit';
 
-export type Role = 'main' | 'bump' | 'upsell' | 'downsell';
+/** `cart`: an Add to cart button or a Payment form; carts and the embedded form sell one-time prices only. */
+export type Role = 'main' | 'bump' | 'upsell' | 'downsell' | 'cart';
 
 /** The block fields that mirror a catalog price. The server refreshes them from the catalog on every save; they are only what the page shows until then. */
 export function fieldsFor(product: Pick<Product, 'id' | 'name'>, price: Price): Partial<ProductProps> {
@@ -28,7 +29,7 @@ function CreateInline({ role, onCreated }: { role: Role; onCreated: (p: Product)
   const [interval, setInterval] = useState('month');
   const create = useMutate((b: object) => api.post<Product>('/api/products', b), [['products']]);
   const parsed = parseAmount(amount, currency);
-  const oneClick = role === 'upsell' || role === 'downsell';
+  const oneClick = role === 'upsell' || role === 'downsell' || role === 'cart';
   return (
     <form className="flex flex-col gap-2.5 rounded-lg border border-dashed border-border-strong p-3" aria-label="Create a product" onSubmit={(e) => { e.preventDefault(); if (name.trim() && parsed !== null) create.mutate({ name: name.trim(), type, price: { currency, amount: parsed, ...(type === 'subscription' ? { interval } : {}) } }, { onSuccess: onCreated }); }}>
       <strong className="text-[0.82rem]">Create a new product</strong>
@@ -57,7 +58,7 @@ function CreateInline({ role, onCreated }: { role: Role; onCreated: (p: Product)
 export function ProductPickerDialog({ open, role, onClose, onPick }: { open: boolean; role: Role; onClose: () => void; onPick: (fields: Partial<ProductProps>) => void }) {
   const [search, setSearch] = useState('');
   const q = useProducts({ status: 'active', search: search.trim() || undefined, limit: 30 });
-  const oneClick = role === 'upsell' || role === 'downsell';
+  const oneClick = role === 'upsell' || role === 'downsell' || role === 'cart';
   const choose = (p: Product, price: Price) => {
     onPick(fieldsFor(p, price));
     onClose();
