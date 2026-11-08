@@ -517,11 +517,10 @@ export function CatalogTrait({ trait }: TraitProps) {
       {p.source === 'picked'
         ? <CatalogPicks picks={p.picks} onChange={(picks) => set({ picks })} />
         : <Row label="Sort"><Select size="sm" aria-label="Sort products" value={p.sort} options={SORTS} onValueChange={(v) => set({ sort: v as CatalogProps['sort'] })} /></Row>}
-      <div className="grid grid-cols-2 gap-2">
-        <Row label="Max items"><input type="number" min={1} max={CATALOG_MAX_ITEMS} aria-label="Most products shown" className={inputCls} value={p.limit} onChange={(e) => set({ limit: num(e.target.value, 1, CATALOG_MAX_ITEMS, 12) })} /></Row>
-        <Row label="Columns"><Select size="sm" aria-label="Columns on desktop" value={String(p.columns)} options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: String(n) }))} onValueChange={(v) => set({ columns: Number(v) })} /></Row>
-      </div>
-      <p className="m-0 text-[0.72rem] text-muted">Tablets show at most 2 columns, phones 1.</p>
+      <Row label="Max items"><input type="number" min={1} max={CATALOG_MAX_ITEMS} aria-label="Most products shown" className={inputCls} value={p.limit} onChange={(e) => set({ limit: num(e.target.value, 1, CATALOG_MAX_ITEMS, 12) })} /></Row>
+      <Field label="Columns on desktop" hint="Tablets show at most 2 columns, phones 1.">
+        <Select size="sm" aria-label="Columns on desktop" value={String(p.columns)} options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: n === 1 ? '1 column' : `${n} columns` }))} onValueChange={(v) => set({ columns: Number(v) })} />
+      </Field>
       <Check id="cat-image" label="Show the image" checked={p.showImage} onChange={(showImage) => set({ showImage })} />
       <Check id="cat-desc" label="Show the description" checked={p.showDescription} onChange={(showDescription) => set({ showDescription })} />
       <Check id="cat-price" label="Show the price" checked={p.showPrice} onChange={(showPrice) => set({ showPrice })} />
@@ -539,10 +538,10 @@ export function CatalogTrait({ trait }: TraitProps) {
       <Check id="cat-qty" label="Let buyers choose a quantity" checked={!!q.enabled} onChange={(enabled) => set({ quantity: { ...q, enabled } })} />
       {q.enabled ? (
         <div className="grid grid-cols-3 gap-2">
-          {(['min', 'max', 'default'] as const).map((k) => <Row key={k} label={k === 'default' ? 'Start at' : k === 'min' ? 'Least' : 'Most'}><input type="number" min={1} max={99} aria-label={`Catalog quantity ${k}`} className={inputCls} value={q[k]} onChange={(e) => set({ quantity: { ...q, [k]: num(e.target.value, 1, 99, 1) } })} /></Row>)}
+          {(['min', 'max', 'default'] as const).map((k) => <Field key={k} label={k === 'default' ? 'Start at' : k === 'min' ? 'Least' : 'Most'}><input type="number" min={1} max={99} aria-label={`Catalog quantity ${k}`} className={inputCls} value={q[k]} onChange={(e) => set({ quantity: { ...q, [k]: num(e.target.value, 1, 99, 1) } })} /></Field>)}
         </div>
       ) : null}
-      <Row label="When there is nothing to show"><input aria-label="Empty catalog text" className={inputCls} value={p.emptyText} maxLength={200} onChange={(e) => set({ emptyText: e.target.value })} /></Row>
+      <Row label="Empty text"><input aria-label="Empty catalog text" className={inputCls} value={p.emptyText} maxLength={200} onChange={(e) => set({ emptyText: e.target.value })} /></Row>
       <p className="rounded-md bg-surface-2 p-2 text-[0.72rem] text-muted">Lists active one-time products from Products (subscriptions and archived products are never shown). Names, prices and images update on the published page when you change them in Products; the server re-reads the price on every add. One currency per cart.</p>
       <Issues issues={parsed.success ? [] : parsed.error.issues.map((i) => i.message)} />
     </div>

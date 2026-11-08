@@ -170,8 +170,7 @@ body{margin:0;background:var(--fn-bg);color:var(--fn-text);font-family:var(--fn-
 :where(.fn-catalog-price){font-weight:800;font-size:1.25rem}
 :where(.fn-catalog-form){margin-top:auto;padding-top:6px;flex-direction:column;align-items:stretch;gap:10px}
 :where(.fn-catalog-form .fn-field){min-width:0}
-:where(.fn-catalog-form .fn-status){font-size:.88rem;min-height:0;flex-basis:auto}
-:where(.fn-catalog-form .fn-status:empty){display:none}
+:where(.fn-catalog-form .fn-status){font-size:.88rem;line-height:1.35;min-height:1.35em;flex-basis:auto}
 :where(.fn-catalog-empty){color:var(--fn-muted);margin:0;padding:24px;text-align:center;border:1px dashed var(--fn-border);border-radius:var(--fn-radius)}
 @media(max-width:992px){:where(.fn-catalog-c3,.fn-catalog-c4) :where(.fn-catalog-grid){grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){:where(.fn-catalog) :where(.fn-catalog-grid){grid-template-columns:minmax(0,1fr)}}
