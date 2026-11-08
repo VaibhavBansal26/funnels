@@ -96,7 +96,7 @@ for (const theme of ['light', 'dark']) {
     await page.goto(`${BASE}/funnels/${f.id}/builder/${f.steps[0].id}`);
     await page.waitForSelector('[data-builder-ready="1"]');
     await page.waitForTimeout(800);
-    await page.evaluate(() => { const ed = window.__editor; const c = ed.getWrapper().findType('fn-cart-add')[0]; ed.select(c); c.getEl()?.scrollIntoView({ block: 'center' }); });
+    await page.evaluate(() => { const ed = window.__editor; const c = ed.getWrapper().findType('fn-cart-add')[0] ?? ed.getWrapper().findType('fn-catalog')[0]; ed.select(c); c.getEl()?.scrollIntoView({ block: 'center' }); });
     if (await settingsTab.count()) await settingsTab.first().click().catch(() => undefined);
     await page.waitForTimeout(600);
     await shot(page, `cart-builder-addtocart-${size.id}-${theme}`, false);
