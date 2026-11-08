@@ -1,4 +1,5 @@
 import type { Editor } from 'grapesjs';
+import type { CatalogItem } from '@pagemodel';
 
 /** What the editor needs to know about the funnel it is editing. Passed to component types and commands (never read from the page content). */
 export interface BuilderEnv {
@@ -7,6 +8,8 @@ export interface BuilderEnv {
   steps: { id: string; name: string }[];
   /** May the signed-in user author scripts (custom code blocks)? Mirrors the server rule (owner and workspace flag); the server enforces it. */
   canScripts: boolean;
+  /** The workspace's sellable products for the Product catalog preview (filled once they load; `fn:catalog` repaints the blocks). */
+  catalog?: CatalogItem[];
 }
 
 const KEY = '__fnEnv';

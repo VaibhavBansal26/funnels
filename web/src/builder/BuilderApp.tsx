@@ -6,7 +6,7 @@ import { Monitor, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBlocker, useNavigate } from 'react-router';
 import { api, ApiError, errorMessage } from '../api/client';
-import { keys } from '../api/hooks';
+import { keys, useProducts } from '../api/hooks';
 import type { FunnelDetail, PageData, Step } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { PaymentsWizard } from '../components/PaymentsWizard';
@@ -16,6 +16,8 @@ import './builder.css';
 import { PublishDialog } from './PublishDialog';
 import { AiRewriteDialog, AssetPickerDialog, HistoryDialog, LinkDialog, PageSettingsDialog, SaveBlockDialog, ShortcutsDialog } from './dialogs';
 import { createEditor, DEVICES, type DeviceId, type FnEditor } from './editor/createEditor';
+import { getEnv } from './editor/env';
+import { catalogItemsOf } from './catalog';
 import { checkProject, loadDoc, readProject } from './editor/load';
 import { CanvasArea } from './panels/CanvasArea';
 import { Inspector } from './panels/Inspector';
@@ -86,6 +88,14 @@ export function BuilderApp({ funnel, step, page, reload }: { funnel: FunnelDetai
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ---- Product catalog preview: the owner's products, refreshed when the catalog changes (e.g. a product created from the picker) ----
+  const products = useProducts({ status: 'active', limit: 100 });
+  useEffect(() => {
+    if (!editor || !products.data) return;
+    getEnv(editor).catalog = catalogItemsOf(products.data.data);
+    editor.trigger('fn:catalog');
+  }, [editor, products.data]);
 
   // ---- dirty tracking ----
   useEffect(() => {

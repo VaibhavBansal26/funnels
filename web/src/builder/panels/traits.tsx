@@ -5,8 +5,9 @@ import type { Component, Editor, Trait } from 'grapesjs';
 import { ArrowDown, ArrowUp, ImageIcon, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { PlacePicker } from './PlacePicker';
-import { CartAddPropsSchema, CartCountPropsSchema, CartPropsSchema, CheckoutSchemaHint, FormPropsSchema, PaymentPropsSchema, ProductPropsSchema, VideoPropsSchema, CountdownPropsSchema, parseVideoUrl, type CartAddProps, type CartCountProps, type CartProps, type FormProps, type PaymentProps, type ProductProps } from '../pagemodel-bridge';
+import { CATALOG_MAX_ITEMS, CatalogPropsSchema, type CatalogProps, CartAddPropsSchema, CartCountPropsSchema, CartPropsSchema, CheckoutSchemaHint, FormPropsSchema, PaymentPropsSchema, ProductPropsSchema, VideoPropsSchema, CountdownPropsSchema, parseVideoUrl, type CartAddProps, type CartCountProps, type CartProps, type FormProps, type PaymentProps, type ProductProps } from '../pagemodel-bridge';
 import { api, errorMessage } from '../../api/client';
+import { useProducts } from '../../api/hooks';
 import { Button, Input, Select, Slider, Switch, Textarea } from '../../ui';
 import { randomId } from '../editor/types';
 import { useBuilder } from '../useEditor';
@@ -449,6 +450,105 @@ export function PaymentTrait({ trait }: TraitProps) {
   );
 }
 
+/* ---------- product catalog ---------- */
+const CATALOG_DEFAULTS: CatalogProps = {
+  source: 'all', picks: [], sort: 'catalog', limit: 12, columns: 3, showImage: true, showDescription: true, showPrice: true, buttonLabel: 'Add to cart', action: 'add',
+  quantity: { enabled: false, min: 1, max: 10, default: 1 }, then: { type: 'stay' }, emptyText: 'No products are available right now.',
+};
+const SORTS = [{ value: 'catalog', label: 'Catalog order (oldest first)' }, { value: 'price_asc', label: 'Price: low to high' }, { value: 'price_desc', label: 'Price: high to low' }, { value: 'newest', label: 'Newest first' }];
+
+/** The hand-picked products of a Product catalog, in order, with move and remove, and the picker to add more. */
+function CatalogPicks({ picks, onChange }: { picks: CatalogProps['picks']; onChange: (picks: CatalogProps['picks']) => void }) {
+  const [picking, setPicking] = useState(false);
+  const q = useProducts({ status: 'all', limit: 100 });
+  const named = (pick: CatalogProps['picks'][number]) => {
+    const p = pick.productId ? q.data?.data.find((x) => x.id === pick.productId) : undefined;
+    if (!p) return { name: pick.productId ? (q.isLoading ? 'Loading…' : 'Product not found') : `Template product “${pick.slot}”`, note: pick.productId && !q.isLoading ? 'Not shown' : '' };
+    const price = p.prices.find((x) => x.id === pick.priceId && x.active) ?? p.prices.find((x) => x.active && pick.priceId && x.id === p.prices.find((o) => o.id === pick.priceId)?.replacedBy) ?? p.prices.find((x) => x.id === p.defaultPriceId && x.active) ?? p.prices.find((x) => x.active);
+    const note = p.status !== 'active' ? 'Archived: not shown' : p.type === 'subscription' ? 'Subscription: not shown' : '';
+    return { name: p.name, price: price?.formatted, note };
+  };
+  const move = (i: number, d: -1 | 1) => { const next = [...picks]; const [x] = next.splice(i, 1); next.splice(i + d, 0, x!); onChange(next); };
+  return (
+    <div className="flex flex-col gap-1.5">
+      {picks.length ? (
+        <ol className="m-0 flex list-none flex-col gap-1.5 p-0" aria-label="Picked products">
+          {picks.map((pick, i) => {
+            const n = named(pick);
+            return (
+              <li key={`${pick.productId ?? pick.slot}-${i}`} className="flex items-center gap-1.5 rounded-md border border-border p-1.5">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[0.82rem] font-semibold">{n.name}</div>
+                  <div className="text-[0.72rem] text-muted">{[n.price, n.note].filter(Boolean).join(' · ')}</div>
+                </div>
+                <Button size="icon-sm" variant="ghost" aria-label={`Move ${n.name} up`} disabled={i === 0} onClick={() => move(i, -1)}><ArrowUp /></Button>
+                <Button size="icon-sm" variant="ghost" aria-label={`Move ${n.name} down`} disabled={i === picks.length - 1} onClick={() => move(i, 1)}><ArrowDown /></Button>
+                <Button size="icon-sm" variant="ghost" aria-label={`Remove ${n.name}`} onClick={() => onChange(picks.filter((_, k) => k !== i))}><Trash2 /></Button>
+              </li>
+            );
+          })}
+        </ol>
+      ) : <p className="m-0 rounded-md bg-surface-2 p-2 text-[0.72rem] text-muted">No products picked yet.</p>}
+      <Button size="sm" disabled={picks.length >= CATALOG_MAX_ITEMS} onClick={() => setPicking(true)}><Plus /> Add a product</Button>
+      {picking ? (
+        <ProductPickerDialog open role="cart" onClose={() => setPicking(false)} onPick={(f) => {
+          if (!f.productId) return;
+          const rest = picks.filter((x) => x.productId !== f.productId);
+          onChange([...rest, { productId: f.productId, priceId: f.priceId }].slice(0, CATALOG_MAX_ITEMS));
+        }} />
+      ) : null}
+    </div>
+  );
+}
+
+export function CatalogTrait({ trait }: TraitProps) {
+  const { env } = useBuilder();
+  const p = { ...CATALOG_DEFAULTS, ...val<Partial<CatalogProps>>(trait, {}) } as CatalogProps;
+  const set = (n: Partial<CatalogProps>) => trait.setValue({ ...live(trait, p), ...n });
+  const parsed = CatalogPropsSchema.safeParse(p);
+  const q = p.quantity ?? CATALOG_DEFAULTS.quantity;
+  const then = p.then?.type === 'step' ? p.then.stepId : p.then?.type ?? 'stay';
+  const num = (v: string, min: number, max: number, fallback: number) => Math.min(max, Math.max(min, Number.parseInt(v, 10) || fallback));
+  return (
+    <div className="flex flex-col gap-2.5">
+      <Row label="Products">
+        <Select size="sm" aria-label="Which products" value={p.source} options={[{ value: 'all', label: 'All active products' }, { value: 'picked', label: 'Products I pick' }]} onValueChange={(v) => set({ source: v as CatalogProps['source'] })} />
+      </Row>
+      {p.source === 'picked'
+        ? <CatalogPicks picks={p.picks} onChange={(picks) => set({ picks })} />
+        : <Row label="Sort"><Select size="sm" aria-label="Sort products" value={p.sort} options={SORTS} onValueChange={(v) => set({ sort: v as CatalogProps['sort'] })} /></Row>}
+      <div className="grid grid-cols-2 gap-2">
+        <Row label="Max items"><input type="number" min={1} max={CATALOG_MAX_ITEMS} aria-label="Most products shown" className={inputCls} value={p.limit} onChange={(e) => set({ limit: num(e.target.value, 1, CATALOG_MAX_ITEMS, 12) })} /></Row>
+        <Row label="Columns"><Select size="sm" aria-label="Columns on desktop" value={String(p.columns)} options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: String(n) }))} onValueChange={(v) => set({ columns: Number(v) })} /></Row>
+      </div>
+      <p className="m-0 text-[0.72rem] text-muted">Tablets show at most 2 columns, phones 1.</p>
+      <Check id="cat-image" label="Show the image" checked={p.showImage} onChange={(showImage) => set({ showImage })} />
+      <Check id="cat-desc" label="Show the description" checked={p.showDescription} onChange={(showDescription) => set({ showDescription })} />
+      <Check id="cat-price" label="Show the price" checked={p.showPrice} onChange={(showPrice) => set({ showPrice })} />
+      <Row label="Button action">
+        <Select size="sm" aria-label="Button action" value={p.action} options={[{ value: 'add', label: 'Add to cart' }, { value: 'buy', label: 'Buy now (add, then check out)' }]} onValueChange={(v) => set({ action: v as CatalogProps['action'], ...(v === 'buy' && p.buttonLabel === 'Add to cart' ? { buttonLabel: 'Buy now' } : v === 'add' && p.buttonLabel === 'Buy now' ? { buttonLabel: 'Add to cart' } : {}) })} />
+      </Row>
+      <Row label="Button text"><input aria-label="Catalog button text" className={inputCls} value={p.buttonLabel} maxLength={80} onChange={(e) => set({ buttonLabel: e.target.value })} /></Row>
+      {p.action === 'buy'
+        ? <Row label="Checkout step"><StepSelect label="Checkout step" value={p.checkoutStepId} steps={env.steps} exclude={env.stepId} onChange={(checkoutStepId) => set({ checkoutStepId })} /></Row>
+        : (
+          <Row label="After adding">
+            <Select size="sm" aria-label="After adding a product" value={then} options={[{ value: 'stay', label: 'Stay on this page' }, { value: 'next_step', label: 'Go to the next step' }, ...env.steps.filter((x) => x.id !== env.stepId).map((x) => ({ value: x.id, label: `Go to ${x.name}` }))]} onValueChange={(v) => set({ then: v === 'stay' || v === 'next_step' ? { type: v } : { type: 'step', stepId: v } })} />
+          </Row>
+        )}
+      <Check id="cat-qty" label="Let buyers choose a quantity" checked={!!q.enabled} onChange={(enabled) => set({ quantity: { ...q, enabled } })} />
+      {q.enabled ? (
+        <div className="grid grid-cols-3 gap-2">
+          {(['min', 'max', 'default'] as const).map((k) => <Row key={k} label={k === 'default' ? 'Start at' : k === 'min' ? 'Least' : 'Most'}><input type="number" min={1} max={99} aria-label={`Catalog quantity ${k}`} className={inputCls} value={q[k]} onChange={(e) => set({ quantity: { ...q, [k]: num(e.target.value, 1, 99, 1) } })} /></Row>)}
+        </div>
+      ) : null}
+      <Row label="When there is nothing to show"><input aria-label="Empty catalog text" className={inputCls} value={p.emptyText} maxLength={200} onChange={(e) => set({ emptyText: e.target.value })} /></Row>
+      <p className="rounded-md bg-surface-2 p-2 text-[0.72rem] text-muted">Lists active one-time products from Products (subscriptions and archived products are never shown). Names, prices and images update on the published page when you change them in Products; the server re-reads the price on every add. One currency per cart.</p>
+      <Issues issues={parsed.success ? [] : parsed.error.issues.map((i) => i.message)} />
+    </div>
+  );
+}
+
 /* ---------- custom code (legacy: Custom code block) ---------- */
 export function CodeTrait({ trait }: TraitProps) {
   const { env } = useBuilder();
@@ -526,7 +626,7 @@ export function PopupTrait({ component }: TraitProps) {
 
 export const TRAIT_EDITORS: Record<string, (p: TraitProps) => ReactNode> = {
   'fn-action': (p) => <ActionTrait {...p} />, 'fn-asset': (p) => <AssetTrait {...p} />, 'fn-video': (p) => <VideoTrait {...p} />, 'fn-countdown': (p) => <CountdownTrait {...p} />,
-  'fn-progress': (p) => <ProgressTrait {...p} />, 'fn-reviews': (p) => <ReviewsTrait {...p} />, 'fn-review-cta': (p) => <ReviewCtaTrait {...p} />, 'fn-form': (p) => <FormTrait {...p} />, 'fn-product': (p) => <ProductTrait {...p} />, 'fn-cart-add': (p) => <CartAddTrait {...p} />, 'fn-cart': (p) => <CartTrait {...p} />, 'fn-cart-count': (p) => <CartCountTrait {...p} />, 'fn-payment': (p) => <PaymentTrait {...p} />, 'fn-code': (p) => <CodeTrait {...p} />,
+  'fn-progress': (p) => <ProgressTrait {...p} />, 'fn-reviews': (p) => <ReviewsTrait {...p} />, 'fn-review-cta': (p) => <ReviewCtaTrait {...p} />, 'fn-form': (p) => <FormTrait {...p} />, 'fn-product': (p) => <ProductTrait {...p} />, 'fn-cart-add': (p) => <CartAddTrait {...p} />, 'fn-cart': (p) => <CartTrait {...p} />, 'fn-cart-count': (p) => <CartCountTrait {...p} />, 'fn-payment': (p) => <PaymentTrait {...p} />, 'fn-catalog': (p) => <CatalogTrait {...p} />, 'fn-code': (p) => <CodeTrait {...p} />,
   'fn-faq-items': (p) => <FaqTrait {...p} />, 'fn-tabs-items': (p) => <TabsTrait {...p} />, 'fn-list-items': (p) => <ListTrait {...p} />, 'fn-popup-open': (p) => <PopupTrait {...p} />,
 };
 export { randomId, VideoPropsSchema, Input };

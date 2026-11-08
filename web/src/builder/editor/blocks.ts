@@ -25,7 +25,7 @@ export const BLOCK_CATEGORIES = ['Sections', 'Layout', 'Text', 'Media', 'Interac
 /** The DSL puts styles in project-level rules by id. A dropped block carries them as component styles (GrapesJS turns those into rules of the new component). */
 function inlineStyles(node: GjsNode, rules: GjsRule[]): GjsNode {
   const byId = new Map(rules.flatMap((r) => (r.selectors ?? []).map((s) => [String(typeof s === 'string' ? s : s.name).replace(/^#/, ''), r.style] as const)));
-  const keepIds = new Set(['fn-form', 'fn-checkout', 'fn-countdown', 'fn-code', 'fn-popup', 'fn-reviews', 'fn-review-cta', 'fn-cart-add', 'fn-cart', 'fn-payment']);
+  const keepIds = new Set(['fn-form', 'fn-checkout', 'fn-countdown', 'fn-code', 'fn-popup', 'fn-reviews', 'fn-review-cta', 'fn-cart-add', 'fn-cart', 'fn-payment', 'fn-catalog']);
   const walk = (n: GjsNode): GjsNode => {
     const out: GjsNode = { ...n };
     const attrs = { ...((n.attributes as Record<string, string> | undefined) ?? {}) };
@@ -117,6 +117,7 @@ export const BLOCKS: BlockDef[] = [
   // Cart and on-page payments (docs/USER-GUIDE.md#cart-and-payment-form): Add to cart on any page, a Cart step, and a Payment form step.
   { id: 'payment-form', label: 'Payment form', category: 'Conversion', icon: 'CreditCard', keywords: 'payment form card stripe pay checkout embedded order summary cart', content: make((pm) => pm.payment('payment', { source: 'cart', mode: 'embedded' })) },
   { id: 'add-to-cart', label: 'Add to cart', category: 'Conversion', icon: 'ShoppingBag', keywords: 'add to cart button shop store product basket', content: make((pm) => pm.cartAdd('addtocart', { productName: 'My product', price: 24, label: 'Add to cart' })) },
+  { id: 'product-catalog', label: 'Product catalog', category: 'Conversion', icon: 'Store', keywords: 'product catalog grid shop store products list collection add to cart buy', content: make((pm) => pm.catalog('catalog', {})) },
   { id: 'cart', label: 'Cart', category: 'Conversion', icon: 'ShoppingBasket', keywords: 'cart basket items quantity totals checkout shop store', content: make((pm) => pm.cart('cart', {})) },
   { id: 'cart-count', label: 'Cart count', category: 'Conversion', icon: 'Hash', keywords: 'cart count badge items basket header', content: make((pm) => pm.cartCount({})) },
 

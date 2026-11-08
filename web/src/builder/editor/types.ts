@@ -2,7 +2,7 @@
 // draggable constraints, and the per-element settings (button action, form, countdown, checkout, FAQ, tabs, popup) are re-expressed here as proper
 // GrapesJS component types with typed props (`fnAction`, `fnForm`, ...) instead of DOM attributes and iframes. Only these props are trusted by the server.
 import type { Component, Editor } from 'grapesjs';
-import { cartAddInner, cartCountInner, cartInner, paymentInner, type CartAddProps, type CartCountProps, type CartProps, type PaymentProps, checkoutInner, countdownInner, formInner, progressInner, reviewCtaInner, reviewsInner, videoInner, type CountdownProps, type FormProps, type MarkupCtx, type ProductProps, type ProgressProps, type ReviewCtaProps, type ReviewsProps, type ReviewsData, type VideoProps } from '@pagemodel';
+import { cartAddInner, cartCountInner, cartInner, catalogInner, paymentInner, type CartAddProps, type CartCountProps, type CartProps, type CatalogProps, type PaymentProps, checkoutInner, countdownInner, formInner, progressInner, reviewCtaInner, reviewsInner, videoInner, type CountdownProps, type FormProps, type MarkupCtx, type ProductProps, type ProgressProps, type ReviewCtaProps, type ReviewsProps, type ReviewsData, type VideoProps } from '@pagemodel';
 import { getEnv } from './env';
 import { bindClassFlag, bindClassGroups, type ClassGroup } from './classgroups';
 import { canDrop, TYPE_LABEL } from './rules';
@@ -21,14 +21,15 @@ const alignTrait = (): Trait => ({ type: 'select', name: 'fnAlign', label: 'Text
 
 const markupCtx = (editor: Editor): MarkupCtx => {
   const env = getEnv(editor);
-  return { mode: 'builder', funnelId: env.funnelId, stepId: env.stepId, nextHref: '#' };
+  return { mode: 'builder', funnelId: env.funnelId, stepId: env.stepId, nextHref: '#', catalog: env.catalog };
 };
 
 /** A view whose element content is produced by a pure markup function of the component's typed props: the same function the server publishes with. */
-function dynamicView(propName: string, paint: (view: any) => string) {
+function dynamicView(propName: string, paint: (view: any) => string, repaintOn?: { editor: Editor; event: string }) {
   return {
     init(this: any) {
       this.listenTo(this.model, `change:${propName} change:attributes:id`, () => this.paintDynamic());
+      if (repaintOn) this.listenTo(repaintOn.editor.getModel(), repaintOn.event, () => this.paintDynamic());
     },
     onRender(this: any) {
       this.paintDynamic();
@@ -278,6 +279,21 @@ export function registerTypes(editor: Editor): void {
       },
     },
     view: dynamicView('fnPayment', (v) => paymentInner(idOf(v), v.model.get('fnPayment') as PaymentProps, markupCtx(editor))),
+  });
+
+  // Product catalog: the canvas shows the owner's products (env.catalog, loaded by the builder; `fn:catalog` repaints), or labelled samples while there are none.
+  add('fn-catalog', {
+    model: {
+      defaults: {
+        tagName: 'div', name: 'Product catalog', droppable: false,
+        fnCatalog: {
+          source: 'all', picks: [], sort: 'catalog', limit: 12, columns: 3, showImage: true, showDescription: true, showPrice: true, buttonLabel: 'Add to cart', action: 'add',
+          quantity: { enabled: false, min: 1, max: 10, default: 1 }, then: { type: 'stay' }, emptyText: 'No products are available right now.',
+        } satisfies CatalogProps,
+        traits: [{ type: 'fn-catalog', name: 'fnCatalog', label: 'Product catalog', changeProp: true }],
+      },
+    },
+    view: dynamicView('fnCatalog', (v) => catalogInner(idOf(v), v.model.get('fnCatalog') as CatalogProps, markupCtx(editor)), { editor, event: 'fn:catalog' }),
   });
 
   // Google reviews: the canvas shows sample content (the real reviews are fetched by the server for the published page).
