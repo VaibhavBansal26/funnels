@@ -108,8 +108,19 @@ erDiagram
 | Request | |
 |---|---|
 | `POST /api/public/cart/{funnelId}/view` | The cart (`lines`, `count`, `subtotal`, `bumps` of the asking Cart block's checkout step, `total`, formatted amounts) and its token. |
-| `POST /api/public/cart/{funnelId}/{stepId}/{blockId}/add` | `{opId, quantity?}` from an Add to cart block; records `add_to_cart` and a server-side AddToCart (`eventId: atc_<opId>`). |
+| `POST /api/public/cart/{funnelId}/{stepId}/{blockId}/add` | `{opId, quantity?}` from an Add to cart block, or `{opId, productId, quantity?}` from a Product catalog card; records `add_to_cart` and a server-side AddToCart (`eventId: atc_<opId>`). |
 | `POST /api/public/cart/{funnelId}/update` | `{opId, itemId, quantity}` (0 removes) or `{opId, bump: {stepId, blockId, selected}}`. |
+
+## Product catalog block
+
+A grid of product cards filled from the catalog (decision record [ADR 0048](adr/0048-product-catalog-block.md), migration 045). Blocks > Conversion > **Product catalog** (`fn-catalog`).
+
+* **Lists** active one-time products that have an active one-time price: all of them (sorted by catalog order = the order they were added, price low to high, price high to low, or newest first) or a hand-picked, ordered list (optionally a specific price of each). Subscriptions, archived products and archived prices are never shown. At most `limit` cards (1 to 24).
+* **Card**: the first product image with its alt text (`imageAlt`; a lettered placeholder when there is none), the name (heading), the description (three lines at most), the price, an optional quantity selector and the button. The button is named "<button text>: <product name>" for screen readers. Columns 1 to 4 on desktop, at most 2 below 992 px, 1 below 560 px.
+* **Button action**: *Add to cart* (then stay, go to the next step or to a chosen step) or *Buy now* (add to the cart, then go to the checkout step, default the next step).
+* **Server authority**: a card posts `productId` to the Add to cart endpoint of its block. The server refuses a product the block does not list (`409 PRODUCT_UNAVAILABLE`, `400 PRODUCT_REQUIRED` without one), refuses subscriptions (`409 SUBSCRIPTION_NOT_IN_CART`), reads the price from the catalog (a picked price that was replaced follows its successor) and then runs the normal cart add (one currency per cart, caps, `add_to_cart`, AddToCart). Prices in the page or the request are ignored.
+* **Freshness**: the cards are rendered from the catalog whenever the page is rendered, and every product or price change through the API re-renders the funnels whose pages hold the block (stored page, page cache, edge purge). Cloudflare Pages bundles hold the catalog of their build; the change schedules the usual debounced redeploy.
+* **Product images**: `images` (up to 8 uploads or https URLs; the first is the card image) and `imageAlt` (up to 300 characters) on `POST /api/products` and `PATCH /api/products/{id}`; edit both in the product drawer on the Products page.
 
 ## Stripe sync
 
