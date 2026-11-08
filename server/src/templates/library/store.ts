@@ -8,14 +8,6 @@ const slot = (key: string, role: TemplateProduct['role'], name: string, descript
 const art = (pm: PageBuilder, a: string, b: string, label: string): GjsNode =>
   pm.box([pm.text(label, { align: 'center', color: '#1f2937' })], { name: 'Product art', style: { height: '180px', 'border-radius': '18px', background: `linear-gradient(135deg,${a},${b})`, display: 'flex', 'align-items': 'center', 'justify-content': 'center', 'font-weight': '700' } });
 
-const productCard = (pm: PageBuilder, id: string, key: string, name: string, price: number, blurb: string, colors: [string, string]): GjsNode =>
-  pm.card([
-    art(pm, colors[0], colors[1], name),
-    pm.heading(name, { level: 3 }),
-    pm.text(blurb, { muted: true }),
-    pm.cartAdd(id, { slot: key, productName: name, price, label: 'Add to cart', quantity: { enabled: true, min: 1, max: 10, default: 1 } }),
-  ], { name: name });
-
 // ---- Store with cart --------------------------------------------------------------------------------------------------------------------------------
 
 function storeWithCart(): TemplateDef {
@@ -32,11 +24,8 @@ function storeWithCart(): TemplateDef {
       pm.text('Pick your favourites, choose how many, and check out on one page. Free shipping over $40.', { align: 'center', muted: true, size: '1.1rem' }),
     ])], { theme: 'soft', padding: 'lg', width: 'medium', align: 'center' }),
     pm.section([
-      pm.cols([
-        [productCard(pm, 'sh-green', 'green', 'Morning green tea', 14, 'Bright sencha with a sweet, grassy finish. 50 g loose leaf.', ['#d9f99d', '#86efac'])],
-        [productCard(pm, 'sh-black', 'black', 'Smoky black tea', 16, 'Pine-smoked Lapsang for cold evenings. 50 g loose leaf.', ['#fde68a', '#fdba74'])],
-        [productCard(pm, 'sh-herbal', 'herbal', 'Calm herbal blend', 12, 'Chamomile, lemon balm and lavender, caffeine free. 40 g.', ['#e9d5ff', '#c4b5fd'])],
-      ]),
+      // The Product catalog lists the three teas (bound to catalog products when the template is used); prices, names and images come from Products.
+      pm.stack([pm.catalog('sh-catalog', { source: 'picked', picks: [{ slot: 'green' }, { slot: 'black' }, { slot: 'herbal' }], columns: 3, quantity: { enabled: true, min: 1, max: 10, default: 1 }, buttonLabel: 'Add to cart', emptyText: 'Our teas are being restocked. Check back soon.' })]),
       pm.stack([pm.button('View your cart', { type: 'next_step' }, { size: 'lg', align: 'center' })]),
     ], { padding: 'lg', width: 'wide' }),
     pm.section([pm.cols([[feature(pm, '1', 'Packed to order', 'Every tin is filled the day you order it.')], [feature(pm, '2', 'Plastic free', 'Paper pouches inside recyclable tins.')], [feature(pm, '3', 'Easy returns', 'Not your cup? We refund within 30 days.')]])], { theme: 'soft', padding: 'lg', width: 'wide' }),
@@ -70,12 +59,12 @@ function storeWithCart(): TemplateDef {
   ], { accent });
 
   return {
-    slug: 'store-with-cart', version: 1, name: 'Store with cart', description: 'A small shop: several products with Add to cart buttons and a cart badge, a cart page with quantities, a checkout page with the card form on the page and an order bump, and an order confirmation.',
-    category: 'ecommerce', industry: 'ecommerce', goal: 'sales', tags: ['ecommerce', 'cart', 'store', 'payment form', 'order bump', 'multi-product'], basePath: '/shop', accent,
+    slug: 'store-with-cart', version: 2, name: 'Store with cart', description: 'A small shop: a Product catalog grid of your products with Add to cart buttons and a cart badge, a cart page with quantities, a checkout page with the card form on the page and an order bump, and an order confirmation.',
+    category: 'ecommerce', industry: 'ecommerce', goal: 'sales', tags: ['ecommerce', 'cart', 'store', 'product catalog', 'payment form', 'order bump', 'multi-product'], basePath: '/shop', accent,
     products: [
-      slot('green', 'main', 'Morning green tea', 'Bright sencha, 50 g loose leaf.', 14),
-      slot('black', 'main', 'Smoky black tea', 'Pine-smoked Lapsang, 50 g loose leaf.', 16),
-      slot('herbal', 'main', 'Calm herbal blend', 'Chamomile, lemon balm and lavender, 40 g.', 12),
+      slot('green', 'main', 'Morning green tea', 'Bright sencha with a sweet, grassy finish. 50 g loose leaf.', 14),
+      slot('black', 'main', 'Smoky black tea', 'Pine-smoked Lapsang for cold evenings. 50 g loose leaf.', 16),
+      slot('herbal', 'main', 'Calm herbal blend', 'Chamomile, lemon balm and lavender, caffeine free. 40 g.', 12),
       slot('bump', 'bump', 'Bamboo tea infuser', 'A reusable infuser for loose leaf.', 6),
     ],
     steps: [{ name: 'Shop', path: '/shop', kind: 'sales', doc: shop }, { name: 'Cart', path: '/shop-cart', kind: 'page', doc: cart }, { name: 'Checkout', path: '/shop-checkout', kind: 'checkout', doc: pay }, { name: 'Thank you', path: '/shop-thanks', kind: 'thankyou', doc: thanks }],

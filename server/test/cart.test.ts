@@ -318,14 +318,19 @@ describe('templates with a cart and a payment page', () => {
     expect(f.steps.map((s: any) => s.name)).toEqual(['Shop', 'Cart', 'Checkout', 'Thank you']);
     const docOf = async (i: number) => (await h.call('GET', `/api/funnels/${f.id}/steps/${f.steps[i].id}/page`, { token: owner.token })).json.doc;
     const shopDoc = await docOf(0);
-    expect(shopDoc.commerce.filter((c: any) => c.type === 'cart-add').every((c: any) => /^prc_/.test(c.priceId))).toBe(true);
+    // The shop lists the three teas with a Product catalog block whose picks were bound to the catalog products the template created.
+    const cat = shopDoc.commerce.find((c: any) => c.type === 'catalog');
+    expect(cat).toMatchObject({ source: 'picked', picks: [{ slot: 'green' }, { slot: 'black' }, { slot: 'herbal' }] });
+    expect(cat.picks.every((p: any) => /^prd_/.test(p.productId) && /^prc_/.test(p.priceId))).toBe(true);
+    const html = (await h.call('GET', `/api/funnels/${f.id}/steps/${f.steps[0].id}/html`, { token: owner.token })).json.html as string;
+    expect([...html.matchAll(/<h3 class="fn-catalog-name">([^<]+)</g)].map((m) => m[1])).toEqual(['Morning green tea', 'Smoky black tea', 'Calm herbal blend']);
+    const [green, black] = cat.picks.map((p: any) => p.productId);
     const payDoc = await docOf(2);
-    const [green, black] = shopDoc.commerce;
     const vid = 'templatevisitor1';
     let token: string | undefined;
     const post = async (path: string, body: object) => { const r = await h.call('POST', path, { body: { visitorId: vid, token, ...body } }); if (r.json?.token) token = r.json.token; return r; };
-    await post(`/api/public/cart/${f.id}/${f.steps[0].id}/${green.id}/add`, { opId: opId(), quantity: 2 });
-    await post(`/api/public/cart/${f.id}/${f.steps[0].id}/${black.id}/add`, { opId: opId() });
+    expect((await post(`/api/public/cart/${f.id}/${f.steps[0].id}/${cat.id}/add`, { opId: opId(), quantity: 2, productId: green })).status).toBe(200);
+    expect((await post(`/api/public/cart/${f.id}/${f.steps[0].id}/${cat.id}/add`, { opId: opId(), productId: black })).status).toBe(200);
     const pay = payDoc.commerce.find((c: any) => c.type === 'payment');
     const bump = payDoc.products.find((p: any) => p.orderBump);
     const q = (await post(`/api/public/pay/${f.id}/${f.steps[2].id}/${pay.id}`, { bumpBlockIds: [bump.id], contact })).json;

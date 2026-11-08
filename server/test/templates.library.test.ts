@@ -114,6 +114,15 @@ describe('template library', () => {
         for (const c of s.doc.commerce ?? []) {
           if (c.type === 'cart') continue;
           if (c.type === 'payment' && c.source === 'cart') continue;
+          if (c.type === 'catalog') {
+            // A Product catalog hand-picks main one-time slots (or lists the whole catalog).
+            for (const pick of c.picks) {
+              expect(pick.slot, `${s.name}: catalog ${c.id} picks need a slot`).toBeTruthy();
+              expect(slots.get(pick.slot!)).toMatchObject({ role: 'main', type: 'one_time' });
+              used.add(pick.slot!);
+            }
+            continue;
+          }
           expect(c.slot, `${s.name}: ${c.type} ${c.id} needs a slot`).toBeTruthy();
           const slot = slots.get(c.slot!);
           expect(slot?.role, `${s.name}: slot ${c.slot}`).toBe('main');
