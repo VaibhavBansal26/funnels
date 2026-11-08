@@ -108,7 +108,7 @@ export interface Price {
 }
 export type SyncState = 'not_connected' | 'local' | 'pending' | 'synced' | 'error';
 export interface Product {
-  id: string; name: string; description: string; images: string[]; status: 'active' | 'archived'; type: 'one_time' | 'subscription'; taxCode: string | null; metadata: Record<string, string>;
+  id: string; name: string; description: string; images: string[]; imageAlt: string; status: 'active' | 'archived'; type: 'one_time' | 'subscription'; taxCode: string | null; metadata: Record<string, string>;
   defaultPriceId: string | null; prices: Price[]; stripe: { productId: string | null; syncState: SyncState; error: string | null; syncedAt: string | null }; orderCount: number;
   createdAt: string; updatedAt: string; archivedAt: string | null;
 }

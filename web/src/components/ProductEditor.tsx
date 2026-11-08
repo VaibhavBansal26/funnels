@@ -53,6 +53,7 @@ function ProductForm({ product, onClose }: { product?: Product; onClose: () => v
   const [description, setDescription] = useState(product?.description ?? '');
   const [type, setType] = useState<Product['type']>(product?.type ?? 'one_time');
   const [images, setImages] = useState<string[]>(product?.images ?? []);
+  const [imageAlt, setImageAlt] = useState(product?.imageAlt ?? '');
   const [taxCode, setTaxCode] = useState(product?.taxCode ?? '');
   const [draft, setDraft] = useState<PriceDraft>(blankDraft(type));
   const [uploading, setUploading] = useState(false);
@@ -77,7 +78,7 @@ function ProductForm({ product, onClose }: { product?: Product; onClose: () => v
     }
   };
   const submit = () => {
-    const common = { name: name.trim(), description: description.trim(), images, taxCode: taxCode.trim() || null };
+    const common = { name: name.trim(), description: description.trim(), images, imageAlt: imageAlt.trim(), taxCode: taxCode.trim() || null };
     if (product) save.mutate(common, { onSuccess: () => { toast.push('Product saved', 'ok'); onClose(); } });
     else create.mutate({ ...common, type, price: priceBody(draft, type) }, { onSuccess: () => { toast.push('Product created', 'ok'); onClose(); } });
   };
@@ -110,8 +111,9 @@ function ProductForm({ product, onClose }: { product?: Product; onClose: () => v
           <input ref={file} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="sr-only" aria-label="Upload product image" onChange={(e) => { void upload(e.target.files); e.target.value = ''; }} />
           <Button size="sm" disabled={uploading || images.length >= 8} onClick={() => file.current?.click()}><ImageUp /> {uploading ? 'Uploading…' : 'Upload image'}</Button>
         </div>
-        <span className="text-[0.82rem] text-muted">PNG, JPEG, GIF or WebP up to 1.5 MB. Images are shown by Stripe Checkout once the product is synced.</span>
+        <span className="text-[0.82rem] text-muted">PNG, JPEG, GIF or WebP up to 1.5 MB. The first image is shown on Product catalog cards on your pages, and by Stripe Checkout once the product is synced.</span>
       </div>
+      {images.length ? <TextField label="Image description (alt text)" value={imageAlt} onChange={setImageAlt} maxLength={300} hint="Describes the first image for people who cannot see it, e.g. White enamel mug with a blue rim. Leave empty if it adds nothing to the product name." /> : null}
       <TextField label="Stripe tax code (optional)" value={taxCode} onChange={setTaxCode} error={taxErr} hint="For Stripe Tax, e.g. txcd_10000000 (general tangible goods)" />
       <div className="flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>

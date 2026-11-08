@@ -6,7 +6,7 @@ import { refToBody, refValid } from './PaymentsWizard';
 import { Sparkline } from './Sparkline';
 import { priceOptions } from './UseTemplateWizard';
 
-const product = (over: Partial<Product>, prices: Product['prices']): Product => ({ id: 'prd_1', name: 'Course', description: '', images: [], status: 'active', type: 'one_time', taxCode: null, metadata: {}, defaultPriceId: null, prices, stripe: { productId: null, syncState: 'not_connected', error: null, syncedAt: null }, orderCount: 0, createdAt: '', updatedAt: '', archivedAt: null, ...over });
+const product = (over: Partial<Product>, prices: Product['prices']): Product => ({ id: 'prd_1', name: 'Course', description: '', images: [], imageAlt: '', status: 'active', type: 'one_time', taxCode: null, metadata: {}, defaultPriceId: null, prices, stripe: { productId: null, syncState: 'not_connected', error: null, syncedAt: null }, orderCount: 0, createdAt: '', updatedAt: '', archivedAt: null, ...over });
 const price = (id: string, over: Partial<Product['prices'][number]> = {}): Product['prices'][number] => ({ id, productId: 'prd_1', currency: 'USD', unitAmount: 1000, exponent: 2, amount: 10, formatted: '$10.00', interval: null, intervalCount: 1, trialDays: 0, nickname: null, active: true, replacedBy: null, stripe: { priceId: null, status: 'local' }, createdAt: '', archivedAt: null, ...over });
 
 describe('price input', () => {

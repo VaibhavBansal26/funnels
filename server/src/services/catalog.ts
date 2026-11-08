@@ -22,6 +22,8 @@ export interface ProductRow {
   name: string;
   description: string;
   images_json: string;
+  /** Alt text of the first image (the one the Product catalog block shows); empty = decorative. */
+  image_alt: string;
   status: 'active' | 'archived';
   type: 'one_time' | 'subscription';
   tax_code: string | null;
@@ -77,6 +79,8 @@ const ProductFields = {
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2000).default(''),
   images: z.array(imageUrl.or(z.string().regex(/^\/uploads\/[A-Za-z0-9_-]+(\/[^\s/]+)?$/))).max(8).default([]),
+  /** Describes the first image for people who cannot see it (Product catalog cards). Leave empty when the image is decorative. */
+  imageAlt: z.string().trim().max(300).default(''),
   taxCode: z.string().regex(/^txcd_\d{8}$/, 'A Stripe tax code looks like txcd_10000000').nullish(),
   metadata: metadata.default({}),
 };
@@ -85,6 +89,7 @@ export const ProductPatch = z.object({
   name: ProductFields.name.optional(),
   description: z.string().trim().max(2000).optional(),
   images: ProductFields.images.optional(),
+  imageAlt: z.string().trim().max(300).optional(),
   taxCode: ProductFields.taxCode,
   metadata: metadata.optional(),
   defaultPriceId: z.string().max(64).optional(),
@@ -126,7 +131,7 @@ const syncState = (stored: string, c: Connection): string => (c.connected ? stor
 
 export function serializeProduct(p: ProductRow, prices: PriceRow[], c: Connection, orders = 0) {
   return {
-    id: p.id, name: p.name, description: p.description, images: parse<string[]>(p.images_json, []), status: p.status, type: p.type, taxCode: p.tax_code, metadata: parse<Record<string, string>>(p.metadata_json, {}),
+    id: p.id, name: p.name, description: p.description, images: parse<string[]>(p.images_json, []), imageAlt: p.image_alt ?? '', status: p.status, type: p.type, taxCode: p.tax_code, metadata: parse<Record<string, string>>(p.metadata_json, {}),
     defaultPriceId: p.default_price_id, prices: prices.map(serializePrice),
     stripe: { productId: p.stripe_product_id, syncState: syncState(p.sync_status, c), error: p.sync_error, syncedAt: p.synced_at }, orderCount: orders,
     createdAt: p.created_at, updatedAt: p.updated_at, archivedAt: p.archived_at,
@@ -202,8 +207,8 @@ export async function createProduct(deps: Deps, auth: Auth, input: z.infer<typeo
     const pid = newId('prd');
     const at = d.now().toISOString();
     await d.db.run(
-      'INSERT INTO products (id, workspace_id, name, description, images_json, status, type, tax_code, metadata_json, sync_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      pid, ws, input.name, input.description, JSON.stringify(input.images), 'active', input.type, input.taxCode ?? null, JSON.stringify(input.metadata), 'local', at, at,
+      'INSERT INTO products (id, workspace_id, name, description, images_json, image_alt, status, type, tax_code, metadata_json, sync_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      pid, ws, input.name, input.description, JSON.stringify(input.images), input.imageAlt, 'active', input.type, input.taxCode ?? null, JSON.stringify(input.metadata), 'local', at, at,
     );
     const product = (await d.db.get<ProductRow>('SELECT * FROM products WHERE id = ?', pid))!;
     if (input.price) await insertPrice(d, ws, product, input.price);
@@ -223,8 +228,8 @@ export async function updateProduct(deps: Deps, auth: Auth, id: string, patch: z
       if (!price) throw badRequest('INVALID_DEFAULT_PRICE', 'The default price must be an active price of this product');
     }
     await d.db.run(
-      'UPDATE products SET name = ?, description = ?, images_json = ?, tax_code = ?, metadata_json = ?, default_price_id = ?, sync_status = ?, updated_at = ? WHERE id = ?',
-      patch.name ?? p.name, patch.description ?? p.description, patch.images ? JSON.stringify(patch.images) : p.images_json, patch.taxCode === undefined ? p.tax_code : patch.taxCode, patch.metadata ? JSON.stringify(patch.metadata) : p.metadata_json,
+      'UPDATE products SET name = ?, description = ?, images_json = ?, image_alt = ?, tax_code = ?, metadata_json = ?, default_price_id = ?, sync_status = ?, updated_at = ? WHERE id = ?',
+      patch.name ?? p.name, patch.description ?? p.description, patch.images ? JSON.stringify(patch.images) : p.images_json, patch.imageAlt ?? p.image_alt ?? '', patch.taxCode === undefined ? p.tax_code : patch.taxCode, patch.metadata ? JSON.stringify(patch.metadata) : p.metadata_json,
       patch.defaultPriceId ?? p.default_price_id, p.stripe_product_id ? 'pending' : p.sync_status, d.now().toISOString(), id,
     );
     await audit(d, { workspaceId: ws, actorId: auth.userId, action: 'product.updated', target: id, ip, detail: { fields: Object.keys(patch) } });
