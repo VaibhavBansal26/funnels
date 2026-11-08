@@ -85,7 +85,8 @@ export type Summary = z.infer<typeof SummarySchema>;
 
 /** A name from the database as the model may see it: control characters out, markup and tag look-alikes defused, short. */
 export const safeName = (s: string): string => {
-  const name = cleanText(s, 80).replace(/[<>`]/g, '').replace(/\s+/g, ' ').trim() || 'Untitled';
+  // Anything the guard reads as markup or a link ("](", "http://", "www.") is broken up too, or a product called "[a](b)" would fail every summary.
+  const name = cleanText(s, 80).replace(/[<>`]/g, '').replace(/\]\s*\(/g, '] ').replace(/:\/\//g, ' ').replace(/www\./gi, 'www ').replace(/\s+/g, ' ').trim() || 'Untitled';
   // A name without a letter ("5", ",") could hide or imitate a figure; it is given a word so it can be told apart from numbers in the text.
   return /\p{L}/u.test(name) ? name : `Item ${name}`.slice(0, 80);
 };
