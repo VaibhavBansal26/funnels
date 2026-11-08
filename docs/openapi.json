@@ -987,8 +987,8 @@
         "tags": [
           "public"
         ],
-        "summary": "Add to cart: the price comes from the stored Add to cart block (its catalog price), the quantity is checked against the block",
-        "description": "Idempotent per `opId`. One currency per cart (409 CART_CURRENCY_MISMATCH), subscriptions are refused (409 SUBSCRIPTION_NOT_IN_CART), at most CART_MAX_LINES lines and CART_MAX_QUANTITY units per line. Records an add_to_cart event and a server-side AddToCart.",
+        "summary": "Add to cart: the price comes from the stored Add to cart block (its catalog price), or for a Product catalog block from the product named by `productId` (checked against the block, price read from the catalog); the quantity is checked against the block",
+        "description": "Idempotent per `opId`. One currency per cart (409 CART_CURRENCY_MISMATCH), subscriptions are refused (409 SUBSCRIPTION_NOT_IN_CART), at most CART_MAX_LINES lines and CART_MAX_QUANTITY units per line. Records an add_to_cart event and a server-side AddToCart. A Product catalog block refuses a product it does not list (409 PRODUCT_UNAVAILABLE) and needs `productId` (400 PRODUCT_REQUIRED).",
         "operationId": "post_api_public_cart_funnelId_stepId_blockId_add",
         "parameters": [
           {
@@ -1068,7 +1068,11 @@
                     "type": "string",
                     "maxLength": 500
                   },
-                  "utms": {}
+                  "utms": {},
+                  "productId": {
+                    "type": "string",
+                    "pattern": "^prd_[A-Za-z0-9_-]{6,60}$"
+                  }
                 },
                 "required": [
                   "opId"
@@ -16526,6 +16530,11 @@
                       ]
                     }
                   },
+                  "imageAlt": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 300
+                  },
                   "taxCode": {
                     "anyOf": [
                       {
@@ -16738,7 +16747,7 @@
         "tags": [
           "products"
         ],
-        "summary": "Edit a product (name, description, images, tax code, metadata, default price)",
+        "summary": "Edit a product (name, description, images and the alt text of the first one, tax code, metadata, default price). Pages with a Product catalog block are re-rendered after any catalog change",
         "operationId": "patch_api_products_id",
         "parameters": [
           {
@@ -16782,6 +16791,10 @@
                         }
                       ]
                     }
+                  },
+                  "imageAlt": {
+                    "type": "string",
+                    "maxLength": 300
                   },
                   "taxCode": {
                     "anyOf": [

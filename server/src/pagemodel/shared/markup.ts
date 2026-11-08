@@ -1,5 +1,5 @@
-import { esc, formatMoney, parseVideoUrl, safeUrl } from '../../blocks/safe.js';
-import type { CartAddProps, CartCountProps, CartProps, CountdownProps, FormProps, PaymentProps, ProductProps, ProgressProps, ReviewCtaProps, ReviewsProps, VideoProps } from './props.js';
+import { esc, formatMoney, parseVideoUrl, safeImageSrc, safeUrl } from '../../blocks/safe.js';
+import type { CartAddProps, CartCountProps, CartProps, CatalogProps, CountdownProps, FormProps, PaymentProps, ProductProps, ProgressProps, ReviewCtaProps, ReviewsProps, VideoProps } from './props.js';
 
 /**
  * Inner HTML of the dynamic components. One implementation shared by the server renderer (published pages) and the
@@ -20,7 +20,36 @@ export interface MarkupCtx {
   stepHref?: (stepId: string) => string | undefined;
   /** Google reviews: public token of a block, the review snapshot taken when the page was rendered, and the workspace's default place. */
   reviews?: { token(blockId: string): string; snapshot(placeId: string): ReviewsData | null; defaultPlaceId: string | null };
+  /**
+   * Product catalog blocks: the workspace's sellable products (active, one-time, with an active price) read when the page is rendered. Absent: none known
+   * (the builder shows labelled sample cards, a published page its empty text).
+   */
+  catalog?: CatalogItem[];
 }
+
+/** An active one-time price of a catalog product, as the Product catalog block shows it. */
+export interface CatalogPrice {
+  id: string;
+  /** Major units (12.5 = 12.50). */
+  amount: number;
+  currency: string;
+  /** Older prices replaced by this one (a page that picked them shows this one). */
+  replaces?: string[];
+}
+/** A product the Product catalog block can list. */
+export interface CatalogItem {
+  id: string;
+  name: string;
+  description: string;
+  image: string | null;
+  imageAlt: string;
+  createdAt: string;
+  defaultPriceId: string | null;
+  prices: CatalogPrice[];
+  /** Template previews: the product slot this placeholder stands for. */
+  slot?: string;
+}
+export interface CatalogCard { item: CatalogItem; price: CatalogPrice }
 
 export interface ReviewItem { author: string; authorUri?: string; photoUri?: string; rating: number; text: string; lang?: string; when?: string }
 /** Review content as shown on a page. Comes from the Places API (New) through the server's cache (source `google`) or from the author's own testimonials (`fallback`). */
@@ -313,4 +342,82 @@ export function paymentInner(blockId: string, p: PaymentProps, ctx: MarkupCtx): 
     + `<div class="fn-field"><span class="fn-pay-label" id="${fid('cardlabel')}">Payment</span><div class="fn-pay-card" data-fn-pay-card role="group" aria-labelledby="${fid('cardlabel')}">${card}</div></div>`
     + '<div class="fn-hp" aria-hidden="true"><label>Leave this field empty<input type="text" name="_hp" tabindex="-1" autocomplete="off"></label></div>'
     + `<button class="fn-btn fn-btn-primary fn-btn-block fn-btn-lg" type="submit">${esc(p.buttonLabel || 'Pay now')}</button><p class="fn-status" role="status" aria-live="polite"></p><p class="fn-note">${note}</p></form>`;
+}
+
+// ---- product catalog ----------------------------------------------------------------------------------------------------------------------------------
+// The cards are rendered from the catalog snapshot of the render (server: read from the database; builder: the owner's products). Each card is an Add to cart
+// form naming its product: the server checks the product against the block and re-reads its price on every add, so nothing priced here is trusted.
+
+/** The price a card sells: the chosen one (or the price that replaced it), else the product's default price, else its first active price. */
+export function priceOfItem(item: CatalogItem, priceId?: string): CatalogPrice | null {
+  if (priceId) {
+    const hit = item.prices.find((p) => p.id === priceId || p.replaces?.includes(priceId));
+    if (hit) return hit;
+  }
+  return item.prices.find((p) => p.id === item.defaultPriceId) ?? item.prices[0] ?? null;
+}
+
+const byCreated = (a: CatalogCard, b: CatalogCard) => (a.item.createdAt < b.item.createdAt ? -1 : a.item.createdAt > b.item.createdAt ? 1 : a.item.id < b.item.id ? -1 : a.item.id > b.item.id ? 1 : 0);
+const byName = (a: CatalogCard, b: CatalogCard) => a.item.name.localeCompare(b.item.name, 'en') || byCreated(a, b);
+
+/** The cards a block shows, in order: its hand-picked products (in the order picked), or every listed product sorted as asked; at most `limit`. */
+export function catalogCards(p: Pick<CatalogProps, 'source' | 'picks' | 'sort' | 'limit'>, items: CatalogItem[]): CatalogCard[] {
+  const out: CatalogCard[] = [];
+  if (p.source === 'picked') {
+    for (const pick of p.picks ?? []) {
+      const item = items.find((i) => (pick.productId ? i.id === pick.productId : !!pick.slot && i.slot === pick.slot)) ?? (pick.slot ? items.find((i) => i.slot === pick.slot) : undefined);
+      const price = item ? priceOfItem(item, pick.priceId) : null;
+      if (item && price && !out.some((c) => c.item.id === item.id)) out.push({ item, price });
+    }
+  } else {
+    for (const item of items) {
+      const price = priceOfItem(item);
+      if (price) out.push({ item, price });
+    }
+    const sort = p.sort ?? 'catalog';
+    out.sort(sort === 'newest' ? (a, b) => byCreated(b, a) : sort === 'price_asc' ? (a, b) => a.price.amount - b.price.amount || byName(a, b) : sort === 'price_desc' ? (a, b) => b.price.amount - a.price.amount || byName(a, b) : byCreated);
+  }
+  return out.slice(0, Math.max(1, p.limit ?? 12));
+}
+
+/** Labelled sample cards for the builder canvas when the catalog has no product yet (never published). */
+export const SAMPLE_CATALOG: CatalogItem[] = [
+  { id: 'sample_1', name: 'Sample product', description: 'Your product description appears here.', image: null, imageAlt: '', createdAt: '1', defaultPriceId: 's1', prices: [{ id: 's1', amount: 24, currency: 'USD' }] },
+  { id: 'sample_2', name: 'Another product', description: 'Add products in Products to fill this grid.', image: null, imageAlt: '', createdAt: '2', defaultPriceId: 's2', prices: [{ id: 's2', amount: 12, currency: 'USD' }] },
+  { id: 'sample_3', name: 'Third product', description: 'Prices always come from your catalog.', image: null, imageAlt: '', createdAt: '3', defaultPriceId: 's3', prices: [{ id: 's3', amount: 36, currency: 'USD' }] },
+];
+
+export function catalogInner(blockId: string, p: CatalogProps, ctx: MarkupCtx): string {
+  const bid = safeId(blockId);
+  const builder = ctx.mode === 'builder';
+  const known = ctx.catalog ?? [];
+  // The canvas shows sample cards while the owner has nothing to list (and while their products load); a published page shows only real products.
+  const sample = builder && (ctx.catalog === undefined || (known.length === 0 && p.source === 'all'));
+  const cards = catalogCards(p, sample ? SAMPLE_CATALOG : known);
+  const cols = Math.min(4, Math.max(1, Math.round(p.columns ?? 3)));
+  const head = `<div class="fn-catalog fn-catalog-c${cols}" data-fn-catalog data-block="${esc(bid)}">`;
+  if (!cards.length) {
+    const why = builder ? (p.source === 'picked' ? 'Pick products in the settings to show them here.' : '') : '';
+    return `${head}<p class="fn-catalog-empty">${esc(p.emptyText || 'No products are available right now.')}</p>${why ? `<p class="fn-note">${esc(why)} (Editor only.)</p>` : ''}</div>`;
+  }
+  const then = p.action === 'buy' ? stepLink(ctx, p.checkoutStepId, true) : p.then?.type === 'step' ? stepLink(ctx, p.then.stepId, true) : p.then?.type === 'next_step' ? stepLink(ctx, undefined, true) : '';
+  const action = `${ctx.apiBase ?? ''}/api/public/cart/${encodeURIComponent(ctx.funnelId)}/${encodeURIComponent(ctx.stepId)}/${encodeURIComponent(bid)}/add`;
+  const q = p.quantity?.enabled ? p.quantity : null;
+  const label = p.buttonLabel || (p.action === 'buy' ? 'Buy now' : 'Add to cart');
+  const items = cards.map(({ item, price }, i) => {
+    const name = str(item.name, 200);
+    const src = p.showImage ? safeImageSrc(item.image) : null;
+    const img = !p.showImage ? '' : src
+      ? `<img class="fn-catalog-img" src="${esc(src)}" alt="${esc(str(item.imageAlt, 300))}" loading="lazy">`
+      : `<div class="fn-catalog-img fn-catalog-noimg" aria-hidden="true"><span>${esc(name.slice(0, 1).toUpperCase())}</span></div>`;
+    const desc = p.showDescription && item.description ? `<p class="fn-catalog-desc">${esc(str(item.description, 600))}</p>` : '';
+    const money = p.showPrice ? `<p class="fn-catalog-price">${esc(formatMoney(price.amount, price.currency))}</p>` : '';
+    const qid = `cat-${bid}-${i}-qty`;
+    const qty = q ? `<div class="fn-field"><label for="${qid}">Quantity</label><select id="${qid}" name="quantity">${qtyOptions(q)}</select></div>` : '';
+    return `<li class="fn-catalog-item">${img}<div class="fn-catalog-body"><h3 class="fn-catalog-name">${esc(name)}</h3>${desc}${money}`
+      + `<form class="fn-cart-add fn-catalog-form" method="post" action="${esc(action)}" data-fn-cart-add data-product="${esc(safeId(item.id))}"${then ? ` data-href="${esc(then)}"` : ''} aria-label="${esc(`Add ${name} to the cart`)}">`
+      + `${qty}<button class="fn-btn fn-btn-primary fn-btn-block" type="submit">${esc(label)}<span class="fn-vh">: ${esc(name)}</span></button><p class="fn-status" role="status" aria-live="polite"></p></form></div></li>`;
+  }).join('');
+  const note = sample ? '<p class="fn-note">Sample products (editor only). Your active one-time products appear here.</p>' : '';
+  return `${head}<ul class="fn-catalog-grid" aria-label="Products">${items}</ul>${note}</div>`;
 }

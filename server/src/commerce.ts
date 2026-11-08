@@ -1,9 +1,9 @@
 /**
  * The cart and Payment form runtime, `/commerce.js` (docs/PRODUCTS.md#cart, docs/STRIPE.md#embedded-payment-form). Plain ES5, no dependencies, loaded ONLY by pages
- * that carry an Add to cart, Cart, Cart count or Payment form block (the beacon stays small). Configured by its own script tag like the beacon (data-funnel,
+ * that carry an Add to cart, Product catalog, Cart, Cart count or Payment form block (the beacon stays small). Configured by its own script tag like the beacon (data-funnel,
  * data-step, data-api, data-preview, data-cookie-path) and sharing the beacon's visitor id (cookie `visitor_id`, or window.name on sandboxed pages).
  * Everything it shows comes from the server's answers, built with DOM APIs (textContent), never from HTML strings.
- *  - Add to cart forms, the Cart block (quantity +/-, remove, order bumps, totals), the Cart count badge; the cart token lives in a first-party cookie of the page host.
+ *  - Add to cart forms (also the cards of a Product catalog, which name their product in data-product), the Cart block (quantity +/-, remove, order bumps, totals), the Cart count badge; the cart token lives in a first-party cookie of the page host.
  *  - The Payment form: asks the server for a quote (the PaymentIntent and its client secret), loads Stripe.js from js.stripe.com ONLY on pages with this form and
  *    mounts the Payment Element (card data stays in Stripe's iframe), re-quotes when an order bump changes, confirms with Stripe.js (3-D Secure included) and tells
  *    the server, which re-reads the PaymentIntent and records the orders. A sandboxed page (opaque origin, owner custom code on a built-in address) cannot run
@@ -56,7 +56,7 @@ var r2=mk('div','fn-total');r2.appendChild(mk('span',null,'Total'));r2.appendChi
 function loadCart(){var cb=document.querySelector('[data-fn-cart]');cartBlockRef=cb?{stepId:step,blockId:cb.getAttribute('data-block')}:null;
 var need=document.querySelector('[data-fn-cart],[data-fn-cart-count]');if(!need)return;
 jpost(api+'/api/public/cart/'+encodeURIComponent(funnel)+'/view',cartBlockRef?{cartBlock:cartBlockRef}:{}).then(function(x){if(x.ok)gotCart(x.j)}).catch(function(){})}
-function addToCart(f){var b=f.querySelector('button[type=submit]'),q=f.elements.quantity?parseInt(f.elements.quantity.value,10)||1:undefined,body={opId:rid(),quantity:q,url:location.href.slice(0,500),utms:utms};if(cartBlockRef)body.cartBlock=cartBlockRef;
+function addToCart(f){var b=f.querySelector('button[type=submit]'),q=f.elements.quantity?parseInt(f.elements.quantity.value,10)||1:undefined,body={opId:rid(),quantity:q,url:location.href.slice(0,500),utms:utms},pd=f.getAttribute('data-product');if(pd)body.productId=pd;if(cartBlockRef)body.cartBlock=cartBlockRef;
 if(b)b.disabled=true;say(f,'Adding\\u2026',true);
 jpost(f.getAttribute('action'),body).then(function(x){if(b)b.disabled=false;if(!x.ok){say(f,errOf(x),false);return}gotCart(x.j);
 if(x.j.eventId&&x.j.added)fire('fn:add_to_cart',{eventId:x.j.eventId,item:x.j.added});var h=f.getAttribute('data-href');if(h&&h!=='#'){location.href=h;return}

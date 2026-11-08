@@ -14,6 +14,7 @@ import { listSteps } from '../repos/funnels.js';
 import type { DomainRow, FunnelRow, PageRow, StepRow } from '../repos/types.js';
 import { pathKey } from '../services/paths.js';
 import { renderStep } from '../services/pages.js';
+import { catalogFor } from '../services/catalogview.js';
 import { adTagsForStep } from '../services/adtags.js';
 import { loadDoc } from '../pagemodel/doc.js';
 import { RUNTIME_JS } from '../pagemodel/render.js';
@@ -275,6 +276,7 @@ export function previewRoutes(deps: Deps): Hono {
       funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'preview',
       adTags: await adTagsForStep(deps, funnel.workspace_id, funnel.id, step.id, loadDoc(page.doc_json), 'preview'),
       hrefFor: (s) => `${prefix}${s.base_path}?token=${encodeURIComponent(token)}`,
+      catalog: await catalogFor(deps, funnel.workspace_id, page.doc_json),
     });
     return c.html(html, 200, noStore);
   };

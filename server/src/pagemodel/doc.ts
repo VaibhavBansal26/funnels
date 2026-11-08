@@ -152,12 +152,14 @@ export function remapStepRefs(doc: ProjectDoc, idMap: Map<string, string>): Proj
       n.fnAction = target ? { type: 'step', stepId: target } : { type: 'next_step' };
     }
     // Commerce blocks name steps too (after adding to the cart, the checkout step, the cart step).
-    const cartAdd = n.fnCartAdd as { then?: { type: string; stepId?: string } } | undefined;
-    if (cartAdd?.then?.type === 'step') {
-      const target = cartAdd.then.stepId ? idMap.get(cartAdd.then.stepId) : undefined;
-      cartAdd.then = target ? { type: 'step', stepId: target } : { type: 'next_step' };
+    for (const key of ['fnCartAdd', 'fnCatalog'] as const) {
+      const cartAdd = n[key] as { then?: { type: string; stepId?: string } } | undefined;
+      if (cartAdd?.then?.type === 'step') {
+        const target = cartAdd.then.stepId ? idMap.get(cartAdd.then.stepId) : undefined;
+        cartAdd.then = target ? { type: 'step', stepId: target } : { type: 'next_step' };
+      }
     }
-    for (const [key, field] of [['fnCart', 'checkoutStepId'], ['fnCartCount', 'cartStepId']] as const) {
+    for (const [key, field] of [['fnCart', 'checkoutStepId'], ['fnCartCount', 'cartStepId'], ['fnCatalog', 'checkoutStepId']] as const) {
       const p = n[key] as Record<string, string | undefined> | undefined;
       if (p?.[field]) {
         const target = idMap.get(p[field]!);

@@ -8,7 +8,7 @@ import { auditContrast, type ContrastIssue } from '../templates/contrast.js';
 import { STEP_KINDS, TEMPLATE_GOALS, type TemplateProduct } from '../templates/types.js';
 import { newId } from '../util/ids.js';
 import { audit } from './audit.js';
-import { productNodes, stripCatalogLinks } from './catalogdoc.js';
+import { catalogNodes, productNodes, stripCatalogLinks } from './catalogdoc.js';
 import { validateDoc } from './pages.js';
 import { isValidPath, pathKey } from './paths.js';
 import { assertPlatformAdmin, requireTemplate } from './templates.js';
@@ -109,6 +109,7 @@ export async function importTemplate(deps: Deps, auth: Auth, input: z.infer<type
   if (slots.size !== t.products.length) throw badRequest('DUPLICATE_SLOT', 'Product slot keys must be unique');
   for (const [i, d] of docs.entries()) {
     for (const p of productNodes(d)) if (p.props.slot && !slots.has(p.props.slot)) throw badRequest('UNKNOWN_SLOT', `Step ${i + 1}: the checkout refers to the product slot "${p.props.slot}", which the template does not declare`);
+    for (const c of catalogNodes(d)) for (const x of c.props.picks) if (x.slot && !slots.has(x.slot)) throw badRequest('UNKNOWN_SLOT', `Step ${i + 1}: the Product catalog refers to the product slot "${x.slot}", which the template does not declare`);
   }
   // A template with a checkout block must declare a slot for it: otherwise the funnel wizard cannot ask which product to sell.
   for (const [i, d] of docs.entries()) {

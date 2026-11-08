@@ -1,4 +1,4 @@
-import type { ButtonActionProps, CartAddProps, CartCountProps, CartProps, CountdownProps, FormProps, PaymentProps, ProductProps, ReviewCtaProps, ReviewsProps } from './props.js';
+import type { ButtonActionProps, CartAddProps, CartCountProps, CartProps, CatalogProps, CountdownProps, FormProps, PaymentProps, ProductProps, ReviewCtaProps, ReviewsProps } from './props.js';
 import { PROJECT_VERSION, emptyProject, type GjsNode, type GjsProject, type GjsRule } from './clean.js';
 import { FONT_STACKS } from './css.js';
 
@@ -240,6 +240,13 @@ const col = (children: GjsNode[], o: NodeOpts & { grow?: number } = {}): GjsNode
     cartAdd(id: string, p: Partial<CartAddProps> & Pick<CartAddProps, 'productName' | 'price'>, o: NodeOpts = {}): GjsNode {
       const props: CartAddProps = { currency: 'USD', label: 'Add to cart', showPrice: true, quantity: { enabled: false, min: 1, max: 10, default: 1 }, then: { type: 'stay' }, ...p };
       return fin({ type: 'fn-cart-add', tagName: 'div', fnCartAdd: props }, { ...o, id, name: o.name ?? 'Add to cart' });
+    },
+    catalog(id: string, p: Partial<CatalogProps> = {}, o: NodeOpts = {}): GjsNode {
+      const props: CatalogProps = {
+        source: 'all', picks: [], sort: 'catalog', limit: 12, columns: 3, showImage: true, showDescription: true, showPrice: true, buttonLabel: 'Add to cart', action: 'add',
+        quantity: { enabled: false, min: 1, max: 10, default: 1 }, then: { type: 'stay' }, emptyText: 'No products are available right now.', ...p,
+      };
+      return fin({ type: 'fn-catalog', tagName: 'div', fnCatalog: props }, { ...o, id, name: o.name ?? 'Product catalog' });
     },
     cart(id: string, p: Partial<CartProps> = {}, o: NodeOpts = {}): GjsNode {
       const props: CartProps = { title: 'Your cart', emptyText: 'Your cart is empty.', checkoutLabel: 'Checkout', showBumps: true, ...p };

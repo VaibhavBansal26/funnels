@@ -20,6 +20,7 @@ import { assertWithinLimit } from '../billing/limits.js';
 import { audit } from './audit.js';
 import { adTagsFor, effectivePixels, loadPixelLevels } from './adtags.js';
 import { regenerateFunnel, renderStep, workspaceAllowsScripts } from './pages.js';
+import { catalogFor } from './catalogview.js';
 import { primeSnapshots, refreshForPublish } from './googlereviews.js';
 import { addressFrom, ensureBuiltinDomain, ensurePagesDomain, workspaceSlugOf, type Address } from './addresses.js';
 
@@ -469,7 +470,7 @@ export async function buildFunnelBundle(deps: Deps, funnel: FunnelRow): Promise<
     // The bundle carries a snapshot of the review content taken now (fetched if the cache is empty or expired); the page refreshes it from the public endpoint.
     await refreshForPublish(deps, ws, loadDoc(page.doc_json));
     await primeSnapshots(deps, ws, loadDoc(page.doc_json));
-    const { html } = renderStep(deps, { funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'live', adTags: tags?.html, apiBase, beaconSrc: beaconPath(BEACON_JS), commerceSrc: commercePath(COMMERCE_JS) });
+    const { html } = renderStep(deps, { funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'live', adTags: tags?.html, apiBase, beaconSrc: beaconPath(BEACON_JS), commerceSrc: commercePath(COMMERCE_JS), catalog: await catalogFor(deps, ws, page.doc_json) });
     bundleSteps.push({ id: step.id, basePath: step.base_path, html, knownInline: [RUNTIME_JS, ...(tags ? [tags.source] : [])], vendors: withPaymentHosts(cspHosts(effectivePixels(levels, step.id)), html, deps.config.PAYMENTS_PROVIDER) });
   }
   const refs = new Set(bundleSteps.flatMap((s) => findAssetRefs(s.html)));

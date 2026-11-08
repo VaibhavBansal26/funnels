@@ -16,6 +16,8 @@ import { linkCatalog } from './catalogcheckout.js';
 import { adTagsFor, adTagsForStep, loadPixelLevels } from './adtags.js';
 import { onFunnelChanged } from './publishing.js';
 import { mountOf, type Mount } from './addresses.js';
+import { catalogFor } from './catalogview.js';
+import type { CatalogItem } from '../pagemodel/shared/markup.js';
 
 export const MAX_BACKUPS = 10;
 /** Size limit of version-1 (block tree) documents, kept from before the GrapesJS builder. */
@@ -47,6 +49,8 @@ interface BuildInput {
   apiBase?: string;
   beaconSrc?: string;
   commerceSrc?: string;
+  /** Product catalog blocks: the catalog snapshot read for this render (`catalogFor`); absent when the page has none. */
+  catalog?: CatalogItem[];
 }
 
 export function renderContext(deps: Deps, i: BuildInput): PageRenderContext {
@@ -71,6 +75,7 @@ export function renderContext(deps: Deps, i: BuildInput): PageRenderContext {
     ...(i.beaconSrc ? { beaconSrc: i.beaconSrc } : {}),
     ...(i.commerceSrc ? { commerceSrc: i.commerceSrc } : {}),
     reviews: reviewsContext(deps, i.funnel.workspace_id, i.funnel.id, i.step.id),
+    ...(i.catalog ? { catalog: i.catalog } : {}),
   };
 }
 
@@ -92,7 +97,7 @@ export async function regenerateFunnel(deps: Deps, ws: string, funnelId: string)
     if (!page) continue;
     await primeSnapshots(deps, ws, loadDoc(page.doc_json));
     const adTags = adTagsFor(levels, funnelId, step.id, loadDoc(page.doc_json), 'live')?.html;
-    const { html, checksum } = renderStep(deps, { funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'live', adTags, mount });
+    const { html, checksum } = renderStep(deps, { funnel, steps, step, docJson: page.doc_json, scriptsOk: page.scripts_ok === 1, workspaceScripts, mode: 'live', adTags, mount, catalog: await catalogFor(deps, ws, page.doc_json) });
     if (checksum !== page.checksum) await deps.db.run('UPDATE step_pages SET html = ?, checksum = ? WHERE step_id = ?', html, checksum, step.id);
   }
   deps.pageCache.invalidate(steps.map((s) => s.id));
@@ -103,6 +108,22 @@ export async function regenerateFunnel(deps: Deps, ws: string, funnelId: string)
 /** Re-renders the funnels of a workspace that are served from its built-in address (after the workspace's address name changed). */
 export async function regenerateBuiltinFunnels(deps: Deps, ws: string): Promise<void> {
   for (const f of await deps.db.all<{ id: string }>("SELECT f.id FROM funnels f JOIN domains d ON d.id = f.domain_id WHERE f.workspace_id = ? AND d.kind = 'builtin' ORDER BY f.id", ws)) await regenerateFunnel(deps, ws, f.id);
+}
+
+/**
+ * After a change to the catalog (a product or price created, edited, archived or restored): re-renders the funnels whose pages hold a Product catalog block, so
+ * the stored pages (built-in address, custom domains through the edge purge) list the catalog as it is now, and Cloudflare-published funnels get the usual
+ * debounced redeploy (ADR 0048). Failures are logged: the catalog change itself has already been saved.
+ */
+export async function refreshCatalogPages(deps: Deps, ws: string): Promise<number> {
+  const rows = await deps.db.all<{ funnel_id: string }>(
+    "SELECT DISTINCT p.funnel_id FROM step_pages p JOIN funnels f ON f.id = p.funnel_id WHERE p.workspace_id = ? AND f.deleted_at IS NULL AND p.doc_json LIKE ? ORDER BY p.funnel_id",
+    ws, '%"fn-catalog"%',
+  );
+  for (const r of rows) {
+    await regenerateFunnel(deps, ws, r.funnel_id).catch((e: unknown) => deps.log.error('catalog page refresh failed', { funnelId: r.funnel_id, error: (e as Error).message }));
+  }
+  return rows.length;
 }
 
 export async function regenerateWorkspace(deps: Deps, ws: string): Promise<void> {
@@ -116,7 +137,7 @@ export async function insertPage(deps: Deps, ws: string, funnel: FunnelRow, step
   await syncReviewBlocks(deps, ws, funnel.id, step.id, loadDoc(docJson));
   await primeSnapshots(deps, ws, loadDoc(docJson));
   const adTags = await adTagsForStep(deps, ws, funnel.id, step.id, loadDoc(docJson));
-  const { html, checksum } = renderStep(deps, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(deps, ws), mode: 'live', adTags, mount: await mountOf(deps, funnel) });
+  const { html, checksum } = renderStep(deps, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(deps, ws), mode: 'live', adTags, mount: await mountOf(deps, funnel), catalog: await catalogFor(deps, ws, docJson) });
   await deps.db.run(
     'INSERT INTO step_pages (step_id, workspace_id, funnel_id, doc_json, html, checksum, scripts_ok, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     step.id, ws, funnel.id, docJson, html, checksum, scriptsOk ? 1 : 0, iso(deps),
@@ -205,7 +226,7 @@ export async function savePage(deps: Deps, auth: Auth, funnelId: string, stepId:
     await syncReviewBlocks(d, ws, funnelId, stepId, doc);
     await primeSnapshots(d, ws, doc);
     const adTags = await adTagsForStep(d, ws, funnelId, stepId, doc);
-    const { html, checksum } = renderStep(d, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(d, ws), mode: 'live', adTags, mount: await mountOf(d, funnel) });
+    const { html, checksum } = renderStep(d, { funnel, steps, step, docJson, scriptsOk, workspaceScripts: await workspaceAllowsScripts(d, ws), mode: 'live', adTags, mount: await mountOf(d, funnel), catalog: await catalogFor(d, ws, docJson) });
     await d.db.run('UPDATE step_pages SET doc_json = ?, html = ?, checksum = ?, scripts_ok = ?, updated_at = ? WHERE step_id = ?', docJson, html, checksum, scriptsOk ? 1 : 0, at, stepId);
     const version = nextVersion(d, step.version);
     // The WHERE on the old version is a second guard behind the row lock: it can only match once.

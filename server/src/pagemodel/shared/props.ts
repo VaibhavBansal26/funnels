@@ -138,6 +138,48 @@ export const CartAddPropsSchema = z.object({
 });
 export type CartAddProps = z.infer<typeof CartAddPropsSchema>;
 
+/** Most cards one Product catalog block shows (and most products it can hand-pick). */
+export const CATALOG_MAX_ITEMS = 24;
+
+/** A hand-picked product of a Product catalog block: a catalog product (optionally one of its prices), or a template slot bound when the template is used. */
+export const CatalogPickSchema = z
+  .object({
+    productId: CheckoutCatalogFields.productId,
+    /** A chosen price of the product (default: its default price). A replaced price is followed to its successor. */
+    priceId: CheckoutCatalogFields.priceId,
+    slot: CheckoutCatalogFields.slot,
+  })
+  .refine((p) => !!p.productId || !!p.slot, 'A picked product needs a product (or a template slot)');
+export type CatalogPick = z.infer<typeof CatalogPickSchema>;
+
+/**
+ * "Product catalog": a grid of product cards filled from the owner's catalog when the page is rendered (docs/PRODUCTS.md#product-catalog-block). Only active
+ * one-time products with an active price are listed; every card adds to the same server-side cart as Add to cart (the server re-reads the price on add).
+ * `action: buy` adds the product and goes to the checkout step (`checkoutStepId`, default the next step); `add` follows `then` like Add to cart.
+ */
+export const CatalogPropsSchema = z
+  .object({
+    source: z.enum(['all', 'picked']).default('all'),
+    picks: z.array(CatalogPickSchema).max(CATALOG_MAX_ITEMS).default([]),
+    sort: z.enum(['catalog', 'price_asc', 'price_desc', 'newest']).default('catalog'),
+    limit: z.number().int().min(1).max(CATALOG_MAX_ITEMS).default(12),
+    columns: z.number().int().min(1).max(4).default(3),
+    showImage: z.boolean().default(true),
+    showDescription: z.boolean().default(true),
+    showPrice: z.boolean().default(true),
+    buttonLabel: z.string().trim().min(1).max(80).default('Add to cart'),
+    action: z.enum(['add', 'buy']).default('add'),
+    checkoutStepId: stepRef.optional(),
+    quantity: QuantitySchema.default({ enabled: false, min: 1, max: 10, default: 1 }),
+    then: z.discriminatedUnion('type', [z.object({ type: z.literal('stay') }), z.object({ type: z.literal('next_step') }), z.object({ type: z.literal('step'), stepId: stepRef })]).default({ type: 'stay' }),
+    emptyText: z.string().max(200).default('No products are available right now.'),
+  })
+  .superRefine((p, ctx) => {
+    const q = p.quantity;
+    if (q.enabled && (q.min > q.max || q.default < q.min || q.default > q.max)) ctx.addIssue({ code: 'custom', path: ['quantity'], message: 'The quantity must start between the least and the most' });
+  });
+export type CatalogProps = z.infer<typeof CatalogPropsSchema>;
+
 /** "Cart": line items with quantity and remove, the order bumps of the checkout step, totals, and a Checkout button to the step that holds the Payment form. */
 export const CartPropsSchema = z.object({
   title: z.string().max(120).default('Your cart'),

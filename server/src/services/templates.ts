@@ -3,6 +3,7 @@ import type { Auth } from '../auth/context.js';
 import { isPlatformAdmin } from '../auth/platform.js';
 import { firstHeadingOfDoc, loadDoc } from '../pagemodel/doc.js';
 import { renderProject } from '../pagemodel/render.js';
+import type { CatalogItem } from '../pagemodel/shared/markup.js';
 import { customBlockFromInput, customBlockToNode } from '../pagemodel/customblocks.js';
 import type { Deps } from '../deps.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
@@ -149,12 +150,26 @@ export async function getTemplate(deps: Deps, id: string, opts: { docs?: boolean
 
 export const TemplateHtmlQuery = z.object({ step: z.coerce.number().int().min(1).max(50).default(1) });
 
+/** Template previews: a Product catalog lists the template's one-time product slots (what using the template creates), as placeholders without images. */
+function slotCatalog(t: TemplateRow): CatalogItem[] {
+  let slots: TemplateProduct[] = [];
+  try {
+    slots = JSON.parse(t.products_json) as TemplateProduct[];
+  } catch {
+    /* none */
+  }
+  return (Array.isArray(slots) ? slots : []).filter((p) => p.type === 'one_time').map((p, i) => ({
+    id: `slot_${p.key}`, slot: p.key, name: p.name, description: p.description ?? '', image: null, imageAlt: '', createdAt: String(i).padStart(4, '0'), defaultPriceId: `slotprice_${p.key}`,
+    prices: [{ id: `slotprice_${p.key}`, amount: p.amount, currency: p.currency }],
+  }));
+}
+
 const htmlCache = new Map<string, string>();
 function renderStep(t: TemplateRow, steps: StepRow[], row: StepRow): { html: string } {
   const key = `${t.id}:${t.version}:${t.updated_at}:${row.position}`;
   let html = htmlCache.get(key);
   if (html === undefined) {
-    html = renderProject(loadDoc(row.doc_json).project, { funnelId: 'preview', stepId: row.id, stepName: row.name, mode: 'preview', steps: steps.map((s) => ({ id: s.id, href: s.base_path })) }).html;
+    html = renderProject(loadDoc(row.doc_json).project, { funnelId: 'preview', stepId: row.id, stepName: row.name, mode: 'preview', steps: steps.map((s) => ({ id: s.id, href: s.base_path })), catalog: slotCatalog(t) }).html;
     if (htmlCache.size > 200) htmlCache.delete(htmlCache.keys().next().value!);
     htmlCache.set(key, html);
   }

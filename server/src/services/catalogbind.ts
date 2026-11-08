@@ -8,7 +8,7 @@ import { fromMinor } from '../util/money.js';
 import type { TemplateProduct } from '../templates/types.js';
 import { currentPrice, unavailable } from './catalog.js';
 import { findOrCreateProduct } from './catalogcheckout.js';
-import { mapProducts } from './catalogdoc.js';
+import { mapCatalogs, mapProducts } from './catalogdoc.js';
 
 /** How the product slots of a template are filled when it is used: an existing catalog price, or (the default) a product created from the template's defaults. */
 export const BindingsInput = z.record(z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/), z.union([z.object({ priceId: z.string().max(64) }), z.object({ create: z.literal(true) })]));
@@ -31,9 +31,13 @@ export async function bindTemplateProducts(d: Deps, auth: Auth, slots: TemplateP
     }
   }
   return docs.map((doc) =>
-    mapProducts(doc, (p) => {
-      const r = p.slot ? resolved.get(p.slot) : undefined;
-      return r ? { ...p, productId: r.productId, priceId: r.priceId, productName: r.name, price: r.amount, currency: r.currency, interval: r.interval, trialDays: r.trialDays } : p;
-    }),
+    mapCatalogs(
+      mapProducts(doc, (p) => {
+        const r = p.slot ? resolved.get(p.slot) : undefined;
+        return r ? { ...p, productId: r.productId, priceId: r.priceId, productName: r.name, price: r.amount, currency: r.currency, interval: r.interval, trialDays: r.trialDays } : p;
+      }),
+      // Product catalogs that hand-pick template slots list the bound products (subscriptions are never listed: a cart sells one-time prices only).
+      (c) => (c.picks.some((x) => x.slot && resolved.has(x.slot)) ? { ...c, picks: c.picks.map((x) => { const r = x.slot ? resolved.get(x.slot) : undefined; return r ? { slot: x.slot, productId: r.productId, priceId: r.priceId } : x; }) } : c),
+    ),
   );
 }

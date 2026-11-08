@@ -4,8 +4,8 @@ import { sanitizeCss } from './cssfilter.js';
 import { sanitizePageBody, sanitizeUserHtml } from './htmlfilter.js';
 import { BASE_CSS, FN_PAGE_CLASS } from './shared/css.js';
 import { PROJECT_LIMITS, childrenOf, cleanProject, emptyProject, isFnType, wrapperOf, type GjsNode, type GjsProject, type GjsRule } from './shared/clean.js';
-import { cartAddInner, cartCountInner, cartInner, checkoutInner, countdownInner, formInner, paymentInner, progressInner, reviewCtaInner, reviewsInner, videoInner, type MarkupCtx } from './shared/markup.js';
-import type { ButtonActionProps, CartAddProps, CartCountProps, CartProps, CodeProps, CountdownProps, FormProps, PaymentProps, ProductProps, ProgressProps, ReviewCtaProps, ReviewsProps, VideoProps } from './shared/props.js';
+import { cartAddInner, cartCountInner, cartInner, catalogInner, checkoutInner, countdownInner, formInner, paymentInner, progressInner, reviewCtaInner, reviewsInner, videoInner, type MarkupCtx } from './shared/markup.js';
+import type { ButtonActionProps, CartAddProps, CartCountProps, CartProps, CatalogProps, CodeProps, CountdownProps, FormProps, PaymentProps, ProductProps, ProgressProps, ReviewCtaProps, ReviewsProps, VideoProps } from './shared/props.js';
 
 /**
  * Deterministic page renderer: GrapesJS project data in, a complete HTML document out. Pure with respect to its inputs (nothing is
@@ -44,6 +44,8 @@ export interface PageRenderContext {
   adTags?: string;
   /** Google reviews support (services/googlereviews.ts): token per block, the snapshot of cached review content, the workspace's default place. */
   reviews?: MarkupCtx['reviews'];
+  /** Product catalog blocks: the workspace's sellable products, read when the page is rendered (services/catalogview.ts). */
+  catalog?: MarkupCtx['catalog'];
 }
 
 export const RUNTIME_JS = `(function(){function p(n){return n<10?'0'+n:''+n}function set(el,u,v){var s=el.querySelector('[data-u="'+u+'"]');if(s)s.textContent=p(v)}
@@ -160,6 +162,9 @@ function renderNode(n: GjsNode, st: State, depth: number): string {
     case 'fn-cart-count':
       st.hasCommerce = mk.mode !== 'builder';
       return `<div${nodeAttrs(n)}>${cartCountInner(n.fnCartCount as CartCountProps, mk)}</div>`;
+    case 'fn-catalog':
+      st.hasCommerce = mk.mode !== 'builder';
+      return `<div${nodeAttrs(n)}>${catalogInner(id, n.fnCatalog as CatalogProps, mk)}</div>`;
     case 'fn-payment':
       st.hasCommerce = mk.mode !== 'builder';
       return `<div${nodeAttrs(n)}>${paymentInner(id, n.fnPayment as PaymentProps, mk)}</div>`;
@@ -284,7 +289,7 @@ export function renderProject(rawProject: unknown, ctx: PageRenderContext): Rend
   const main = products.find((p) => !p.orderBump && !p.oneClickUpsell) ?? (cleaned.ok ? cleaned.commerce.find((c) => c.type === 'payment') : undefined);
   const st: State = {
     ctx,
-    markup: { mode, funnelId: ctx.funnelId, stepId: ctx.stepId, apiBase: ctx.apiBase, nextHref: idx >= 0 && steps[idx + 1] ? steps[idx + 1]!.href : '#', mainCheckoutId: main?.id ?? null, stepHref: (id) => steps.find((s) => s.id === id)?.href, reviews: ctx.reviews },
+    markup: { mode, funnelId: ctx.funnelId, stepId: ctx.stepId, apiBase: ctx.apiBase, nextHref: idx >= 0 && steps[idx + 1] ? steps[idx + 1]!.href : '#', mainCheckoutId: main?.id ?? null, stepHref: (id) => steps.find((s) => s.id === id)?.href, reviews: ctx.reviews, catalog: ctx.catalog },
     count: 0,
     hrefs: new Map(steps.map((s) => [s.id, s.href])),
     hasRuntime: false,

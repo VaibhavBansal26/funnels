@@ -8,6 +8,7 @@ import { paymentsStatus } from '../services/payments.js';
 import { addPayments, WizardInput } from '../services/paymentswizard.js';
 import { PaymentSettingsPatch, updatePaymentSettings } from '../services/paymentsettings.js';
 import { bodyOf, queryOf } from './util.js';
+import { refreshCatalogPages } from '../services/pages.js';
 
 /** The product catalog and the payments screen (permissions and limits in routes/spec.ts). */
 export function productRoutes(deps: Deps): Hono<AppEnv> {
@@ -15,6 +16,12 @@ export function productRoutes(deps: Deps): Hono<AppEnv> {
   r.use('*', authenticate(deps));
   const ws = (c: Context<AppEnv>) => authOf(c).workspaceId;
   const ip = (c: Context<AppEnv>) => clientIp(c, deps.config);
+  // A product or price changed: pages with a Product catalog block are re-rendered so they list the catalog as it is now (ADR 0048). Syncing to Stripe changes nothing they show.
+  r.use('*', async (c, next) => {
+    await next();
+    if (c.req.method === 'GET' || c.res.status >= 300 || c.req.path.endsWith('/sync')) return;
+    await refreshCatalogPages(deps, ws(c)).catch((e: unknown) => deps.log.error('catalog page refresh failed', { error: (e as Error).message }));
+  });
   r.get('/', async (c) => c.json(await catalog.listProducts(deps, ws(c), queryOf(c, catalog.ProductQuery))));
   r.post('/', async (c) => c.json(await catalog.createProduct(deps, authOf(c), await bodyOf(c, catalog.ProductInput), ip(c)), 201));
   r.post('/sync', async (c) => c.json(await syncAll(deps, ws(c), authOf(c).userId)));

@@ -7,10 +7,13 @@ import type { FunnelRow } from '../repos/types.js';
 import { newId } from '../util/ids.js';
 import { formatMinor, fromMinor } from '../util/money.js';
 import { currentPrice, type PriceRow, type ProductRow } from './catalog.js';
+import type { CommerceBlock } from '../pagemodel/shared/clean.js';
 import { enqueueConversions } from './conversions.js';
 import { isBot } from './events.js';
 import { insertEvents } from './rollups.js';
 import { resolveCommerceBlock, resolvePublicFunnel, sanitizeUtms, stepDoc } from './publicblocks.js';
+import { catalogItem } from './catalogview.js';
+import { priceOfItem } from '../pagemodel/shared/markup.js';
 import { resolveOffer } from './catalogcheckout.js';
 
 /**
@@ -29,7 +32,11 @@ const base = {
   cartBlock: z.object({ stepId: z.string().max(64), blockId: z.string().max(64) }).optional(),
 };
 export const CartViewInput = z.object({ ...base, funnelId: z.string().max(64).optional() });
-export const CartAddInput = z.object({ ...base, funnelId: z.string().max(64).optional(), opId, quantity: z.number().int().min(1).max(999).optional(), url: z.string().max(500).optional(), utms: z.unknown().optional() });
+export const CartAddInput = z.object({
+  ...base, funnelId: z.string().max(64).optional(), opId, quantity: z.number().int().min(1).max(999).optional(), url: z.string().max(500).optional(), utms: z.unknown().optional(),
+  /** Product catalog blocks only: which of its products (the server checks it against the block and reads its price from the catalog). */
+  productId: z.string().regex(/^prd_[A-Za-z0-9_-]{6,60}$/, 'Invalid product id').optional(),
+});
 export const CartUpdateInput = z
   .object({
     ...base,
@@ -237,15 +244,12 @@ export async function viewCart(deps: Deps, funnelId: string, input: z.infer<type
  * product priced in another one is refused with a message that says what to do. Subscriptions are not sold through carts (use a Checkout or a product Payment form).
  */
 export async function addToCart(deps: Deps, p: { funnelId: string; stepId: string; blockId: string; input: z.infer<typeof CartAddInput>; userAgent?: string }): Promise<CartAnswer> {
-  const { funnel, step, block } = await resolveCommerceBlock(deps, p.funnelId, p.stepId, p.blockId, 'cart-add');
+  const { funnel, step, block } = await resolveCommerceBlock(deps, p.funnelId, p.stepId, p.blockId, ['cart-add', 'catalog']);
   const input = p.input;
   const q = block.quantity?.enabled ? block.quantity : null;
   const quantity = input.quantity ?? (q ? Math.min(Math.max(q.default, q.min), q.max) : 1);
   if (q ? quantity < q.min || quantity > q.max : quantity !== 1) throw badRequest('INVALID_QUANTITY', q ? `Choose between ${q.min} and ${q.max}` : 'This product is added one at a time');
-  if (!block.priceId) throw new AppError(409, 'PRODUCT_UNAVAILABLE', 'This product is not set up yet: the page owner must save the page again');
-  const found = await currentPrice(deps, funnel.workspace_id, block.priceId);
-  if (!found || found.product.status !== 'active' || found.price.active !== 1) throw new AppError(409, 'PRODUCT_UNAVAILABLE', 'This product is no longer available');
-  if (found.price.billing_interval) throw conflict('SUBSCRIPTION_NOT_IN_CART', 'Subscriptions cannot be added to a cart');
+  const found = block.type === 'catalog' ? await catalogPrice(deps, funnel.workspace_id, block, input.productId) : await blockPrice(deps, funnel.workspace_id, block.priceId);
   const { product, price } = found;
   const max = deps.config.CART_MAX_QUANTITY;
 
@@ -284,6 +288,36 @@ export async function addToCart(deps: Deps, p: { funnelId: string; stepId: strin
     eventId: result.eventId, limited: result.limited || undefined,
     added: { name: product.name, productId: product.id, priceId: price.id, quantity: result.added, unitAmount: price.unit_amount, currency: price.currency, value: fromMinor(price.unit_amount * result.added, price.currency) },
   });
+}
+
+/** The catalog price an Add to cart block names (a replaced price is followed); refused when the product is gone or is a subscription. */
+async function blockPrice(deps: Deps, ws: string, priceId: string | undefined): Promise<{ product: ProductRow; price: PriceRow }> {
+  if (!priceId) throw new AppError(409, 'PRODUCT_UNAVAILABLE', 'This product is not set up yet: the page owner must save the page again');
+  const found = await currentPrice(deps, ws, priceId);
+  if (!found || found.product.status !== 'active' || found.price.active !== 1) throw new AppError(409, 'PRODUCT_UNAVAILABLE', 'This product is no longer available');
+  if (found.price.billing_interval) throw conflict('SUBSCRIPTION_NOT_IN_CART', 'Subscriptions cannot be added to a cart');
+  return found;
+}
+
+/**
+ * The price a Product catalog card adds: the product must be one the block lists NOW (hand-picked, or any active one-time product for "all products") and the
+ * price is read from the catalog like the block shows it (a picked price, its replacement, else the default price). The page's prices are never used.
+ */
+async function catalogPrice(deps: Deps, ws: string, block: Extract<CommerceBlock, { type: 'catalog' }>, productId: string | undefined): Promise<{ product: ProductRow; price: PriceRow }> {
+  if (!productId) throw badRequest('PRODUCT_REQUIRED', 'Choose a product to add');
+  const pick = block.source === 'picked' ? block.picks.find((x) => x.productId === productId) : undefined;
+  if (block.source === 'picked' && !pick) throw new AppError(409, 'PRODUCT_UNAVAILABLE', 'This product is no longer available');
+  const item = await catalogItem(deps, ws, productId);
+  if (!item) {
+    const row = await deps.db.get<{ type: string; status: string }>('SELECT type, status FROM products WHERE workspace_id = ? AND id = ?', ws, productId);
+    if (row?.type === 'subscription' && row.status === 'active') throw conflict('SUBSCRIPTION_NOT_IN_CART', 'Subscriptions cannot be added to a cart');
+    throw new AppError(409, 'PRODUCT_UNAVAILABLE', 'This product is no longer available');
+  }
+  const chosen = priceOfItem(item, pick?.priceId);
+  const price = chosen ? await deps.db.get<PriceRow>('SELECT * FROM prices WHERE workspace_id = ? AND id = ? AND active = 1', ws, chosen.id) : undefined;
+  const product = await deps.db.get<ProductRow>('SELECT * FROM products WHERE workspace_id = ? AND id = ?', ws, productId);
+  if (!price || !product || price.billing_interval) throw new AppError(409, 'PRODUCT_UNAVAILABLE', 'This product is no longer available');
+  return { product, price };
 }
 
 /** Changes the quantity of a line (0 removes it), or selects / clears an order bump of the checkout step. */

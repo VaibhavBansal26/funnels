@@ -46,14 +46,15 @@ export async function resolvePublicFunnel(deps: Deps, funnelId: string): Promise
 }
 
 /** Like resolvePublicBlock, for the cart and payment components (the derived `commerce` list of the stored page). */
-export async function resolveCommerceBlock<T extends CommerceBlock['type']>(deps: Deps, funnelId: string, stepId: string, blockId: string, type: T): Promise<{ funnel: FunnelRow; step: StepRow; block: Extract<CommerceBlock, { type: T }>; workspaceId: string; doc: ProjectDoc }> {
+export async function resolveCommerceBlock<T extends CommerceBlock['type']>(deps: Deps, funnelId: string, stepId: string, blockId: string, type: T | T[]): Promise<{ funnel: FunnelRow; step: StepRow; block: Extract<CommerceBlock, { type: T }>; workspaceId: string; doc: ProjectDoc }> {
   const funnel = await deps.db.get<FunnelRow>('SELECT * FROM funnels WHERE id = ? AND deleted_at IS NULL', funnelId);
   const step = funnel ? await deps.db.get<StepRow>('SELECT * FROM steps WHERE id = ? AND funnel_id = ?', stepId, funnelId) : undefined;
   const page = step ? await deps.db.get<{ doc_json: string }>('SELECT doc_json FROM step_pages WHERE step_id = ?', stepId) : undefined;
   if (!funnel || !step || !page) throw notFound('Block');
   if (await isSuspended(deps, funnel.workspace_id)) throw new AppError(503, 'SITE_UNAVAILABLE', 'This site is currently unavailable');
   const doc = readDoc(page.doc_json);
-  const block = (doc.commerce ?? []).find((b) => b.id === blockId && b.type === type);
+  const types: string[] = Array.isArray(type) ? type : [type];
+  const block = (doc.commerce ?? []).find((b) => b.id === blockId && types.includes(b.type));
   if (!block) throw notFound('Block');
   return { funnel, step, block: block as Extract<CommerceBlock, { type: T }>, workspaceId: funnel.workspace_id, doc };
 }
