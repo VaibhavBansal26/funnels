@@ -124,7 +124,8 @@ describe(`dialect helpers on ${BACKEND}`, () => {
     const db = await testDb();
     const d = db.dialect;
     for (const [i, name] of ['Summer Sale', 'summer_sale', '100% Off', 'Other'].entries()) await db.run(`INSERT INTO workspaces (id, name, created_at) VALUES (?, ?, 'now')`, `w${i}`, name);
-    const find = async (pattern: string) => (await db.all<{ name: string }>(`SELECT name FROM workspaces WHERE ${d.ilike('name')} ORDER BY name`, pattern)).map((r) => r.name);
+    // sorted here, not by ORDER BY: the server's collation decides whether 'Summer Sale' or 'summer_sale' comes first
+    const find = async (pattern: string) => (await db.all<{ name: string }>(`SELECT name FROM workspaces WHERE ${d.ilike('name')}`, pattern)).map((r) => r.name).sort();
     expect(await find('%SUMMER%')).toEqual(['Summer Sale', 'summer_sale']);
     expect(await find('%summer\\_sale%')).toEqual(['summer_sale']);
     expect(await find('%100\\%%')).toEqual(['100% Off']);

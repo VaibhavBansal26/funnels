@@ -244,7 +244,10 @@ describe('the monitor with a fake transport', () => {
     await m.flush();
     const tx = t.sent.find((s) => s.type === 'transaction')!.payload;
     expect(tx.transaction, JSON.stringify(tx)).toBe('GET /api/funnels/:id');
-    expect(JSON.stringify(tx)).not.toMatch(/token|cookie|[a-z]@[a-z]/);
+    // what the app puts in the event; the SDK's own metadata (sdk, server_name, runtime contexts) is added after scrubbing and varies by host
+    const { event_id, transaction, tags, request, user, extra, breadcrumbs } = tx as Record<string, unknown>;
+    const ours = JSON.stringify({ event_id, transaction, tags, request, user, extra, breadcrumbs, trace: (tx.contexts as Record<string, unknown> | undefined)?.trace });
+    expect(ours.match(/token|cookie|[a-z]@[a-z]/)?.[0] ?? null, ours).toBeNull();
     expect((await monitorWith({ SENTRY_TRACES_SAMPLE_RATE: '0' })).m.startRequest('GET')).toBeNull();
   });
 });
