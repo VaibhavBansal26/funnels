@@ -10,7 +10,16 @@ import { shop } from './support/shopworld.js';
 
 // The cart and Payment form runtime (/commerce.js) in a DOM (jsdom), talking to the real app in process. The TEST card form is exercised end to end.
 
-const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// Requests the runtime has in flight: settling waits for them (a fixed delay was too short on a slow PostgreSQL in CI), then lets the DOM update.
+const inflight = new Set<Promise<unknown>>();
+const settle = async (ms = 40) => {
+  await sleep(ms);
+  while (inflight.size) {
+    await Promise.allSettled([...inflight]);
+    await sleep(10);
+  }
+};
 
 async function page(h: Harness, path: string, cookie = '') {
   const res = await h.call('GET', path, { headers: cookie ? { cookie } : {} });
@@ -19,12 +28,17 @@ async function page(h: Harness, path: string, cookie = '') {
   const w = dom.window as unknown as Window & typeof globalThis & { eval: (s: string) => unknown };
   if (cookie) for (const c of cookie.split('; ')) w.document.cookie = `${c}; path=/`;
   const calls: { url: string; body: any }[] = [];
-  w.fetch = (async (url: string, init: RequestInit) => {
+  w.fetch = ((url: string, init: RequestInit) => {
     const u = new URL(url, 'https://app.funnels.test');
     calls.push({ url: u.pathname, body: init?.body ? JSON.parse(String(init.body)) : null });
-    const r = await h.app.request(u.pathname + u.search, { method: init?.method ?? 'GET', headers: { 'content-type': 'application/json', 'user-agent': 'Mozilla/5.0 (Macintosh) Chrome/120', 'x-forwarded-for': '198.51.100.9' }, body: init?.body as string });
-    const text = await r.text();
-    return { ok: r.ok, status: r.status, json: async () => JSON.parse(text) } as Response;
+    const p = (async () => {
+      const r = await h.app.request(u.pathname + u.search, { method: init?.method ?? 'GET', headers: { 'content-type': 'application/json', 'user-agent': 'Mozilla/5.0 (Macintosh) Chrome/120', 'x-forwarded-for': '198.51.100.9' }, body: init?.body as string });
+      const text = await r.text();
+      return { ok: r.ok, status: r.status, json: async () => JSON.parse(text) } as Response;
+    })();
+    inflight.add(p);
+    void p.finally(() => inflight.delete(p)).catch(() => {});
+    return p;
   }) as typeof fetch;
   // jsdom has no layout: give elements a size so the runtime's visibility check of the TEST label can run (it still sees display/visibility/opacity).
   (w.Element.prototype as any).getBoundingClientRect = function () { return { width: 320, height: 40, top: 0, left: 0, right: 320, bottom: 40 }; };
