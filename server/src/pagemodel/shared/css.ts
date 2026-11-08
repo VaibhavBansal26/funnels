@@ -157,7 +157,6 @@ body{margin:0;background:var(--fn-bg);color:var(--fn-text);font-family:var(--fn-
 :where(.fn-cart-add .fn-status){flex-basis:100%;margin:0}
 :where(.fn-cart-add-price){flex-basis:100%;margin:0;font-weight:800;font-size:1.35rem}
 :where(.fn-cart-add .fn-btn){padding-top:.7em;padding-bottom:.7em}
-.fn-vh{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 :where(.fn-catalog){width:100%;text-align:left}
 :where(.fn-catalog-grid){list-style:none;margin:0;padding:0;display:grid;gap:var(--fn-gap);grid-template-columns:repeat(3,minmax(0,1fr))}
 :where(.fn-catalog-c1 .fn-catalog-grid){grid-template-columns:minmax(0,1fr)}:where(.fn-catalog-c2 .fn-catalog-grid){grid-template-columns:repeat(2,minmax(0,1fr))}:where(.fn-catalog-c4 .fn-catalog-grid){grid-template-columns:repeat(4,minmax(0,1fr))}

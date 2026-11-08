@@ -346,7 +346,7 @@ export function paymentInner(blockId: string, p: PaymentProps, ctx: MarkupCtx): 
 
 // ---- product catalog ----------------------------------------------------------------------------------------------------------------------------------
 // The cards are rendered from the catalog snapshot of the render (server: read from the database; builder: the owner's products). Each card is an Add to cart
-// form naming its product: the server checks the product against the block and re-reads its price on every add, so nothing priced here is trusted.
+// form naming its product (its button is named "<label>: <product>", starting with the visible text): the server checks the product against the block and re-reads its price on every add, so nothing priced here is trusted.
 
 /** The price a card sells: the chosen one (or the price that replaced it), else the product's default price, else its first active price. */
 export function priceOfItem(item: CatalogItem, priceId?: string): CatalogPrice | null {
@@ -416,7 +416,7 @@ export function catalogInner(blockId: string, p: CatalogProps, ctx: MarkupCtx): 
     const qty = q ? `<div class="fn-field"><label for="${qid}">Quantity</label><select id="${qid}" name="quantity">${qtyOptions(q)}</select></div>` : '';
     return `<li class="fn-catalog-item">${img}<div class="fn-catalog-body"><h3 class="fn-catalog-name">${esc(name)}</h3>${desc}${money}`
       + `<form class="fn-cart-add fn-catalog-form" method="post" action="${esc(action)}" data-fn-cart-add data-product="${esc(safeId(item.id))}"${then ? ` data-href="${esc(then)}"` : ''} aria-label="${esc(`Add ${name} to the cart`)}">`
-      + `${qty}<button class="fn-btn fn-btn-primary fn-btn-block" type="submit">${esc(label)}<span class="fn-vh">: ${esc(name)}</span></button><p class="fn-status" role="status" aria-live="polite"></p></form></div></li>`;
+      + `${qty}<button class="fn-btn fn-btn-primary fn-btn-block" type="submit" aria-label="${esc(`${label}: ${name}`)}">${esc(label)}</button><p class="fn-status" role="status" aria-live="polite"></p></form></div></li>`;
   }).join('');
   const note = sample ? '<p class="fn-note">Sample products (editor only). Your active one-time products appear here.</p>' : '';
   return `${head}<ul class="fn-catalog-grid" aria-label="Products">${items}</ul>${note}</div>`;

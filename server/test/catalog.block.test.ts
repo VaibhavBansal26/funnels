@@ -42,7 +42,7 @@ describe('Product catalog markup (pure)', () => {
     expect(html).toContain('<ul class="fn-catalog-grid" aria-label="Products">');
     expect(names(html)).toEqual(['Banana', 'Cherry', 'Apple']);
     expect(html).toContain('aria-label="Add Banana to the cart"');
-    expect(html).toContain('Add to cart<span class="fn-vh">: Banana</span></button>');
+    expect(html).toContain('<button class="fn-btn fn-btn-primary fn-btn-block" type="submit" aria-label="Add to cart: Banana">Add to cart</button>');
     expect(html).toContain('data-product="prd_banana"');
     expect(html).toContain('action="/api/public/cart/fun_1/stp_1/cat1/add"');
     expect(html).toContain('<label for="cat-cat1-0-qty">Quantity</label><select id="cat-cat1-0-qty" name="quantity">');
@@ -90,7 +90,7 @@ describe('Product catalog markup (pure)', () => {
     const { html, body } = renderProject(project, { funnelId: 'fun_1', stepId: 'stp_1', stepName: 'Shop', catalog: items });
     expect(names(body)).toEqual(['Banana', 'Cherry', 'Apple']);
     expect(body).toContain('data-product="prd_banana"'); // survives sanitizePageBody
-    expect(body).toContain('<span class="fn-vh">');
+    expect(body).toContain('aria-label="Add to cart: Banana"');
     expect(html).toContain('data-fn-commerce');
   });
 
